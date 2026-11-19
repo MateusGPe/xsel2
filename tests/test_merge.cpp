@@ -1,0 +1,42 @@
+#include "scraper/merge.hpp"
+#include <catch2/catch_test_macros.hpp>
+
+TEST_CASE("split_dict_path handles escaped dots", "[merge]") {
+  const auto segs = scraper::split_dict_path(R"(user.profile\.meta.name)", true);
+  REQUIRE(segs.size() == 3);
+  CHECK(segs[0] == "user");
+  CHECK(segs[1] == "profile.meta");
+  CHECK(segs[2] == "name");
+}
+
+TEST_CASE("insert_into_json supports InsertMode variants", "[merge]") {
+  jsoncons::json dest = jsoncons::json::object();
+
+  scraper::insert_into_json(dest, "tags", jsoncons::json("news"),
+                            {scraper::InsertMode::AppendToList});
+  scraper::insert_into_json(dest, "tags", jsoncons::json("tech"),
+                            {scraper::InsertMode::AppendToList});
+  REQUIRE(dest["tags"].is_array());
+  CHECK(dest["tags"].size() == 2);
+
+  scraper::insert_into_json(dest, "meta.count", jsoncons::json(10),
+                            {scraper::InsertMode::Overwrite});
+  scraper::insert_into_json(dest, "meta.count", jsoncons::json(20),
+                            {scraper::InsertMode::Overwrite});
+  CHECK(dest["meta"]["count"].as<int64_t>() == 20);
+
+  scraper::insert_into_json(dest, "item", jsoncons::json("first"),
+                            {scraper::InsertMode::UniqueSuffix});
+  scraper::insert_into_json(dest, "item", jsoncons::json("second"),
+                            {scraper::InsertMode::UniqueSuffix});
+  CHECK(dest["item"].as<std::string>() == "first");
+  CHECK(dest["item_0"].as<std::string>() == "second");
+}
+
+TEST_CASE("merge_into transforms @key/@value objects", "[merge]") {
+  jsoncons::json dest = jsoncons::json::object();
+  jsoncons::json item = jsoncons::json::parse(R"({"@key": "price", "@value": 19.99})");
+  scraper::merge_into(dest, std::move(item));
+  REQUIRE(dest.contains("price"));
+  CHECK(dest["price"].as<double>() == 19.99);
+}

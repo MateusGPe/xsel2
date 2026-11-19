@@ -1,0 +1,59 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+install/
+out/
+
+# CMake & CPM generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+compile_commands.json
+_deps/
+
+# Compiled objects, libraries, and executables
+*.d
+*.o
+*.obj
+*.a
+*.la
+*.lai
+*.lo
+*.slo
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exp
+*.ilk
+*.map
+*.pdb
+*.exe
+*.out
+*.app
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+.venv/
+venv/
+
+# IDEs, caches, and OS files
+.vscode/
+.idea/
+.cache/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Local reference copy
+xmlsel-main/
