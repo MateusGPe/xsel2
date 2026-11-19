@@ -71,6 +71,12 @@ void handle_start(const Token &token, std::vector<BuildFrame> &frames,
 
   if (top.node.is_object()) {
     if (!top.pending_key.has_value()) {
+      if (frames.size() == 1 && child_is_map) {
+        top.is_map = true;
+        top.expecting_key = true;
+        ++virtual_depth;
+        return;
+      }
       ++overflow_depth;
       ++virtual_depth;
       return;

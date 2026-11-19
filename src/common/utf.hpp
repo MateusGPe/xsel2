@@ -227,9 +227,6 @@ static inline void dump_string(const char *str, size_t len, std::ostream &out) {
       case '\t':
         text = "\\t";
         break;
-      case '/':
-        text = "\\/";
-        break;
       default: {
         std::snprintf(seq, sizeof(seq), "\\u%04X", (unsigned int)codepoint);
         length = 6;

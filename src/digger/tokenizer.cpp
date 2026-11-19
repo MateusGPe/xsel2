@@ -330,16 +330,21 @@ bool TokenParser::handle_identifier_or_keyword(Token &out_token) {
     return true;
   }
 
-  // Binary search in sorted keyword table (not constexpr-sorted by string?
-  // Let's check: kKeywordActionMap in header was mostly sorted, except "async"
-  // at the end! So let's use std::find_if or ensure it's sorted!).
-  for (const auto &[kw, action] : kKeywordActionMap) {
-    if (kw == word) {
-      if (action == KeywordAction::ExpectNextIdentifier) {
-        expect_next_identifier_ = true;
-      }
-      return false;
+  static_assert(std::is_sorted(kKeywordActionMap.begin(),
+                               kKeywordActionMap.end(),
+                               [](const auto &a, const auto &b) {
+                                 return a.first < b.first;
+                               }),
+                "kKeywordActionMap must remain sorted for binary search");
+
+  const auto it = std::lower_bound(
+      kKeywordActionMap.begin(), kKeywordActionMap.end(), word,
+      [](const auto &entry, std::string_view key) { return entry.first < key; });
+  if (it != kKeywordActionMap.end() && it->first == word) {
+    if (it->second == KeywordAction::ExpectNextIdentifier) {
+      expect_next_identifier_ = true;
     }
+    return false;
   }
 
   out_token.type = TokenType::Identifier;

@@ -90,3 +90,38 @@ TEST_CASE("digger enforces MAX_PARSE_DEPTH without stack overflow", "[digger]") 
   const auto result = digger::parse_object(deep, true);
   REQUIRE(result.is_object());
 }
+
+TEST_CASE("digger TokenParser decodes escapes, template literals, and keywords",
+          "[digger]") {
+  const auto result = digger::parse_object(R"(
+    let data = {
+      hex: "\x41\x42",
+      uni: "\u00E9",
+      emoji: "\uD83D\uDE00",
+      braced: "\u{1F680}",
+      tmpl: `line1\nline2`,
+      async: true,
+      nested: [1, 2, ()]
+    };
+  )", true);
+
+  REQUIRE(result.is_object());
+  REQUIRE(result.contains("data"));
+  const auto &d = result["data"];
+  CHECK(d["hex"].as<std::string>() == "AB");
+  CHECK(d["uni"].as<std::string>() == "\xC3\xA9");
+  CHECK(d["emoji"].as<std::string>() == "\xF0\x9F\x98\x80");
+  CHECK(d["braced"].as<std::string>() == "\xF0\x9F\x9A\x80");
+  CHECK(d["tmpl"].as<std::string>() == "line1 line2");
+  CHECK(d["nested"].is_array());
+  CHECK(d["nested"].size() == 2);
+}
+
+TEST_CASE("digger parse_object_into merges into existing container",
+          "[digger]") {
+  jsoncons::json out = jsoncons::json::object();
+  out["existing"] = "keep";
+  digger::parse_object_into(R"({added: 99})", out, true);
+  CHECK(out["existing"].as<std::string>() == "keep");
+  CHECK(out["added"].as<int64_t>() == 99);
+}

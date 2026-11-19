@@ -292,6 +292,30 @@ get_method_registry() {
          b.RemoveKeys(as_str_list(args[0]),
                       args.size() > 1 ? as_bool(args[1]) : true);
        }},
+      {"rename_keys",
+       [](ScraperBuilder &b, const auto &args) {
+         if (args.empty())
+           throw std::runtime_error("rename_keys() requires 1+ arguments");
+         const auto pairs = as_str_list(args[0]);
+         if (pairs.size() % 2 != 0) {
+           throw std::runtime_error(
+               "rename_keys() requires an even-length list of [old, new] pairs");
+         }
+         absl::flat_hash_map<std::string, std::string> rename_map;
+         rename_map.reserve(pairs.size() / 2);
+         for (size_t i = 0; i < pairs.size(); i += 2) {
+           rename_map.emplace(pairs[i], pairs[i + 1]);
+         }
+         b.RenameKeys(std::move(rename_map),
+                      args.size() > 1 ? as_bool(args[1]) : true);
+       }},
+      {"merge_keys",
+       [](ScraperBuilder &b, const auto &args) {
+         if (args.size() < 2)
+           throw std::runtime_error("merge_keys() requires 2+ arguments");
+         b.MergeKeys(as_str_list(args[0]), as_str(args[1]),
+                     args.size() > 2 ? as_bool(args[2]) : true);
+       }},
       {"sort_keys",
        [](ScraperBuilder &b, const auto &args) {
          b.SortKeys(args.empty() ? true : as_bool(args[0]),
@@ -476,8 +500,11 @@ Token Lexer::next_token() {
         val += advance();
       }
     }
-    if (peek() == quote)
-      advance();
+    if (peek() != quote) {
+      throw std::runtime_error("Unterminated string literal in DSL at line " +
+                               std::to_string(tok_line));
+    }
+    advance();
     return {Token::Type::STRING, std::move(val), tok_line, tok_col};
   }
 

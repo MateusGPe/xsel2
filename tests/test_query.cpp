@@ -39,4 +39,30 @@ TEST_CASE("json_query throws runtime_error on invalid expressions", "[query]") {
   const auto doc = jsoncons::json::parse(R"({"a": 1})");
   CHECK_THROWS_AS(xsel::query::evaluate_jmespath(doc, "a[?"),
                   std::runtime_error);
+  CHECK_THROWS_AS(xsel::query::evaluate_jsonpath(doc, "$[invalid"),
+                  std::runtime_error);
+}
+
+TEST_CASE("json_query evaluate dispatches dialects and handles missing paths",
+          "[query]") {
+  const auto doc = jsoncons::json::parse(R"({"user": {"name": "Ada"}})");
+
+  const auto jmes = xsel::query::evaluate(
+      xsel::query::QueryDialect::JmesPath, doc, "user.name");
+  CHECK(jmes.as<std::string>() == "Ada");
+
+  const auto jmes_missing = xsel::query::evaluate(
+      xsel::query::QueryDialect::JmesPath, doc, "user.missing");
+  CHECK(jmes_missing.is_null());
+
+  const auto jp = xsel::query::evaluate(
+      xsel::query::QueryDialect::JsonPath, doc, "$.user.name");
+  REQUIRE(jp.is_array());
+  REQUIRE(jp.size() == 1);
+  CHECK(jp[0].as<std::string>() == "Ada");
+
+  const auto jp_empty = xsel::query::evaluate(
+      xsel::query::QueryDialect::JsonPath, jsoncons::json::object(), "$.a");
+  REQUIRE(jp_empty.is_array());
+  CHECK(jp_empty.empty());
 }

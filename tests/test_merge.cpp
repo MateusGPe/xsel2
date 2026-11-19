@@ -40,3 +40,33 @@ TEST_CASE("merge_into transforms @key/@value objects", "[merge]") {
   REQUIRE(dest.contains("price"));
   CHECK(dest["price"].as<double>() == 19.99);
 }
+
+TEST_CASE("has_no_common_key and merge_into handle Merge mode and arrays",
+          "[merge]") {
+  const auto a = jsoncons::json::parse(R"({"x": 1, "y": 2})");
+  const auto b = jsoncons::json::parse(R"({"z": 3})");
+  const auto c = jsoncons::json::parse(R"({"y": 9})");
+  CHECK(scraper::has_no_common_key(a, b));
+  CHECK_FALSE(scraper::has_no_common_key(a, c));
+
+  // InsertMode::Merge recursively merges nested objects
+  jsoncons::json dest = jsoncons::json::parse(R"({"meta": {"a": 1}, "tags": ["x"]})");
+  jsoncons::json other = jsoncons::json::parse(R"({"meta": {"b": 2}, "tags": ["y"]})");
+  scraper::merge_into(dest, std::move(other), scraper::InsertMode::Merge);
+  CHECK(dest["meta"]["a"].as<int64_t>() == 1);
+  CHECK(dest["meta"]["b"].as<int64_t>() == 2);
+  REQUIRE(dest["tags"].is_array());
+  CHECK(dest["tags"].size() == 2);
+
+  // Array + scalar merge
+  jsoncons::json arr = jsoncons::json::parse("[1, 2]");
+  scraper::merge_into(arr, jsoncons::json(3));
+  REQUIRE(arr.is_array());
+  CHECK(arr.size() == 3);
+
+  // Incomplete @key without @value is stripped
+  jsoncons::json orphan = jsoncons::json::parse(R"({"@key": "only_key", "keep": 1})");
+  scraper::preprocess_key_value(orphan);
+  CHECK_FALSE(orphan.contains("@key"));
+  CHECK(orphan["keep"].as<int64_t>() == 1);
+}

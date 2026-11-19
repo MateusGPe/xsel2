@@ -63,37 +63,37 @@ void Extractor::extract(QueryResult &selection, jsoncons::json &dest,
     }
 
     if (dest.is_object() || dest.is_null()) {
-      if (name_.empty()) {
+      if (name_segments_.empty()) {
         merge_into(dest, std::move(item));
       } else {
         if (dest.is_null()) {
           dest = jsoncons::json::object();
         }
-        const auto path = split_dict_path(name_, true);
         jsoncons::json *target = &dest;
-        for (size_t i = 0; i + 1 < path.size(); ++i) {
-          if (!target->contains(path[i]) ||
-              !target->at(path[i]).is_object()) {
-            target->insert_or_assign(path[i], jsoncons::json::object());
+        for (size_t i = 0; i + 1 < name_segments_.size(); ++i) {
+          if (!target->contains(name_segments_[i]) ||
+              !target->at(name_segments_[i]).is_object()) {
+            target->insert_or_assign(name_segments_[i],
+                                     jsoncons::json::object());
           }
-          target = &target->at(path[i]);
+          target = &target->at(name_segments_[i]);
         }
-        if (!target->contains(path.back())) {
-          target->insert_or_assign(path.back(), jsoncons::json::null());
+        if (!target->contains(name_segments_.back())) {
+          target->insert_or_assign(name_segments_.back(),
+                                   jsoncons::json::null());
         }
-        merge_into(target->at(path.back()), std::move(item));
+        merge_into(target->at(name_segments_.back()), std::move(item));
       }
     } else if (dest.is_array()) {
-      if (name_.empty()) {
+      if (name_segments_.empty()) {
         merge_into(dest, std::move(item));
       } else {
         preprocess_key_value(item);
         if (!xsel::common::is_empty_json(item)) {
-          const auto path = split_dict_path(name_, true);
           jsoncons::json wrapped = std::move(item);
-          for (size_t i = path.size(); i > 0; --i) {
+          for (size_t i = name_segments_.size(); i > 0; --i) {
             jsoncons::json obj = jsoncons::json::object();
-            obj.insert_or_assign(path[i - 1], std::move(wrapped));
+            obj.insert_or_assign(name_segments_[i - 1], std::move(wrapped));
             wrapped = std::move(obj);
           }
           merge_into(dest, std::move(wrapped));

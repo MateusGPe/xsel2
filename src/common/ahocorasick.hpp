@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <queue>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -126,7 +125,9 @@ public:
 
     // 3. Build failure links, output links, and complete DFA transitions via BFS.
     std::vector<uint32_t> failure_links(num_states, 0u);
-    std::queue<uint32_t> q;
+    std::vector<uint32_t> bfs_queue;
+    bfs_queue.reserve(num_states);
+    std::size_t bfs_head = 0u;
 
     transitions_[0] = 0u;
 
@@ -137,15 +138,14 @@ public:
         nodes_[next].next_output = 0u;
         nodes_[next].first_output =
             (nodes_[next].pattern_id != kInvalidPattern) ? next : 0u;
-        q.push(next);
+        bfs_queue.push_back(next);
       } else {
         transitions_[col] = 0u;
       }
     }
 
-    while (!q.empty()) {
-      const uint32_t curr = q.front();
-      q.pop();
+    while (bfs_head < bfs_queue.size()) {
+      const uint32_t curr = bfs_queue[bfs_head++];
 
       const uint32_t fail = failure_links[curr];
       const std::size_t curr_offset =
@@ -165,7 +165,7 @@ public:
           nodes_[next].next_output = next_out;
           nodes_[next].first_output =
               (nodes_[next].pattern_id != kInvalidPattern) ? next : next_out;
-          q.push(next);
+          bfs_queue.push_back(next);
         } else {
           transitions_[curr_offset + col] = transitions_[fail_offset + col];
         }

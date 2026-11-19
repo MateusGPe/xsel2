@@ -154,10 +154,13 @@ if(NOT DEFINED SCRAPERPY_VERSION_INFO)
   if(BUILD_TESTING)
     add_executable(xsel_tests
       tests/test_ahocorasick.cpp
+      tests/test_common.cpp
       tests/test_digger.cpp
-      tests/test_query.cpp
+      tests/test_dsl.cpp
       tests/test_merge.cpp
-      tests/test_scraper.cpp)
+      tests/test_query.cpp
+      tests/test_scraper.cpp
+      tests/test_steps.cpp)
     target_compile_features(xsel_tests PRIVATE cxx_std_20)
     target_compile_options(xsel_tests PRIVATE ${XSEL_WARN_FLAGS})
     target_link_libraries(xsel_tests PRIVATE scraper Catch2::Catch2WithMain)

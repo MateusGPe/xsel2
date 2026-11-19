@@ -200,9 +200,11 @@ jsoncons::json RenameKeysStep::rename_impl(const jsoncons::json &input,
     jsoncons::json out = jsoncons::json::object();
     for (const auto &kv : input.object_range()) {
       const auto it = rename_map_.find(kv.key());
-      const std::string new_key =
-          (it != rename_map_.end()) ? it->second : std::string(kv.key());
-      out.insert_or_assign(new_key, rename_impl(kv.value(), depth + 1));
+      if (it != rename_map_.end()) {
+        out.insert_or_assign(it->second, rename_impl(kv.value(), depth + 1));
+      } else {
+        out.insert_or_assign(kv.key(), rename_impl(kv.value(), depth + 1));
+      }
     }
     return out;
   }

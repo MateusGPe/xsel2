@@ -22,6 +22,20 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "BUILD_TESTING": "ON"
             }
+        },
+        {
+            "name": "asan-ubsan",
+            "displayName": "Debug + ASan/UBSan (Clang)",
+            "description": "Debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
+            "binaryDir": "${sourceDir}/build-asan",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/install",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_TESTING": "ON",
+                "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer"
+            }
         }
     ]
 }

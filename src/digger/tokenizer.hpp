@@ -34,7 +34,8 @@ private:
   enum class KeywordAction { ExpectNextIdentifier, Ignore };
 
   static constexpr std::array<std::pair<std::string_view, KeywordAction>, 42>
-      kKeywordActionMap = {{{"break", KeywordAction::Ignore},
+      kKeywordActionMap = {{{"async", KeywordAction::Ignore},
+                            {"break", KeywordAction::Ignore},
                             {"case", KeywordAction::Ignore},
                             {"catch", KeywordAction::Ignore},
                             {"class", KeywordAction::Ignore},
@@ -74,8 +75,7 @@ private:
                             {"void", KeywordAction::Ignore},
                             {"while", KeywordAction::Ignore},
                             {"with", KeywordAction::Ignore},
-                            {"yield", KeywordAction::Ignore},
-                            {"async", KeywordAction::Ignore}}};
+                            {"yield", KeywordAction::Ignore}}};
 
   std::string_view source_;
   size_t pos_{0};

@@ -18,7 +18,10 @@ void trim_in_place(std::string &value) {
     return;
   }
   const auto str_end = value.find_last_not_of(kWhitespace);
-  value = value.substr(str_begin, str_end - str_begin + 1);
+  value.erase(str_end + 1);
+  if (str_begin > 0) {
+    value.erase(0, str_begin);
+  }
 }
 
 std::vector<std::string> split_string(std::string_view s,
@@ -209,7 +212,12 @@ void SplitStep::apply(Node, std::vector<std::string> &values,
 void JoinStep::apply(Node, std::vector<std::string> &values, jsoncons::json &) {
   if (values.empty())
     return;
+  size_t total_len = delimiter_.size() * (values.size() - 1);
+  for (const auto &v : values) {
+    total_len += v.size();
+  }
   std::string joined;
+  joined.reserve(total_len);
   for (size_t i = 0; i < values.size(); ++i) {
     if (i > 0)
       joined += delimiter_;
@@ -257,7 +265,11 @@ void SubstringStep::apply(Node, std::vector<std::string> &values,
       continue;
     }
     int count = n - start;
-    if (length_.has_value() && *length_ != 0) {
+    if (length_.has_value()) {
+      if (*length_ == 0) {
+        v.clear();
+        continue;
+      }
       if (*length_ > 0) {
         count = std::min(*length_, n - start);
       } else {
@@ -313,10 +325,11 @@ void UnescapeStep::apply(Node, std::vector<std::string> &values,
             }
             char buf[5]{};
             size_t len = 0;
-            utf8_encode(static_cast<int32_t>(codepoint), buf, &len);
-            decoded.append(buf, len);
-            i += 5;
-            continue;
+            if (utf8_encode(static_cast<int32_t>(codepoint), buf, &len) == 0) {
+              decoded.append(buf, len);
+              i += 5;
+              continue;
+            }
           }
         }
       }
