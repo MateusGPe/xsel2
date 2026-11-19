@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>  Apex   Marketplace  &mdash;  Audio &amp; Peripherals  </title>
+  <meta property="og:title" content="Apex Marketplace — Audio &amp; Peripherals">
+  <link rel="canonical" href="https://marketplace.example.com/collections/audio-peripherals">
+  <script type="application/ld+json">
+  {
+    // Relaxed JSON-LD with comments and trailing comma
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": "Audio & Peripherals",
+    "numberOfItems": 3,
+  }
+  </script>
+</head>
+<body>
+  <header class="store-header">
+    <div class="promo-banner">  Spring   Sale:  Save   20%   on   Audio &amp; Keyboards!  </div>
+    <nav class="breadcrumbs">
+      <a href="/">Home</a>
+      <a href="/electronics">Electronics</a>
+      <a href="/electronics">Electronics</a>
+      <a href="/electronics/audio">Audio &amp; Peripherals</a>
+    </nav>
+  </header>
+
+  <main id="catalog">
+    <article class="product-card" data-sku="APX-101" data-category="keyboards" data-in-stock="true">
+      <h2 class="name">  Tactile   Pro   Keyboard  </h2>
+      <span class="price">$ 199.90 USD</span>
+      <div class="badges">
+        <span class="badge">Prime</span>
+        <span class="badge">Best Seller</span>
+        <span class="badge">Prime</span>
+      </div>
+      <ul class="specs">
+        <li>Switch: Tactile</li>
+        <li>Layout: 75%</li>
+        <li>Wireless: Bluetooth 5.3</li>
+      </ul>
+      <div class="seller">Apex Direct <span class="rating">4.9</span></div>
+    </article>
+
+    <article class="product-card" data-sku="APX-202" data-category="audio" data-in-stock="true">
+      <h2 class="name">Studio   Monitor   Headphones</h2>
+      <span class="price">$ 149.00 USD</span>
+      <div class="badges">
+        <span class="badge">Free Shipping</span>
+        <span class="badge">New</span>
+      </div>
+      <ul class="specs">
+        <li>Driver: 45mm</li>
+        <li>Impedance: 32 Ohm</li>
+        <li>Cable: Detachable USB-C</li>
+      </ul>
+      <div class="seller">SoundLab <span class="rating">4.7</span></div>
+    </article>
+
+    <article class="product-card" data-sku="APX-303" data-category="accessories" data-in-stock="false">
+      <h2 class="name">Braided   Coiled   Cable</h2>
+      <span class="price">$ 29.50 USD</span>
+      <div class="badges">
+        <span class="badge">Clearance</span>
+      </div>
+      <ul class="specs">
+        <li>Length: 1.8m</li>
+        <li>Connector: USB-C to USB-A</li>
+      </ul>
+      <div class="seller">CableCraft <span class="rating">4.5</span></div>
+    </article>
+  </main>
+
+  <script id="shipping-rates" type="text/csv">
+region,carrier,days,cost
+US-EAST,ApexAir,2,5.99
+US-WEST,GroundX,4,3.99
+EU-CENTRAL,EuroPost,5,9.50
+  </script>
+
+  <script>
+    /* Hydration state injected by SSR */
+    window.__CATALOG_STATE__ = {
+      storeId: 'apex-us-01',
+      currency: "USD",
+      // String concatenation & JSON.parse expanded by digger when simplify=true
+      apiBase: "https://cdn.example.com" + "/catalog/v2",
+      fulfillment: JSON.parse('{"warehouse":"US-EAST","tier":"prime"}'),
+      deprecatedFlag: undefined,
+      internal: {
+        apiSecret: "sk_live_999",
+        wholesaleCost: 85.0,
+      },
+      featuredSkus: ["APX-101", "APX-202", "APX-101"],
+    };
+
+    window.__PROMO_CONFIG__ = {
+      code: "SPRING20",
+      discountPct: 20,
+      active: true,
+    };
+  </script>
+</body>
+</html>

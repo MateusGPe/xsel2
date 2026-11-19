@@ -45,6 +45,34 @@ if(NOT out MATCHES "Mechanical Keyboard Pro")
   message(FATAL_ERROR "Expected 'Mechanical Keyboard Pro' in DSL output, got: ${out}")
 endif()
 
+# 3b. xmlsel-cli scraper --dsl with exhaustive metadata example
+execute_process(
+  COMMAND "${CLI_BIN}" scraper --dsl "${SOURCE_DIR}/examples/metadata.dsl" --html "${SOURCE_DIR}/examples/metadata_sample.html" --compact
+  RESULT_VARIABLE rc
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err
+)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "xmlsel-cli metadata.dsl failed: ${err}")
+endif()
+if(NOT out MATCHES "\"open_graph\":" OR NOT out MATCHES "\"metadata_summary\":")
+  message(FATAL_ERROR "Expected open_graph and metadata_summary in metadata.dsl output, got: ${out}")
+endif()
+
+# 3c. xmlsel-cli scraper --dsl with comprehensive marketplace example
+execute_process(
+  COMMAND "${CLI_BIN}" scraper --dsl "${SOURCE_DIR}/examples/marketplace.dsl" --name catalog_summary --html "${SOURCE_DIR}/examples/marketplace_sample.html" --compact
+  RESULT_VARIABLE rc
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err
+)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "xmlsel-cli marketplace.dsl failed: ${err}")
+endif()
+if(NOT out MATCHES "\"warehouse\":\"US-EAST\"" OR NOT out MATCHES "\"api_base\":\"https://cdn.example.com/catalog/v2\"")
+  message(FATAL_ERROR "Expected warehouse and api_base in marketplace.dsl output, got: ${out}")
+endif()
+
 # 4. xmlsel-cli ahocorasick
 execute_process(
   COMMAND "${CLI_BIN}" ahocorasick --patterns "foo,bar" --text "xxfooyybarzz"

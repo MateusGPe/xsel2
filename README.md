@@ -19,7 +19,7 @@ High-performance HTML/XML scraping, multi-pattern text search, and JSON transfor
 | [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `InsertMode`, `AhoCorasick`, `.dsl` loading, and JSON queries |
 | [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` syntax, execution model, and all pipeline steps |
 | [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
-| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), and [`scrape_example.py`](examples/scrape_example.py) |
+| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), and comprehensive [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py) |
 
 ## Quick Build & Test
 
@@ -56,6 +56,7 @@ cat examples/sample.html | ./build/xmlsel-pipe -d examples/product.dsl -n summar
 
 ```bash
 PYTHONPATH=build:. python3 examples/scrape_example.py
+PYTHONPATH=build:. python3 examples/marketplace_example.py
 ```
 
 ```python

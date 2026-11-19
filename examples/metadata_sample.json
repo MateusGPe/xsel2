@@ -1,0 +1,797 @@
+{
+    "metadata": {
+        "academic_and_publishing": {
+            "citation_author": [
+                "Lovelace, Ada", 
+                "Turing, Alan"
+            ], 
+            "citation_doi": "10.1000/xyz123", 
+            "citation_title": "Exhaustive HTML Metadata Extraction", 
+            "parsely_section": "Engineering", 
+            "parsely_title": "Definitive Guide to HTML Metadata", 
+            "sailthru_tags": "html,dsl,scraping", 
+            "sailthru_title": "Definitive Guide to HTML Metadata"
+        }, 
+        "all_links": [
+            {
+                "href": "https://example.com/articles/html-metadata", 
+                "rel": "canonical"
+            }, 
+            {
+                "href": "https://example.com/articles/html-metadata/amp", 
+                "rel": "amphtml"
+            }, 
+            {
+                "href": "/manifest.webmanifest", 
+                "rel": "manifest"
+            }, 
+            {
+                "href": "/favicon.ico", 
+                "rel": "icon"
+            }, 
+            {
+                "href": "/apple-touch-icon.png", 
+                "rel": "apple-touch-icon", 
+                "sizes": "180x180"
+            }, 
+            {
+                "href": "https://mastodon.social/@ada", 
+                "rel": "me"
+            }, 
+            {
+                "href": "https://example.com/webmention", 
+                "rel": "webmention"
+            }, 
+            {
+                "href": "https://example.com/micropub", 
+                "rel": "micropub"
+            }, 
+            {
+                "href": "https://websub.example.com/hub", 
+                "rel": "hub"
+            }, 
+            {
+                "href": "$ilp.example.com/ada", 
+                "rel": "monetization"
+            }, 
+            {
+                "href": "https://example.com/feed.xml", 
+                "rel": "alternate", 
+                "title": "RSS", 
+                "type": "application/rss+xml"
+            }, 
+            {
+                "href": "https://example.com/oembed.json", 
+                "rel": "alternate", 
+                "title": "oEmbed", 
+                "type": "application/json+oembed"
+            }, 
+            {
+                "href": "https://example.com/es/html-metadata", 
+                "hreflang": "es", 
+                "rel": "alternate"
+            }
+        ], 
+        "all_meta": [
+            {
+                "charset": "UTF-8", 
+                "content": "Comprehensive article about HTML metadata, Open Graph, Twitter Cards, JSON-LD, and hydration.", 
+                "name": "description"
+            }, 
+            {
+                "content": "html, metadata, open graph, twitter cards, json-ld, schema.org", 
+                "name": "keywords"
+            }, 
+            {
+                "content": "web standards, seo, scraping", 
+                "name": "news_keywords"
+            }, 
+            {
+                "content": "Ada Lovelace", 
+                "name": "author"
+            }, 
+            {
+                "content": "Ada Lovelace", 
+                "name": "creator"
+            }, 
+            {
+                "content": "Tech Editorial", 
+                "name": "publisher"
+            }, 
+            {
+                "content": "xsel2-generator 2.0", 
+                "name": "generator"
+            }, 
+            {
+                "content": "MetadataInspector", 
+                "name": "application-name"
+            }, 
+            {
+                "content": "index, follow", 
+                "name": "robots"
+            }, 
+            {
+                "content": "index, follow, max-snippet:-1", 
+                "name": "googlebot"
+            }, 
+            {
+                "content": "index, follow", 
+                "name": "bingbot"
+            }, 
+            {
+                "content": "width=device-width, initial-scale=1.0", 
+                "name": "viewport"
+            }, 
+            {
+                "content": "#0f172a", 
+                "name": "theme-color"
+            }, 
+            {
+                "content": "dark light", 
+                "name": "color-scheme"
+            }, 
+            {
+                "content": "strict-origin-when-cross-origin", 
+                "name": "referrer"
+            }, 
+            {
+                "content": "general", 
+                "name": "rating"
+            }, 
+            {
+                "content": "telephone=no", 
+                "name": "format-detection"
+            }, 
+            {
+                "content": "2026 Tech Editorial", 
+                "name": "copyright"
+            }, 
+            {
+                "content": "en-US", 
+                "name": "language"
+            }, 
+            {
+                "content": "US-CA", 
+                "name": "geo.region"
+            }, 
+            {
+                "content": "San Francisco", 
+                "name": "geo.placename"
+            }, 
+            {
+                "content": "37.7749;-122.4194", 
+                "name": "geo.position"
+            }, 
+            {
+                "content": "37.7749, -122.4194", 
+                "name": "ICBM"
+            }, 
+            {
+                "content": "@ada@mastodon.social", 
+                "name": "fediverse:creator"
+            }, 
+            {
+                "content": "@techeditorial", 
+                "name": "telegram:channel"
+            }, 
+            {
+                "content": "IE=edge", 
+                "http_equiv": "X-UA-Compatible"
+            }, 
+            {
+                "content": "en-US", 
+                "http_equiv": "content-language"
+            }, 
+            {
+                "content": "public, max-age=3600", 
+                "http_equiv": "cache-control"
+            }, 
+            {
+                "content": "Definitive Guide to HTML Metadata", 
+                "property": "og:title"
+            }, 
+            {
+                "content": "article", 
+                "property": "og:type"
+            }, 
+            {
+                "content": "https://example.com/articles/html-metadata", 
+                "property": "og:url"
+            }, 
+            {
+                "content": "Learn how to extract all metadata and schemas from the modern web.", 
+                "property": "og:description"
+            }, 
+            {
+                "content": "the", 
+                "property": "og:determiner"
+            }, 
+            {
+                "content": "en_US", 
+                "property": "og:locale"
+            }, 
+            {
+                "content": "pt_BR", 
+                "property": "og:locale:alternate"
+            }, 
+            {
+                "content": "es_ES", 
+                "property": "og:locale:alternate"
+            }, 
+            {
+                "content": "Tech Editorial", 
+                "property": "og:site_name"
+            }, 
+            {
+                "content": "2026-11-19T18:00:00Z", 
+                "property": "og:updated_time"
+            }, 
+            {
+                "content": "https://example.com/images/cover.jpg", 
+                "property": "og:image"
+            }, 
+            {
+                "content": "https://example.com/images/cover.jpg", 
+                "property": "og:image:secure_url"
+            }, 
+            {
+                "content": "image/jpeg", 
+                "property": "og:image:type"
+            }, 
+            {
+                "content": "1200", 
+                "property": "og:image:width"
+            }, 
+            {
+                "content": "630", 
+                "property": "og:image:height"
+            }, 
+            {
+                "content": "Cover of the HTML Metadata Guide", 
+                "property": "og:image:alt"
+            }, 
+            {
+                "content": "https://example.com/videos/intro.mp4", 
+                "property": "og:video"
+            }, 
+            {
+                "content": "video/mp4", 
+                "property": "og:video:type"
+            }, 
+            {
+                "content": "1280", 
+                "property": "og:video:width"
+            }, 
+            {
+                "content": "720", 
+                "property": "og:video:height"
+            }, 
+            {
+                "content": "2026-11-01T10:00:00Z", 
+                "property": "article:published_time"
+            }, 
+            {
+                "content": "2026-11-19T18:00:00Z", 
+                "property": "article:modified_time"
+            }, 
+            {
+                "content": "https://example.com/authors/ada", 
+                "property": "article:author"
+            }, 
+            {
+                "content": "Web Engineering", 
+                "property": "article:section"
+            }, 
+            {
+                "content": "HTML", 
+                "property": "article:tag"
+            }, 
+            {
+                "content": "OpenGraph", 
+                "property": "article:tag"
+            }, 
+            {
+                "content": "49.90", 
+                "property": "product:price:amount"
+            }, 
+            {
+                "content": "USD", 
+                "property": "product:price:currency"
+            }, 
+            {
+                "content": "in stock", 
+                "property": "product:availability"
+            }, 
+            {
+                "content": "summary_large_image", 
+                "name": "twitter:card"
+            }, 
+            {
+                "content": "@techeditorial", 
+                "name": "twitter:site"
+            }, 
+            {
+                "content": "@adalovelace", 
+                "name": "twitter:creator"
+            }, 
+            {
+                "content": "Definitive Guide to HTML Metadata", 
+                "name": "twitter:title"
+            }, 
+            {
+                "content": "All metadata, JSON-LD, and Microdata in one place.", 
+                "name": "twitter:description"
+            }, 
+            {
+                "content": "https://example.com/images/twitter-cover.jpg", 
+                "name": "twitter:image"
+            }, 
+            {
+                "content": "Twitter Banner for the Guide", 
+                "name": "twitter:image:alt"
+            }, 
+            {
+                "content": "Reading time", 
+                "name": "twitter:label1"
+            }, 
+            {
+                "content": "12 minutes", 
+                "name": "twitter:data1"
+            }, 
+            {
+                "content": "TechReader", 
+                "name": "twitter:app:name:iphone"
+            }, 
+            {
+                "content": "123456789", 
+                "name": "twitter:app:id:iphone"
+            }, 
+            {
+                "content": "techreader://article/42", 
+                "name": "twitter:app:url:iphone"
+            }, 
+            {
+                "content": "9876543210", 
+                "property": "fb:app_id"
+            }, 
+            {
+                "content": "1122334455", 
+                "property": "fb:pages"
+            }, 
+            {
+                "content": "fb-verify-token-xyz", 
+                "name": "facebook-domain-verification"
+            }, 
+            {
+                "content": "55443322", 
+                "property": "instapp:owner_user_id"
+            }, 
+            {
+                "content": "webdev,metadata", 
+                "property": "instapp:hashtags"
+            }, 
+            {
+                "content": "techreader://open/42", 
+                "property": "al:ios:url"
+            }, 
+            {
+                "content": "123456789", 
+                "property": "al:ios:app_store_id"
+            }, 
+            {
+                "content": "TechReader", 
+                "property": "al:ios:app_name"
+            }, 
+            {
+                "content": "techreader://open/42", 
+                "property": "al:android:url"
+            }, 
+            {
+                "content": "com.techeditorial.reader", 
+                "property": "al:android:package"
+            }, 
+            {
+                "content": "TechReader", 
+                "property": "al:android:app_name"
+            }, 
+            {
+                "content": "https://example.com/articles/html-metadata", 
+                "property": "al:web:url"
+            }, 
+            {
+                "content": "Definitive Guide to HTML Metadata", 
+                "name": "DC.title"
+            }, 
+            {
+                "content": "Ada Lovelace", 
+                "name": "DC.creator"
+            }, 
+            {
+                "content": "en-US", 
+                "name": "DC.language"
+            }, 
+            {
+                "content": "2026-11-01", 
+                "name": "DCTERMS.created"
+            }, 
+            {
+                "content": "Exhaustive HTML Metadata Extraction", 
+                "name": "citation_title"
+            }, 
+            {
+                "content": "Lovelace, Ada", 
+                "name": "citation_author"
+            }, 
+            {
+                "content": "Turing, Alan", 
+                "name": "citation_author"
+            }, 
+            {
+                "content": "10.1000/xyz123", 
+                "name": "citation_doi"
+            }, 
+            {
+                "content": "Definitive Guide to HTML Metadata", 
+                "name": "parsely-title"
+            }, 
+            {
+                "content": "Engineering", 
+                "name": "parsely-section"
+            }, 
+            {
+                "content": "Definitive Guide to HTML Metadata", 
+                "name": "sailthru.title"
+            }, 
+            {
+                "content": "html,dsl,scraping", 
+                "name": "sailthru.tags"
+            }, 
+            {
+                "content": "yes", 
+                "name": "apple-mobile-web-app-capable"
+            }, 
+            {
+                "content": "black-translucent", 
+                "name": "apple-mobile-web-app-status-bar-style"
+            }, 
+            {
+                "content": "TechReader", 
+                "name": "apple-mobile-web-app-title"
+            }, 
+            {
+                "content": "#0f172a", 
+                "name": "msapplication-TileColor"
+            }, 
+            {
+                "content": "/icons/ms-tile.png", 
+                "name": "msapplication-TileImage"
+            }, 
+            {
+                "content": "true", 
+                "name": "pinterest-rich-pin"
+            }, 
+            {
+                "content": "google-verify-abc", 
+                "name": "google-site-verification"
+            }, 
+            {
+                "content": "bing-verify-123", 
+                "name": "msvalidate.01"
+            }, 
+            {
+                "content": "pinterest-verify-456", 
+                "name": "p:domain_verify"
+            }
+        ], 
+        "apple": {
+            "mobile_web_app_capable": "yes", 
+            "mobile_web_app_status_bar_style": "black-translucent", 
+            "mobile_web_app_title": "TechReader"
+        }, 
+        "basic": {
+            "application_name": "MetadataInspector", 
+            "author": "Ada Lovelace", 
+            "bingbot": "index, follow", 
+            "charset": "utf-8", 
+            "color_scheme": "dark light", 
+            "copyright": "2026 Tech Editorial", 
+            "creator": "Ada Lovelace", 
+            "description": "Comprehensive article about HTML metadata, Open Graph, Twitter Cards, JSON-LD, and hydration.", 
+            "dir": "ltr", 
+            "fediverse_creator": "@ada@mastodon.social", 
+            "format_detection": "telephone=no", 
+            "generator": "xsel2-generator 2.0", 
+            "geo_placename": "San Francisco", 
+            "geo_position": "37.7749;-122.4194", 
+            "geo_region": "US-CA", 
+            "googlebot": "index, follow, max-snippet:-1", 
+            "icbm": "37.7749, -122.4194", 
+            "keywords": "html, metadata, open graph, twitter cards, json-ld, schema.org", 
+            "lang": "en-US", 
+            "language": "en-US", 
+            "news_keywords": "web standards, seo, scraping", 
+            "publisher": "Tech Editorial", 
+            "rating": "general", 
+            "referrer": "strict-origin-when-cross-origin", 
+            "robots": "index, follow", 
+            "telegram_channel": "@techeditorial", 
+            "theme_color": "#0f172a", 
+            "title": "Definitive Guide to HTML Metadata & Schemas", 
+            "viewport": "width=device-width, initial-scale=1.0"
+        }, 
+        "definition_lists": {
+            "descriptions": [
+                {
+                    "itemprop": "inLanguage", 
+                    "text": "en-US"
+                }, 
+                {
+                    "itemprop": "version", 
+                    "text": "2.0"
+                }
+            ], 
+            "lists": {
+                "class": "meta-list", 
+                "id": "article-meta"
+            }, 
+            "terms": [
+                {
+                    "text": "Language"
+                }, 
+                {
+                    "text": "Version"
+                }
+            ]
+        }, 
+        "dublin_core": {
+            "dc_creator": "Ada Lovelace", 
+            "dc_language": "en-US", 
+            "dc_title": "Definitive Guide to HTML Metadata", 
+            "dcterms_created": "2026-11-01"
+        }, 
+        "embedded_json": {
+            "importmap": {
+                "imports": {
+                    "lodash": "https://esm.sh/lodash@4.17.21"
+                }
+            }, 
+            "initial_state": {
+                "theme": "dark", 
+                "user": {
+                    "id": 7, 
+                    "role": "editor"
+                }
+            }, 
+            "json_scripts": {
+                "data": {
+                    "page": "/articles/[slug]", 
+                    "props": {
+                        "pageProps": {
+                            "articleId": 42, 
+                            "featured": true
+                        }
+                    }
+                }, 
+                "id": "__NEXT_DATA__"
+            }, 
+            "next_data": {
+                "page": "/articles/[slug]", 
+                "props": {
+                    "pageProps": {
+                        "articleId": 42, 
+                        "featured": true
+                    }
+                }
+            }, 
+            "speculationrules": {
+                "prefetch": [
+                    {
+                        "source": "document", 
+                        "where": {
+                            "href_matches": "/articles/*"
+                        }
+                    }
+                ]
+            }
+        }, 
+        "facebook": {
+            "app_id": "9876543210", 
+            "domain_verification": "fb-verify-token-xyz", 
+            "pages": "1122334455"
+        }, 
+        "http_equiv": {
+            "cache_control": "public, max-age=3600", 
+            "content_language": "en-US", 
+            "x_ua_compatible": "IE=edge"
+        }, 
+        "instagram_and_applinks": {
+            "al_android": {
+                "app_name": "TechReader", 
+                "package": "com.techeditorial.reader", 
+                "url": "techreader://open/42"
+            }, 
+            "al_ios": {
+                "app_name": "TechReader", 
+                "app_store_id": "123456789", 
+                "url": "techreader://open/42"
+            }, 
+            "al_web": {
+                "url": "https://example.com/articles/html-metadata"
+            }, 
+            "instapp_hashtags": "webdev,metadata", 
+            "instapp_owner_user_id": "55443322"
+        }, 
+        "json_ld": {
+            "@context": "https://schema.org", 
+            "@type": "Article", 
+            "author": {
+                "@type": "Person", 
+                "name": "Ada Lovelace"
+            }, 
+            "headline": "Definitive Guide to HTML Metadata"
+        }, 
+        "links": {
+            "alternates": [
+                {
+                    "href": "https://example.com/feed.xml", 
+                    "title": "RSS", 
+                    "type": "application/rss+xml"
+                }, 
+                {
+                    "href": "https://example.com/oembed.json", 
+                    "title": "oEmbed", 
+                    "type": "application/json+oembed"
+                }, 
+                {
+                    "href": "https://example.com/es/html-metadata", 
+                    "hreflang": "es"
+                }
+            ], 
+            "amphtml": "https://example.com/articles/html-metadata/amp", 
+            "apple_touch_icon": "/apple-touch-icon.png", 
+            "canonical": "https://example.com/articles/html-metadata", 
+            "hub": "https://websub.example.com/hub", 
+            "icon": "/favicon.ico", 
+            "manifest": "/manifest.webmanifest", 
+            "me": "https://mastodon.social/@ada", 
+            "micropub": "https://example.com/micropub", 
+            "monetization": "$ilp.example.com/ada", 
+            "oembed_json": "https://example.com/oembed.json", 
+            "rss": "https://example.com/feed.xml", 
+            "webmention": "https://example.com/webmention"
+        }, 
+        "microdata": {
+            "props": [
+                {
+                    "itemprop": "headline", 
+                    "text": "Definitive Guide to HTML Metadata"
+                }, 
+                {
+                    "itemprop": "author", 
+                    "text": "Ada Lovelace"
+                }, 
+                {
+                    "datetime": "2026-11-19", 
+                    "itemprop": "datePublished", 
+                    "text": "November 19, 2026"
+                }, 
+                {
+                    "itemprop": "inLanguage", 
+                    "text": "en-US"
+                }, 
+                {
+                    "itemprop": "version", 
+                    "text": "2.0"
+                }
+            ], 
+            "scopes": {
+                "itemid": "#article-42", 
+                "itemtype": "https://schema.org/TechArticle"
+            }
+        }, 
+        "microsoft": {
+            "tile_color": "#0f172a", 
+            "tile_image": "/icons/ms-tile.png"
+        }, 
+        "open_graph": {
+            "article": {
+                "author": "https://example.com/authors/ada", 
+                "modified_time": "2026-11-19T18:00:00Z", 
+                "published_time": "2026-11-01T10:00:00Z", 
+                "section": "Web Engineering", 
+                "tag": [
+                    "HTML", 
+                    "OpenGraph"
+                ]
+            }, 
+            "description": "Learn how to extract all metadata and schemas from the modern web.", 
+            "determiner": "the", 
+            "image": {
+                "alt": "Cover of the HTML Metadata Guide", 
+                "height": "630", 
+                "secure_url": "https://example.com/images/cover.jpg", 
+                "type": "image/jpeg", 
+                "url": "https://example.com/images/cover.jpg", 
+                "width": "1200"
+            }, 
+            "locale": "en_US", 
+            "locale_alternate": [
+                "pt_BR", 
+                "es_ES"
+            ], 
+            "product": {
+                "availability": "in stock", 
+                "price_amount": "49.90", 
+                "price_currency": "USD"
+            }, 
+            "site_name": "Tech Editorial", 
+            "title": "Definitive Guide to HTML Metadata", 
+            "type": "article", 
+            "updated_time": "2026-11-19T18:00:00Z", 
+            "url": "https://example.com/articles/html-metadata", 
+            "video": {
+                "height": "720", 
+                "type": "video/mp4", 
+                "url": "https://example.com/videos/intro.mp4", 
+                "width": "1280"
+            }
+        }, 
+        "pinterest": {
+            "rich_pin": "true"
+        }, 
+        "rdfa": {
+            "properties": {
+                "property": "name", 
+                "text": "Tech Editorial"
+            }, 
+            "types": {
+                "resource": "#org", 
+                "typeof": "Organization", 
+                "vocab": "https://schema.org/"
+            }
+        }, 
+        "twitter": {
+            "app": {
+                "iphone": {
+                    "id": "123456789", 
+                    "name": "TechReader", 
+                    "url": "techreader://article/42"
+                }
+            }, 
+            "card": "summary_large_image", 
+            "creator": "@adalovelace", 
+            "data1": "12 minutes", 
+            "description": "All metadata, JSON-LD, and Microdata in one place.", 
+            "image": "https://example.com/images/twitter-cover.jpg", 
+            "image_alt": "Twitter Banner for the Guide", 
+            "label1": "Reading time", 
+            "site": "@techeditorial", 
+            "title": "Definitive Guide to HTML Metadata"
+        }, 
+        "verification": {
+            "bing": "bing-verify-123", 
+            "google": "google-verify-abc", 
+            "pinterest": "pinterest-verify-456"
+        }
+    }, 
+    "metadata_summary": {
+        "author": "Ada Lovelace", 
+        "description": "Learn how to extract all metadata and schemas from the modern web.", 
+        "image": "https://example.com/images/cover.jpg", 
+        "json_ld": {
+            "@context": "https://schema.org", 
+            "@type": "Article", 
+            "author": {
+                "@type": "Person", 
+                "name": "Ada Lovelace"
+            }, 
+            "headline": "Definitive Guide to HTML Metadata"
+        }, 
+        "lang": "en-US", 
+        "published_time": "2026-11-01T10:00:00Z", 
+        "site_name": "Tech Editorial", 
+        "title": "Definitive Guide to HTML Metadata", 
+        "type": "article", 
+        "url": "https://example.com/articles/html-metadata"
+    }
+}
