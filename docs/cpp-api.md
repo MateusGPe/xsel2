@@ -24,9 +24,9 @@ Linking `scraper` transitively links `xsel_common`, `digger`, `xsel_query`, `jso
 
 int main() {
   scraper::ScraperBuilder builder;
-  builder.Group("h1.product-title")
+  builder.Select("h1.product-title")
       .Text()
-      .Normspace()
+      .Squish()
       .Set("title");
 
   jsoncons::json result = builder.scrape_from_string(

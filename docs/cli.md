@@ -31,7 +31,7 @@ xmlsel-cli scraper (--dsl <file> [--name <scraper>] | --selector <css>) --html <
 | --- | --- | --- |
 | `--dsl <file>` | Yes (unless `--selector`) | Path to a `.dsl` file |
 | `--name <scraper>` | No | Name of a specific scraper in the `.dsl` file. If omitted and the file defines one scraper, that scraper's result is printed; if multiple scrapers are defined, all are run and keyed by name |
-| `--selector <css>` | Yes (unless `--dsl`) | Quick single-selector extraction (`Group(selector, "matches").Text().Normspace().Set("text")`) |
+| `--selector <css>` | Yes (unless `--dsl`) | Quick single-selector extraction (`Select(selector, "matches").Text().Squish().Set("text")`) |
 | `--html <file\|str\|->` | Yes | HTML input file, inline HTML string, or `-` for `stdin` |
 | `--compact`, `-c` | No | Emit single-line compact JSON instead of pretty-printed JSON |
 

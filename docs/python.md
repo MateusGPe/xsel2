@@ -15,10 +15,10 @@ PYTHONPATH=build:. python3 examples/scrape_example.py
 | Symbol | Kind | Purpose |
 | --- | --- | --- |
 | `ScraperPy` | Class | Fluent HTML/XML scraping & transformation pipeline |
-| `Value` | Enum | Extraction target for `query` / `query_all` (`Text`, `OwnText`, `Attribute`, `ElementExists`, `AttributeExists`, `Adjacent`) |
-| `Number` | Enum | Match selection for `query` (`All`, `Last`, `Nth`) |
+| `Value` | Enum | Extraction target for `find` / `find_all` (`Text`, `OwnText`, `Attribute`, `ElementExists`, `AttributeExists`, `Adjacent`) |
+| `Number` | Enum | Match selection for `find` (`All`, `Last`, `Nth`) |
 | `InsertMode` | Enum | Collision handling when writing keys (`Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`) |
-| `InsertOptions` | Class | Controls `mode`, `allow_empty`, and `nested_path` on `set`, `count_values`, and `parse` |
+| `InsertOptions` | Class | Controls `mode`, `allow_empty`, and `nested_path` on `set`, `count`, and `parse_js` |
 | `AhoCorasick` | Class | Fast multi-pattern literal substring matcher |
 | `jmespath_eval(data, expr)` | Function | Evaluates a JMESPath expression against Python dicts/lists |
 | `jsonpath_query(data, expr)` | Function | Evaluates a JSONPath query against Python dicts/lists |
@@ -41,9 +41,9 @@ import scraperpy
 
 s = scraperpy.ScraperPy()
 (
-    s.push("h1.product-title").text().normspace().set("title")
-     .push(".price").text().regex_extract(r"([0-9]+\.[0-9]+)", 1).set("price")
-     .push(".badge").text().trim().set("badges")
+    s.select("h1.product-title").text().squish().set("title")
+     .select(".price").text().regex_extract(r"([0-9]+\.[0-9]+)", 1).set("price")
+     .select(".badge").text().trim().set("badges")
 )
 
 data = s.from_file("examples/sample.html")
@@ -57,7 +57,7 @@ For the full list of pipeline methods and their parameters, see the [DSL & Pipel
 
 ## Insertion Modes & Nested Paths (`InsertOptions`)
 
-`set()`, `count_values()`, and `parse()` accept an optional `InsertOptions` instance:
+`set()`, `count()`, and `parse_js()` accept an optional `InsertOptions` instance:
 
 ```python
 opts = scraperpy.InsertOptions()
@@ -66,12 +66,12 @@ opts.allow_empty = False
 opts.nested_path = True  # "meta.title" -> {"meta": {"title": ...}}
 
 s = scraperpy.ScraperPy()
-s.push("h1").text().trim().set("meta.title", opts)
+s.select("h1").text().trim().set("meta.title", opts)
 ```
 
 | `InsertMode` | Behavior on key collision |
 | --- | --- |
-| `Default` | `UniqueSuffix` for `set`/`count_values`; combine-as-array for `merge` |
+| `Default` | `UniqueSuffix` for `set`/`count`; combine-as-array for `merge` |
 | `Overwrite` | Replaces the existing value at the target key |
 | `AppendToList` | Combines existing and new values into a list |
 | `UniqueSuffix` | Generates `key_0`, `key_1`, ... on collision |
@@ -90,7 +90,7 @@ scrapers = scraperpy.load_scrapers("examples/product.dsl")
 result = scrapers["summary"].from_file("examples/sample.html")
 
 # Or parse a DSL string directly:
-inline = scraperpy.parse_dsl_string('title = Scraper().push("h1").text().trim().set("title")')
+inline = scraperpy.parse_dsl_string('title = Scraper().select("h1").text().trim().set("title")')
 print(inline["title"].from_string("<h1>  Hi  </h1>"))
 ```
 

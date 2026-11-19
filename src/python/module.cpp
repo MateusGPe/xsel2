@@ -84,22 +84,22 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def(py::init<>())
       .def("from_string", &ScraperPy::from_string_py, py::arg("content"))
       .def("from_file", &ScraperPy::from_file_py, py::arg("filename"))
-      .def("push", &ScraperPy::Group, py::arg("selector"), py::arg("key") = "",
+      .def("select", &ScraperPy::Select, py::arg("selector"), py::arg("key") = "",
            py::return_value_policy::reference_internal)
       .def("text", &ScraperPy::Text, py::arg("own_text") = false,
            py::return_value_policy::reference_internal)
       .def("attr", &ScraperPy::Attr, py::arg("attr_name"),
            py::return_value_policy::reference_internal)
-      .def("query_all", &ScraperPy::QueryAll, py::arg("sel"), py::arg("type"),
+      .def("find_all", &ScraperPy::FindAll, py::arg("sel"), py::arg("type"),
            py::arg("attr") = "", py::return_value_policy::reference_internal)
-      .def("query", &ScraperPy::Query, py::arg("sel"), py::arg("type"),
+      .def("find", &ScraperPy::Find, py::arg("sel"), py::arg("type"),
            py::arg("attr") = "",
            py::arg("number") = scraper::QueryStep::Number::All,
            py::arg("nth_val") = 0, py::return_value_policy::reference_internal)
       .def("trim", &ScraperPy::Trim, py::return_value_policy::reference_internal)
-      .def("strip", &ScraperPy::Normspace,
+      .def("squish", &ScraperPy::Squish,
            py::return_value_policy::reference_internal)
-      .def("normspace", &ScraperPy::Normspace,
+      .def("normalize_whitespace", &ScraperPy::Squish,
            py::return_value_policy::reference_internal)
       .def("lower", &ScraperPy::Lower,
            py::return_value_policy::reference_internal)
@@ -109,7 +109,7 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("replace", &ScraperPy::Replace, py::arg("from_str"),
            py::arg("to_str") = "", py::return_value_policy::reference_internal)
-      .def("substitute", &ScraperPy::Substitute, py::arg("from_str"),
+      .def("replace_exact", &ScraperPy::ReplaceExact, py::arg("from_str"),
            py::arg("to_str") = "", py::return_value_policy::reference_internal)
       .def("split", &ScraperPy::Split, py::arg("delimiter"),
            py::arg("keep_empty_parts") = false,
@@ -120,7 +120,7 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("append", &ScraperPy::Append, py::arg("suffix_str"),
            py::return_value_policy::reference_internal)
-      .def("remove_empty", &ScraperPy::RemoveEmpty, py::arg("also_trim") = true,
+      .def("drop_empty", &ScraperPy::DropEmpty, py::arg("also_trim") = true,
            py::return_value_policy::reference_internal)
       .def("substring", &ScraperPy::Substring, py::arg("start_pos"),
            py::arg("length") = std::nullopt,
@@ -142,7 +142,7 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def("set", &ScraperPy::Set, py::arg("name"),
            py::arg("opts") = scraper::InsertOptions{},
            py::return_value_policy::reference_internal)
-      .def("count_values", &ScraperPy::CountValues, py::arg("dict_key"),
+      .def("count", &ScraperPy::Count, py::arg("dict_key"),
            py::arg("opts") = scraper::InsertOptions{},
            py::return_value_policy::reference_internal)
       .def("first", &ScraperPy::First, py::arg("count") = 1,
@@ -151,32 +151,45 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("nth", &ScraperPy::Nth, py::arg("index"),
            py::return_value_policy::reference_internal)
-      .def("slice_values", &ScraperPy::SliceValues, py::arg("start_index"),
+      .def("slice", &ScraperPy::Slice, py::arg("start_index"),
            py::arg("end_index_inclusive"),
            py::return_value_policy::reference_internal)
       .def("unique", &ScraperPy::Unique, py::arg("preserve_order") = true,
            py::return_value_policy::reference_internal)
-      .def("default_if_empty", &ScraperPy::DefaultIfEmpty,
+      .def("default", &ScraperPy::Default,
            py::arg("default_value"), py::return_value_policy::reference_internal)
-      .def("block_seeker", &ScraperPy::BlockSeeker, py::arg("prefix") = "",
+      .def("js_block", &ScraperPy::JsBlock, py::arg("prefix") = "",
            py::return_value_policy::reference_internal)
-      .def("block_parser", &ScraperPy::BlockParser, py::arg("prefixes"),
+      .def("extract_js_block", &ScraperPy::JsBlock, py::arg("prefix") = "",
            py::return_value_policy::reference_internal)
-      .def("parse", &ScraperPy::Parse, py::arg("objname"),
+      .def("js_blocks", &ScraperPy::JsBlocks, py::arg("prefixes"),
+           py::return_value_policy::reference_internal)
+      .def("extract_js_blocks", &ScraperPy::JsBlocks, py::arg("prefixes"),
+           py::return_value_policy::reference_internal)
+      .def("parse_js", &ScraperPy::ParseJs, py::arg("objname"),
            py::arg("simplify") = true,
            py::arg("opts") = scraper::InsertOptions{},
            py::return_value_policy::reference_internal)
-      .def("flatten_dict", &ScraperPy::FlattenDict,
+      .def("flatten", &ScraperPy::Flatten,
            py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("flatten_local", &ScraperPy::FlattenLocal,
            py::return_value_policy::reference_internal)
-      .def("filter_dict", &ScraperPy::FilterDict, py::arg("keys_to_keep"),
+      .def("pick_keys", &ScraperPy::PickKeys, py::arg("keys_to_keep"),
            py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
-      .def("remove_keys", &ScraperPy::RemoveKeys, py::arg("keys_to_remove"),
+      .def("omit_keys", &ScraperPy::OmitKeys, py::arg("keys_to_remove"),
            py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
+      .def(
+          "debug",
+          [](ScraperPy &self, const std::string &prefix, bool print_dict,
+             bool print_node) -> ScraperPy & {
+            return self.Debug(prefix, print_dict, print_node);
+          },
+          py::arg("prefix") = "DEBUG: ", py::arg("print_dict") = false,
+          py::arg("print_node") = false,
+          py::return_value_policy::reference_internal)
       .def("sort_keys", &ScraperPy::SortKeys, py::arg("ascending") = true,
            py::arg("postponable") = true,
            py::return_value_policy::reference_internal)

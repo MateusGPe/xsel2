@@ -10,9 +10,9 @@ HTML = (ROOT / "sample.html").read_text(encoding="utf-8")
 # 1. Fluent ScraperPy pipeline
 s = scraperpy.ScraperPy()
 (
-    s.push("h1.product-title").text().normspace().set("title")
-     .push(".price").attr("data-currency").set("currency")
-     .push(".badge").text().trim().set("badges")
+    s.select("h1.product-title").text().squish().set("title")
+     .select(".price").attr("data-currency").set("currency")
+     .select(".badge").text().trim().set("badges")
 )
 fluent_result = s.from_string(HTML)
 print("Fluent ScraperPy result:")

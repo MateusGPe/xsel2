@@ -30,19 +30,19 @@ TEST_CASE("Scraper extracts typed JSON, counts, and JMESPath transforms",
   )";
 
   scraper::ScraperBuilder builder;
-  builder.Group("h1", "")
+  builder.Select("h1", "")
       .Text()
-      .Normspace()
+      .Squish()
       .Set("title")
-      .Group("div.item", "items")
-      .Query(".name", scraper::QueryAllStep::Type::Text)
+      .Select("div.item", "items")
+      .Find(".name", scraper::QueryAllStep::Type::Text)
       .Set("name")
-      .QueryAll(".tag", scraper::QueryAllStep::Type::Text)
-      .CountValues("tag_count")
+      .FindAll(".tag", scraper::QueryAllStep::Type::Text)
+      .Count("tag_count")
       .Set("tags")
-      .Group("script[type='application/json']", "config")
+      .Select("script[type='application/json']", "config")
       .Text()
-      .Parse("", true);
+      .ParseJs("", true);
 
   const auto res = builder.scrape_from_string(html);
   REQUIRE(res.is_object());
@@ -64,9 +64,9 @@ TEST_CASE("Scraper extracts typed JSON, counts, and JMESPath transforms",
 TEST_CASE("DslParser supports jmespath and jsonpath pipelines", "[scraper][dsl]") {
   const std::string dsl = R"(
     catalog = Scraper()
-      .push("div.item", "items")
-      .query(".name", Value.Text).set("name")
-      .query(".price", Value.Text).set("price")
+      .select("div.item", "items")
+      .find(".name", Value.Text).set("name")
+      .find(".price", Value.Text).set("price")
       .jmespath("items[].name");
   )";
 

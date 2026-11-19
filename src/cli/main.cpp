@@ -92,7 +92,7 @@ int cmd_scraper(const std::vector<std::string_view> &args) {
 
   if (!selector.empty()) {
     scraper::ScraperBuilder builder;
-    builder.Group(selector, "matches").Text().Normspace().Set("text");
+    builder.Select(selector, "matches").Text().Squish().Set("text");
     print_json(builder.scrape_from_string(html), compact);
     return 0;
   }

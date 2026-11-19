@@ -25,7 +25,7 @@ QueryAllStep::QueryAllStep(std::string_view sel, Type type,
       query_type_(type),
       attr_name_(attr) {
   if (!selector_) {
-    throw std::runtime_error("QueryAll: failed to parse CSS selector: " +
+    throw std::runtime_error("FindAll: failed to parse CSS selector: " +
                              std::string(sel));
   }
 }
@@ -180,7 +180,7 @@ SliceSelectionStep::SliceSelectionStep(Mode mode, size_t n, size_t m)
     : mode_(mode), n_param_(n), m_param_(m) {
   if (mode_ == Mode::Range && n_param_ > m_param_) {
     throw std::runtime_error(
-        "slice_values: range start cannot be greater than range end.");
+        "slice: range start cannot be greater than range end.");
   }
 }
 

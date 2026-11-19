@@ -55,7 +55,7 @@ protected:
 
 template <typename Derived> class ScraperBuilderBase : public Scraper {
 public:
-  Derived &Group(std::string_view selector, std::string_view key = "") {
+  Derived &Select(std::string_view selector, std::string_view key = "") {
     if (selector.empty()) {
       extractors_.push_back(std::make_shared<Extractor>(nullptr, key));
     } else {
@@ -75,12 +75,10 @@ public:
     return self();
   }
 
-  Derived &Normspace() {
+  Derived &Squish() {
     add_step(std::make_shared<StripStep>());
     return self();
   }
-
-  Derived &Strip() { return Normspace(); }
 
   Derived &Lower() {
     add_step(std::make_shared<LowerStep>());
@@ -102,7 +100,7 @@ public:
     return self();
   }
 
-  Derived &Substitute(std::string_view from, std::string_view to = "") {
+  Derived &ReplaceExact(std::string_view from, std::string_view to = "") {
     add_step(std::make_shared<SubstituteStep>(from, to));
     return self();
   }
@@ -127,7 +125,7 @@ public:
     return self();
   }
 
-  Derived &RemoveEmpty(bool also_trim = true) {
+  Derived &DropEmpty(bool also_trim = true) {
     add_step(std::make_shared<RemoveEmptyStep>(also_trim));
     return self();
   }
@@ -166,16 +164,16 @@ public:
     return self();
   }
 
-  Derived &QueryAll(std::string_view sel, QueryAllStep::Type type,
-                    std::string_view attr = "") {
+  Derived &FindAll(std::string_view sel, QueryAllStep::Type type,
+                   std::string_view attr = "") {
     add_step(std::make_shared<QueryAllStep>(sel, type, attr));
     return self();
   }
 
-  Derived &Query(std::string_view sel, QueryAllStep::Type type,
-                 std::string_view attr = "",
-                 QueryStep::Number number = QueryStep::Number::All,
-                 size_t nth_val = 0) {
+  Derived &Find(std::string_view sel, QueryAllStep::Type type,
+                std::string_view attr = "",
+                QueryStep::Number number = QueryStep::Number::All,
+                size_t nth_val = 0) {
     add_step(std::make_shared<QueryStep>(sel, type, attr, number, nth_val));
     return self();
   }
@@ -195,7 +193,7 @@ public:
     return self();
   }
 
-  Derived &CountValues(std::string_view dict_key, InsertOptions opts = {}) {
+  Derived &Count(std::string_view dict_key, InsertOptions opts = {}) {
     add_step(std::make_shared<CountValuesStep>(dict_key, opts));
     return self();
   }
@@ -218,7 +216,7 @@ public:
     return self();
   }
 
-  Derived &SliceValues(size_t start_idx, size_t end_idx_inclusive) {
+  Derived &Slice(size_t start_idx, size_t end_idx_inclusive) {
     add_step(std::make_shared<SliceSelectionStep>(
         SliceSelectionStep::Mode::Range, start_idx, end_idx_inclusive));
     return self();
@@ -229,50 +227,49 @@ public:
     return self();
   }
 
-  Derived &DefaultIfEmpty(std::string_view default_value) {
+  Derived &Default(std::string_view default_value) {
     add_step(std::make_shared<DefaultIfEmptyStep>(default_value));
     return self();
   }
 
-  Derived &DebugPrint(std::string_view prefix = "DEBUG: ",
-                      bool print_dict = false, bool print_node = false,
-                      std::ostream &out = std::cerr) {
+  Derived &Debug(std::string_view prefix = "DEBUG: ", bool print_dict = false,
+                 bool print_node = false, std::ostream &out = std::cerr) {
     add_step(std::make_shared<DebugPrintStep>(prefix, print_dict, print_node,
                                               out));
     return self();
   }
 
-  Derived &BlockSeeker(std::string_view prefix = "") {
+  Derived &JsBlock(std::string_view prefix = "") {
     add_step(std::make_shared<BlockSeekerStep>(prefix));
     return self();
   }
 
-  Derived &BlockParser(std::vector<std::string> prefixes) {
+  Derived &JsBlocks(std::vector<std::string> prefixes) {
     add_step(std::make_shared<BlockParserStep>(std::move(prefixes)));
     return self();
   }
 
-  Derived &Parse(std::string_view objname, bool simplify = true,
-                 InsertOptions opts = {}) {
+  Derived &ParseJs(std::string_view objname, bool simplify = true,
+                   InsertOptions opts = {}) {
     add_step(std::make_shared<ParseStep>(objname, simplify, opts));
     return self();
   }
 
-  Derived &FlattenDict(bool postponable = true) {
+  Derived &Flatten(bool postponable = true) {
     add_step(std::make_shared<FlattenDictStep>(postponable));
     return self();
   }
 
-  Derived &FlattenLocal() { return FlattenDict(false); }
+  Derived &FlattenLocal() { return Flatten(false); }
 
-  Derived &FilterDict(const std::vector<std::string> &keys_to_keep,
-                      bool postponable = true) {
+  Derived &PickKeys(const std::vector<std::string> &keys_to_keep,
+                    bool postponable = true) {
     add_step(std::make_shared<FilterDictStep>(keys_to_keep, postponable));
     return self();
   }
 
-  Derived &RemoveKeys(const std::vector<std::string> &keys_to_remove,
-                      bool postponable = true) {
+  Derived &OmitKeys(const std::vector<std::string> &keys_to_remove,
+                    bool postponable = true) {
     add_step(std::make_shared<RemoveKeysStep>(keys_to_remove, postponable));
     return self();
   }

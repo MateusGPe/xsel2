@@ -288,11 +288,11 @@ Widget,3
   )";
 
   scraper::ScraperBuilder sb;
-  sb.Group("#data")
+  sb.Select("#data")
       .Text()
       .JsonParse("payload", {/*allow_comments=*/true,
                              /*allow_trailing_comma=*/true})
-      .Group("#csv")
+      .Select("#csv")
       .Text()
       .Trim()
       .CsvParse("rows")
@@ -317,7 +317,7 @@ Widget,3
 
   // Non-strict json_schema records errors into error_key
   scraper::ScraperBuilder sb_nonstrict;
-  sb_nonstrict.Group("#data")
+  sb_nonstrict.Select("#data")
       .Text()
       .JsonParse("payload", {/*allow_comments=*/true,
                              /*allow_trailing_comma=*/true})

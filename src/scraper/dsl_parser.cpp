@@ -216,10 +216,10 @@ using MethodHandler =
 const absl::flat_hash_map<std::string_view, MethodHandler> &
 get_method_registry() {
   static const absl::flat_hash_map<std::string_view, MethodHandler> registry = {
-      {"push",
+      {"select",
        [](ScraperBuilder &b, const DslArgList &args) {
-         const auto &sel = require_arg(args, 0, "selector", "push");
-         b.Group(as_str(sel), opt_str(args, 1, "key", ""));
+         const auto &sel = require_arg(args, 0, "selector", "select");
+         b.Select(as_str(sel), opt_str(args, 1, "key", ""));
        }},
       {"text",
        [](ScraperBuilder &b, const DslArgList &args) {
@@ -229,28 +229,28 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Attr(as_str(require_arg(args, 0, "attr_name", "attr")));
        }},
-      {"query_all",
+      {"find_all",
        [](ScraperBuilder &b, const DslArgList &args) {
-         const auto &sel = require_arg(args, 0, "selector", "query_all");
-         const auto &type = require_arg(args, 1, "type", "query_all");
-         b.QueryAll(as_str(sel), parse_value_type(as_str(type)),
-                    opt_str(args, 2, "attr", ""));
+         const auto &sel = require_arg(args, 0, "selector", "find_all");
+         const auto &type = require_arg(args, 1, "type", "find_all");
+         b.FindAll(as_str(sel), parse_value_type(as_str(type)),
+                   opt_str(args, 2, "attr", ""));
        }},
-      {"query",
+      {"find",
        [](ScraperBuilder &b, const DslArgList &args) {
-         const auto &sel = require_arg(args, 0, "selector", "query");
-         const auto &type = require_arg(args, 1, "type", "query");
+         const auto &sel = require_arg(args, 0, "selector", "find");
+         const auto &type = require_arg(args, 1, "type", "find");
          const auto *num = find_arg(args, 3, "number");
-         b.Query(as_str(sel), parse_value_type(as_str(type)),
-                 opt_str(args, 2, "attr", ""),
-                 num ? parse_number_type(as_str(*num))
-                     : QueryStep::Number::All,
-                 static_cast<size_t>(opt_int(args, 4, "nth_val", 0)));
+         b.Find(as_str(sel), parse_value_type(as_str(type)),
+                opt_str(args, 2, "attr", ""),
+                num ? parse_number_type(as_str(*num))
+                    : QueryStep::Number::All,
+                static_cast<size_t>(opt_int(args, 4, "nth_val", 0)));
        }},
       {"trim", [](ScraperBuilder &b, const DslArgList &) { b.Trim(); }},
-      {"strip", [](ScraperBuilder &b, const DslArgList &) { b.Normspace(); }},
-      {"normspace",
-       [](ScraperBuilder &b, const DslArgList &) { b.Normspace(); }},
+      {"squish", [](ScraperBuilder &b, const DslArgList &) { b.Squish(); }},
+      {"normalize_whitespace",
+       [](ScraperBuilder &b, const DslArgList &) { b.Squish(); }},
       {"lower", [](ScraperBuilder &b, const DslArgList &) { b.Lower(); }},
       {"upper", [](ScraperBuilder &b, const DslArgList &) { b.Upper(); }},
       {"unescape",
@@ -262,10 +262,10 @@ get_method_registry() {
          b.Replace(as_str(require_arg(args, 0, "from", "replace")),
                    opt_str(args, 1, "to", ""));
        }},
-      {"substitute",
+      {"replace_exact",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.Substitute(as_str(require_arg(args, 0, "from", "substitute")),
-                      opt_str(args, 1, "to", ""));
+         b.ReplaceExact(as_str(require_arg(args, 0, "from", "replace_exact")),
+                        opt_str(args, 1, "to", ""));
        }},
       {"split",
        [](ScraperBuilder &b, const DslArgList &args) {
@@ -284,9 +284,9 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Append(as_str(require_arg(args, 0, "suffix", "append")));
        }},
-      {"remove_empty",
+      {"drop_empty",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.RemoveEmpty(opt_bool(args, 0, "also_trim", true));
+         b.DropEmpty(opt_bool(args, 0, "also_trim", true));
        }},
       {"substring",
        [](ScraperBuilder &b, const DslArgList &args) {
@@ -342,9 +342,9 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Set(as_str(require_arg(args, 0, "name", "set")));
        }},
-      {"count_values",
+      {"count",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.CountValues(as_str(require_arg(args, 0, "dict_key", "count_values")));
+         b.Count(as_str(require_arg(args, 0, "dict_key", "count")));
        }},
       {"first",
        [](ScraperBuilder &b, const DslArgList &args) {
@@ -359,53 +359,62 @@ get_method_registry() {
          b.Nth(static_cast<size_t>(
              as_int(require_arg(args, 0, "index", "nth"))));
        }},
-      {"slice_values",
+      {"slice",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.SliceValues(
+         b.Slice(
              static_cast<size_t>(
-                 as_int(require_arg(args, 0, "start_index", "slice_values"))),
+                 as_int(require_arg(args, 0, "start_index", "slice"))),
              static_cast<size_t>(as_int(
-                 require_arg(args, 1, "end_index_inclusive", "slice_values"))));
+                 require_arg(args, 1, "end_index_inclusive", "slice"))));
        }},
       {"unique",
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Unique(opt_bool(args, 0, "preserve_order", true));
        }},
-      {"default_if_empty",
+      {"default",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.DefaultIfEmpty(as_str(
-             require_arg(args, 0, "default_value", "default_if_empty")));
+         b.Default(
+             as_str(require_arg(args, 0, "default_value", "default")));
        }},
-      {"block_seeker",
+      {"js_block",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.BlockSeeker(opt_str(args, 0, "prefix", ""));
+         b.JsBlock(opt_str(args, 0, "prefix", ""));
        }},
-      {"block_parser",
+      {"extract_js_block",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.BlockParser(
-             as_str_list(require_arg(args, 0, "prefixes", "block_parser")));
+         b.JsBlock(opt_str(args, 0, "prefix", ""));
        }},
-      {"parse",
+      {"js_blocks",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.Parse(as_str(require_arg(args, 0, "objname", "parse")),
-                 opt_bool(args, 1, "simplify", true));
+         b.JsBlocks(
+             as_str_list(require_arg(args, 0, "prefixes", "js_blocks")));
        }},
-      {"flatten_dict",
+      {"extract_js_blocks",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.FlattenDict(opt_bool(args, 0, "postponable", true));
+         b.JsBlocks(as_str_list(
+             require_arg(args, 0, "prefixes", "extract_js_blocks")));
+       }},
+      {"parse_js",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.ParseJs(as_str(require_arg(args, 0, "objname", "parse_js")),
+                   opt_bool(args, 1, "simplify", true));
+       }},
+      {"flatten",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Flatten(opt_bool(args, 0, "postponable", true));
        }},
       {"flatten_local",
        [](ScraperBuilder &b, const DslArgList &) { b.FlattenLocal(); }},
-      {"filter_dict",
+      {"pick_keys",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.FilterDict(
-             as_str_list(require_arg(args, 0, "keys_to_keep", "filter_dict")),
+         b.PickKeys(
+             as_str_list(require_arg(args, 0, "keys_to_keep", "pick_keys")),
              opt_bool(args, 1, "postponable", true));
        }},
-      {"remove_keys",
+      {"omit_keys",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.RemoveKeys(
-             as_str_list(require_arg(args, 0, "keys_to_remove", "remove_keys")),
+         b.OmitKeys(
+             as_str_list(require_arg(args, 0, "keys_to_remove", "omit_keys")),
              opt_bool(args, 1, "postponable", true));
        }},
       {"rename_keys",
@@ -585,11 +594,11 @@ get_method_registry() {
              opt_str(args, 2, "error_key", "_schema_errors"),
              opt_bool(args, 3, "postponable", true));
        }},
-      {"debug_print",
+      {"debug",
        [](ScraperBuilder &b, const DslArgList &args) {
-         b.DebugPrint(opt_str(args, 0, "prefix", "DEBUG: "),
-                      opt_bool(args, 1, "print_dict", false),
-                      opt_bool(args, 2, "print_node", false));
+         b.Debug(opt_str(args, 0, "prefix", "DEBUG: "),
+                 opt_bool(args, 1, "print_dict", false),
+                 opt_bool(args, 2, "print_node", false));
        }},
   };
   return registry;
@@ -1074,10 +1083,10 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
     auto args = parse_arg_list(depth + 1);
     apply_method(builder, method, args);
 
-    if (method == "push" && current_.type == Token::Type::LBRACE) {
+    if (method == "select" && current_.type == Token::Type::LBRACE) {
       advance_token();
       parse_chain(builder, depth + 1, true);
-      expect(Token::Type::RBRACE, "Expected '}' after push block");
+      expect(Token::Type::RBRACE, "Expected '}' after select block");
     }
   }
 }

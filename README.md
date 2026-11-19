@@ -62,7 +62,7 @@ PYTHONPATH=build:. python3 examples/scrape_example.py
 import scraperpy
 
 s = scraperpy.ScraperPy()
-s.push("h1").text().trim().set("title")
+s.select("h1").text().trim().set("title")
 result = s.from_string("<html><body><h1>  Hello  </h1></body></html>")
 ```
 

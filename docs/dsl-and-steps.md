@@ -27,11 +27,11 @@ A scraper definition binds a name to a chain of `.method(...)` calls. `Scraper()
 
 ```text
 product = Scraper()
-  .push("h1").text().trim().set("title")
-  .push(".price").text().trim().set("price")
+  .select("h1").text().trim().set("title")
+  .select(".price").text().trim().set("price")
 
 # Also valid:
-compact: ScraperPy().push("h1").text().set("title");
+compact: ScraperPy().select("h1").text().set("title");
 ```
 
 ### Grouped Sub-Chains
@@ -39,8 +39,8 @@ Use `.( ... )` to visually group related steps in a chain:
 
 ```text
 page = Scraper()
-  .( .push("h1").text().normspace().set("title") )
-  .( .push(".tag").text().trim().set("tags") )
+  .( .select("h1").text().squish().set("title") )
+  .( .select(".tag").text().trim().set("tags") )
 ```
 
 ### Literals & Enums
@@ -55,15 +55,15 @@ page = Scraper()
 ### Syntax Sugar
 - **Pipe chaining (`|>`)**: Use `|>` interchangeably with `.` to chain steps.
 - **Set shorthands (`->`, `>>`)**: `-> "key"` or `>> "key"` is shorthand for `.set("key")`.
-- **Group blocks (`push(...) { ... }`)**: Scope steps under a `push(selector)` using `{ ... }` (leading `.` or `|>` on the first step inside `{ ... }` is optional).
+- **Group blocks (`select(...) { ... }`)**: Scope steps under a `select(selector)` using `{ ... }` (leading `.` or `|>` on the first step inside `{ ... }` is optional).
 - **Keyword arguments**: Pass named arguments to any step, e.g. `json_parse("cfg", allow_comments=true, allow_trailing_comma=true)`.
 
 ```text
 let tag_sel = ".tag"
 
 product: Scraper()
-  |> push("h1") { text() |> trim() -> "title" }
-  |> push("body") { query_all("${tag_sel}", Value.Text) |> trim() >> "tags" }
+  |> select("h1") { text() |> trim() -> "title" }
+  |> select("body") { find_all("${tag_sel}", Value.Text) |> trim() >> "tags" }
   |> merge_patch({"source": "web"})
 ```
 
@@ -71,11 +71,11 @@ product: Scraper()
 
 ## Execution Model
 
-A scraper consists of one or more **Extractor groups**, each started by `.push(selector)` (or `Group()` in C++).
+A scraper consists of one or more **Extractor groups**, each started by `.select(selector)` (or `Select()` in C++).
 
 ```mermaid
 flowchart LR
-  HTML["HTML / XML Document"] --> G1["push(selector) — Extractor Group"]
+  HTML["HTML / XML Document"] --> G1["select(selector) — Extractor Group"]
   G1 --> Nodes["Matched DOM Nodes"]
   Nodes --> Steps["Per-node Step Pipeline (values[], dict)"]
   Steps --> Merge["Merge Group Results"]
@@ -84,41 +84,41 @@ flowchart LR
 ```
 
 - **Per-node pipeline**: Within a group, steps operate on `values` (`std::vector<std::string>`) and a local `dict` (`jsoncons::json`).
-- **Immediate vs. Postponed steps**: Dictionary and query steps (`flatten_dict`, `filter_dict`, `remove_keys`, `rename_keys`, `merge_keys`, `sort_keys`, `deduplicate`, `jmespath`, `jsonpath`) default to `postponable = true`, meaning they run once on the merged output document. Pass `false` (or use `flatten_local()`) to run them immediately on each node's local `dict`.
+- **Immediate vs. Postponed steps**: Dictionary and query steps (`flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `sort_keys`, `deduplicate`, `jmespath`, `jsonpath`) default to `postponable = true`, meaning they run once on the merged output document. Pass `false` (or use `flatten_local()`) to run them immediately on each node's local `dict`.
 - **Single vs. Multiple matches**: When an extractor matches one node, its object is merged into the root JSON object; when it matches multiple nodes, results are combined into a JSON array.
 
 ---
 
 ## Pipeline Steps Reference
 
-> **Naming convention**: Method names below use the DSL / `ScraperPy` `snake_case` names. In C++ `ScraperBuilder`, the corresponding methods use `PascalCase` (e.g., `push` -> `Group`, `normspace` -> `Normspace`, `regex_extract` -> `RegexExtract`).
+> **Naming convention**: Method names below use the DSL / `ScraperPy` `snake_case` names. In C++ `ScraperBuilder`, the corresponding methods use `PascalCase` (e.g., `select` -> `Select`, `squish` -> `Squish`, `regex_extract` -> `RegexExtract`).
 
 ### 1. DOM & Selection
 
 | Step | Parameters & Defaults | Description |
 | --- | --- | --- |
-| `push` | `(selector, key="")` | Starts a new extractor group matching CSS `selector`. Optional `key` scopes output under that key |
+| `select` | `(selector, key="")` | Starts a new extractor group matching CSS `selector`. Optional `key` scopes output under that key |
 | `text` | `(own_text=false)` | Extracts text from the current node (or direct text nodes only if `own_text=true`) into `values` |
 | `attr` | `(attr_name)` | Extracts attribute `attr_name` from the current node into `values` |
-| `query_all` | `(sel, type, attr="")` | Runs sub-selector `sel` on the current node using `Value` enum `type` (and `attr` for `Attribute` / `AttributeExists`) |
-| `query` | `(sel, type, attr="", number=Number.All, nth_val=0)` | Like `query_all`, but selects `All`, `Last`, or `Nth` (`nth_val`) match |
+| `find_all` | `(sel, type, attr="")` | Runs sub-selector `sel` on the current node using `Value` enum `type` (and `attr` for `Attribute` / `AttributeExists`) |
+| `find` | `(sel, type, attr="", number=Number.All, nth_val=0)` | Like `find_all`, but selects `All`, `Last`, or `Nth` (`nth_val`) match |
 
 ### 2. Text Normalization & Manipulation
 
 | Step | Parameters & Defaults | Description |
 | --- | --- | --- |
 | `trim` | `()` | Trims leading and trailing whitespace from each value |
-| `normspace` / `strip` | `()` | Trims and collapses internal whitespace runs to single spaces |
+| `squish` / `normalize_whitespace` | `()` | Trims and collapses internal whitespace runs to single spaces (`normalize_whitespace` is a DSL/Python alias) |
 | `lower` | `()` | Converts each value to lowercase |
 | `upper` | `()` | Converts each value to uppercase |
 | `unescape` | `(url_decode=true)` | Unescapes HTML entities (and URL `%XX` sequences when `url_decode=true`) |
 | `replace` | `(from_str, to_str="")` | Replaces all occurrences of `from_str` with `to_str` |
-| `substitute` | `(from_str, to_str="")` | Replaces exact-matching values equal to `from_str` with `to_str` |
+| `replace_exact` | `(from_str, to_str="")` | Replaces exact-matching values equal to `from_str` with `to_str` |
 | `split` | `(delimiter, keep_empty_parts=false)` | Splits each value by `delimiter`, expanding `values` |
 | `join` | `(delimiter)` | Joins all `values` into a single string separated by `delimiter` |
 | `prepend` | `(prefix_str)` | Prepends `prefix_str` to each value |
 | `append` | `(suffix_str)` | Appends `suffix_str` to each value |
-| `remove_empty` | `(also_trim=true)` | Drops empty strings (trimming first if `also_trim=true`) |
+| `drop_empty` | `(also_trim=true)` | Drops empty strings (trimming first if `also_trim=true`) |
 | `substring` | `(start_pos, length=null)` | Extracts a substring from `start_pos` (supports negative indices) of optional `length` |
 | `strip_comments` | `(multiline=true, single_line=true)` | Strips `/* ... */` and/or `// ...` comments from each value |
 
@@ -138,28 +138,28 @@ flowchart LR
 | `first` | `(count=1)` | Keeps the first `count` items in `values` |
 | `last` | `(count=1)` | Keeps the last `count` items in `values` |
 | `nth` | `(index)` | Keeps only the item at `index` |
-| `slice_values` | `(start_index, end_index_inclusive)` | Keeps items in `[start_index, end_index_inclusive]` |
+| `slice` | `(start_index, end_index_inclusive)` | Keeps items in `[start_index, end_index_inclusive]` |
 | `unique` | `(preserve_order=true)` | Removes duplicate items from `values` |
-| `default_if_empty` | `(default_value)` | Sets `values` to `[default_value]` if `values` is empty |
+| `default` | `(default_value)` | Sets `values` to `[default_value]` if `values` is empty |
 
 ### 5. JS / JSON Block Digger
 
 | Step | Parameters & Defaults | Description |
 | --- | --- | --- |
-| `block_seeker` | `(prefix="")` | Locates balanced `{...}` or `[...]` blocks in text (optionally starting after `prefix`) |
-| `block_parser` | `(prefixes)` | Searches for blocks matching any prefix in `prefixes` (list of strings) |
-| `parse` | `(objname, simplify=true)` | Parses JS/JSON-like text in `values` into structured JSON and stores it under `objname`. When `simplify=true`, concatenates `+`-joined strings and expands `JSON.parse("...")` |
+| `js_block` / `extract_js_block` | `(prefix="")` | Locates balanced `{...}` or `[...]` blocks in text (optionally starting after `prefix`; `extract_js_block` is a DSL/Python alias) |
+| `js_blocks` / `extract_js_blocks` | `(prefixes)` | Searches for blocks matching any prefix in `prefixes` (list of strings; `extract_js_blocks` is a DSL/Python alias) |
+| `parse_js` | `(objname, simplify=true)` | Parses JS/JSON-like text in `values` into structured JSON and stores it under `objname`. When `simplify=true`, concatenates `+`-joined strings and expands `JSON.parse("...")` |
 
 ### 6. Dictionary & Query Steps
 
 | Step | Parameters & Defaults | Description |
 | --- | --- | --- |
 | `set` | `(name)` | Writes `values` into `dict` under key `name` (supports dot-paths like `"meta.title"`) |
-| `count_values` | `(dict_key)` | Writes `len(values)` into `dict` under `dict_key` |
-| `flatten_dict` | `(postponable=true)` | Flattens nested objects into dot-separated keys |
-| `flatten_local` | `()` | Shorthand for `flatten_dict(false)` |
-| `filter_dict` | `(keys_to_keep, postponable=true)` | Keeps only keys listed in `keys_to_keep` |
-| `remove_keys` | `(keys_to_remove, postponable=true)` | Removes keys listed in `keys_to_remove` |
+| `count` | `(dict_key)` | Writes `len(values)` into `dict` under `dict_key` |
+| `flatten` | `(postponable=true)` | Flattens nested objects into dot-separated keys |
+| `flatten_local` | `()` | Shorthand for `flatten(false)` |
+| `pick_keys` | `(keys_to_keep, postponable=true)` | Keeps only keys listed in `keys_to_keep` |
+| `omit_keys` | `(keys_to_remove, postponable=true)` | Removes keys listed in `keys_to_remove` |
 | `rename_keys` | `(pairs, postponable=true)` | Renames keys using an even-length list `[old1, new1, old2, new2, ...]` in DSL (or a dict in C++) |
 | `merge_keys` | `(source_keys, target_key, postponable=true)` | Combines `source_keys` into `target_key` |
 | `sort_keys` | `(ascending=true, postponable=true)` | Sorts object keys alphabetically |
@@ -188,4 +188,4 @@ flowchart LR
 
 | Step | Parameters & Defaults | Description |
 | --- | --- | --- |
-| `debug_print` | `(prefix="DEBUG: ", print_dict=false, print_node=false)` | Prints current `values` (and optionally `dict` and DOM `node`) to `stderr` |
+| `debug` | `(prefix="DEBUG: ", print_dict=false, print_node=false)` | Prints current `values` (and optionally `dict` and DOM `node`) to `stderr` |
