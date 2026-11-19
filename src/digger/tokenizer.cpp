@@ -1,4 +1,6 @@
 #include "digger/tokenizer.hpp"
+#include "common/hex_utils.hpp"
+#include "common/utf.hpp"
 #include "digger/scalar_parser.hpp"
 #include <algorithm>
 #include <string>
@@ -19,36 +21,6 @@ inline constexpr bool is_alnum(char c) noexcept {
 
 inline constexpr bool is_identifier_char(char c) noexcept {
   return is_alnum(c) || c == '_' || c == '$' || c == '.';
-}
-
-inline constexpr int hex_digit_to_int(char c) noexcept {
-  if (c >= '0' && c <= '9')
-    return c - '0';
-  if (c >= 'a' && c <= 'f')
-    return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F')
-    return c - 'A' + 10;
-  return -1;
-}
-
-inline void append_utf8_codepoint(std::string &out, uint32_t cp) {
-  if (cp <= 0x7F) {
-    out += static_cast<char>(cp);
-  } else if (cp <= 0x7FF) {
-    out += static_cast<char>(0xC0 | ((cp >> 6) & 0x1F));
-    out += static_cast<char>(0x80 | (cp & 0x3F));
-  } else if (cp <= 0xFFFF) {
-    out += static_cast<char>(0xE0 | ((cp >> 12) & 0x0F));
-    out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-    out += static_cast<char>(0x80 | (cp & 0x3F));
-  } else if (cp <= 0x10FFFF) {
-    out += static_cast<char>(0xF0 | ((cp >> 18) & 0x07));
-    out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-    out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-    out += static_cast<char>(0x80 | (cp & 0x3F));
-  } else {
-    out += '?';
-  }
 }
 
 inline constexpr bool are_matching_brackets(std::string_view start,
@@ -170,23 +142,6 @@ void TokenParser::handle_number_token(Token &out_token) {
   expect_next_identifier_ = false;
 }
 
-bool TokenParser::parse_four_hex_digits(size_t start_pos,
-                                        uint32_t &out_value) const noexcept {
-  if (start_pos + 4 > source_.size()) {
-    return false;
-  }
-  uint32_t val = 0;
-  for (size_t i = 0; i < 4; ++i) {
-    const int d = hex_digit_to_int(source_[start_pos + i]);
-    if (d < 0) {
-      return false;
-    }
-    val = (val << 4) | static_cast<uint32_t>(d);
-  }
-  out_value = val;
-  return true;
-}
-
 void TokenParser::decode_escape_sequence(std::string &out) {
   ++pos_; // consume '\\'
   if (pos_ >= source_.size()) {
@@ -233,8 +188,8 @@ void TokenParser::decode_escape_sequence(std::string &out) {
     break;
   case 'x': {
     if (pos_ + 2 < source_.size()) {
-      const int hi = hex_digit_to_int(source_[pos_ + 1]);
-      const int lo = hex_digit_to_int(source_[pos_ + 2]);
+      const int hi = xsel::common::hex_nibble(source_[pos_ + 1]);
+      const int lo = xsel::common::hex_nibble(source_[pos_ + 2]);
       if (hi >= 0 && lo >= 0) {
         out += static_cast<char>((hi << 4) | lo);
         pos_ += 3;
@@ -252,7 +207,7 @@ void TokenParser::decode_escape_sequence(std::string &out) {
       size_t digits = 0;
       while (hex_pos < source_.size() && source_[hex_pos] != '}' &&
              digits < 6) {
-        const int d = hex_digit_to_int(source_[hex_pos]);
+        const int d = xsel::common::hex_nibble(source_[hex_pos]);
         if (d < 0)
           break;
         cp = (cp << 4) | static_cast<uint32_t>(d);
@@ -260,27 +215,26 @@ void TokenParser::decode_escape_sequence(std::string &out) {
         ++digits;
       }
       if (digits > 0 && hex_pos < source_.size() && source_[hex_pos] == '}') {
-        append_utf8_codepoint(out, cp);
+        xsel::common::append_utf8_codepoint(out, cp);
         pos_ = hex_pos + 1;
         return;
       }
     }
-    uint32_t cp = 0;
-    if (parse_four_hex_digits(pos_ + 1, cp)) {
+    const int cp = xsel::common::parse_hex_4(source_, pos_ + 1);
+    if (cp >= 0) {
       pos_ += 5;
-      if (cp >= 0xD800 && cp <= 0xDBFF && pos_ + 6 <= source_.size() &&
-          source_[pos_] == '\\' && source_[pos_ + 1] == 'u') {
-        uint32_t low = 0;
-        if (parse_four_hex_digits(pos_ + 2, low) && low >= 0xDC00 &&
-            low <= 0xDFFF) {
-          const uint32_t combined =
-              0x10000 + (((cp - 0xD800) << 10) | (low - 0xDC00));
-          append_utf8_codepoint(out, combined);
+      uint32_t codepoint = static_cast<uint32_t>(cp);
+      if (codepoint >= 0xD800u && codepoint <= 0xDBFFu &&
+          pos_ + 6 <= source_.size() && source_[pos_] == '\\' &&
+          source_[pos_ + 1] == 'u') {
+        const int low = xsel::common::parse_hex_4(source_, pos_ + 2);
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          codepoint = 0x10000u + (((codepoint - 0xD800u) << 10) |
+                                  (static_cast<uint32_t>(low) - 0xDC00u));
           pos_ += 6;
-          return;
         }
       }
-      append_utf8_codepoint(out, cp);
+      xsel::common::append_utf8_codepoint(out, codepoint);
       return;
     }
     out += 'u';

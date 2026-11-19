@@ -6,10 +6,7 @@ namespace scraper {
 namespace {
 
 void check_depth(int depth, const char *fn) {
-  if (depth > xsel::common::MAX_JSON_DEPTH) {
-    throw std::runtime_error(
-        std::string("Maximum JSON recursion depth exceeded in ") + fn);
-  }
+  xsel::common::check_json_depth(depth, fn);
 }
 
 void combine_values_as_array(jsoncons::json &existing,
@@ -248,6 +245,54 @@ void merge_into(jsoncons::json &dest, jsoncons::json &&other, InsertMode mode,
   }
 
   combine_values_as_array(dest, std::move(other));
+}
+
+void merge_item_at_path(jsoncons::json &dest,
+                        const std::vector<std::string> &path_segments,
+                        jsoncons::json &&item) {
+  if (xsel::common::is_empty_json(item)) {
+    return;
+  }
+
+  if (dest.is_object() || dest.is_null()) {
+    if (path_segments.empty()) {
+      merge_into(dest, std::move(item));
+      return;
+    }
+    if (dest.is_null()) {
+      dest = jsoncons::json::object();
+    }
+    jsoncons::json *target = &dest;
+    for (size_t i = 0; i + 1 < path_segments.size(); ++i) {
+      if (!target->contains(path_segments[i]) ||
+          !target->at(path_segments[i]).is_object()) {
+        target->insert_or_assign(path_segments[i], jsoncons::json::object());
+      }
+      target = &target->at(path_segments[i]);
+    }
+    if (!target->contains(path_segments.back())) {
+      target->insert_or_assign(path_segments.back(), jsoncons::json::null());
+    }
+    merge_into(target->at(path_segments.back()), std::move(item));
+    return;
+  }
+
+  if (dest.is_array()) {
+    if (path_segments.empty()) {
+      merge_into(dest, std::move(item));
+      return;
+    }
+    preprocess_key_value(item);
+    if (!xsel::common::is_empty_json(item)) {
+      jsoncons::json wrapped = std::move(item);
+      for (size_t i = path_segments.size(); i > 0; --i) {
+        jsoncons::json obj = jsoncons::json::object();
+        obj.insert_or_assign(path_segments[i - 1], std::move(wrapped));
+        wrapped = std::move(obj);
+      }
+      merge_into(dest, std::move(wrapped));
+    }
+  }
 }
 
 } // namespace scraper

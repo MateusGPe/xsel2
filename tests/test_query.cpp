@@ -183,3 +183,40 @@ TEST_CASE("json_query supports CSV and binary formats", "[query]") {
     }
   }
 }
+
+TEST_CASE("json_query rejects malformed hex, base64, and failing patches",
+          "[query][edge]") {
+  CHECK_THROWS_AS(xsel::query::decode_binary(xsel::query::BinaryFormat::Cbor,
+                                             "abc",
+                                             xsel::query::BinaryEncoding::Hex),
+                  std::runtime_error);
+  CHECK_THROWS_AS(xsel::query::decode_binary(xsel::query::BinaryFormat::Cbor,
+                                             "zz",
+                                             xsel::query::BinaryEncoding::Hex),
+                  std::runtime_error);
+  CHECK_THROWS_AS(
+      xsel::query::decode_binary(xsel::query::BinaryFormat::Cbor, "abc",
+                                 xsel::query::BinaryEncoding::Base64),
+      std::runtime_error);
+
+  const auto doc = jsoncons::json::parse(R"({"a": 1})");
+  CHECK_THROWS_AS(xsel::query::jsonpointer_get(doc, "/missing"),
+                  std::runtime_error);
+  const auto bad_patch = jsoncons::json::parse(
+      R"([{"op": "test", "path": "/a", "value": 2}])");
+  CHECK_THROWS_AS(xsel::query::apply_json_patch(doc, bad_patch),
+                  std::runtime_error);
+
+  // Mid-stream Base64 padding must be rejected
+  CHECK_THROWS_AS(
+      xsel::query::decode_binary(xsel::query::BinaryFormat::Cbor, "AA==AAAA",
+                                 xsel::query::BinaryEncoding::Base64),
+      std::runtime_error);
+
+  // Unterminated block comment with allow_comments=true should not hang/crash
+  xsel::query::JsonParseOptions opts;
+  opts.allow_comments = true;
+  const auto parsed =
+      xsel::query::parse_json(R"({"a": 1} /* unterminated)", opts);
+  CHECK(parsed["a"].as<int>() == 1);
+}

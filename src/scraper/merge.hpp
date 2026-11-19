@@ -42,4 +42,10 @@ void merge_into(jsoncons::json &dest, const jsoncons::json &other,
 void merge_into(jsoncons::json &dest, jsoncons::json &&other, InsertMode mode,
                 int depth = 0);
 
+/// Merges `item` into `dest` at `path_segments` (handling object, null, and
+/// array destinations).
+void merge_item_at_path(jsoncons::json &dest,
+                        const std::vector<std::string> &path_segments,
+                        jsoncons::json &&item);
+
 } // namespace scraper

@@ -14,15 +14,34 @@ void Scraper::add_step(std::shared_ptr<Step> step) {
 void Scraper::scrape_document(Document &document, jsoncons::json &data,
                               std::string_view error_prefix,
                               std::ostream &error_stream) {
+  ExtractionOptions opts{error_policy_, &errors_};
+  scrape_document(document, data, error_prefix, error_stream, opts);
+}
+
+void Scraper::scrape_document(Document &document, jsoncons::json &data,
+                              std::string_view error_prefix,
+                              std::ostream &error_stream,
+                              const ExtractionOptions &opts) {
   QueryResult root(document.getRoot());
-  perform_extraction(root, data, error_prefix, error_stream);
+  perform_extraction(root, data, error_prefix, error_stream, opts);
 }
 
 void Scraper::perform_extraction(QueryResult &selection, jsoncons::json &data,
                                  std::string_view error_prefix,
                                  std::ostream &error_stream) {
+  ExtractionOptions opts{error_policy_, &errors_};
+  perform_extraction(selection, data, error_prefix, error_stream, opts);
+}
+
+void Scraper::perform_extraction(QueryResult &selection, jsoncons::json &data,
+                                 std::string_view error_prefix,
+                                 std::ostream &error_stream,
+                                 const ExtractionOptions &opts) {
+  if (opts.errors == &errors_) {
+    errors_.clear();
+  }
   for (auto &ext : extractors_) {
-    ext->extract(selection, data, error_prefix, error_stream);
+    ext->extract(selection, data, error_prefix, error_stream, opts);
   }
   preprocess_key_value(data);
 }

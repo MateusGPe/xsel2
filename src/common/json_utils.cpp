@@ -1,5 +1,8 @@
 #include "common/json_utils.hpp"
 #include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -49,10 +52,7 @@ void append_json_escaped_string(std::string &out, std::string_view sv) {
 
 void canonical_json_key_into(const jsoncons::json &val, int depth,
                              std::string &out) {
-  if (depth > MAX_JSON_DEPTH) {
-    throw std::runtime_error(
-        "Maximum JSON nesting depth exceeded in canonical_json_key");
-  }
+  check_json_depth(depth, "canonical_json_key");
   if (val.is_object()) {
     std::vector<std::string_view> keys;
     keys.reserve(val.size());
@@ -98,7 +98,64 @@ int compare_int_uint(int64_t s, uint64_t u) noexcept {
   return 0;
 }
 
+int compare_int_double(int64_t i, double d) noexcept {
+  if (std::isnan(d)) {
+    return -1;
+  }
+  // -2^63 is exactly representable in IEEE-754 double; +2^63 is also exact.
+  constexpr double kMinInt64AsDouble = -9223372036854775808.0;
+  constexpr double kMaxInt64Plus1AsDouble = 9223372036854775808.0;
+  if (d < kMinInt64AsDouble) {
+    return 1;
+  }
+  if (d == kMinInt64AsDouble) {
+    return (i == std::numeric_limits<int64_t>::min()) ? 0 : 1;
+  }
+  if (d >= kMaxInt64Plus1AsDouble) {
+    return -1;
+  }
+  const double t = std::trunc(d);
+  const auto di = static_cast<int64_t>(t);
+  if (i < di)
+    return -1;
+  if (i > di)
+    return 1;
+  const double frac = d - t;
+  if (frac > 0.0)
+    return -1;
+  if (frac < 0.0)
+    return 1;
+  return 0;
+}
+
+int compare_uint_double(uint64_t u, double d) noexcept {
+  if (std::isnan(d)) {
+    return -1;
+  }
+  if (d < 0.0) {
+    return 1;
+  }
+  constexpr double kMaxUint64Plus1AsDouble = 18446744073709551616.0;
+  if (d >= kMaxUint64Plus1AsDouble) {
+    return -1;
+  }
+  const double t = std::trunc(d);
+  const auto du = static_cast<uint64_t>(t);
+  if (u < du)
+    return -1;
+  if (u > du)
+    return 1;
+  return (d - t > 0.0) ? -1 : 0;
+}
+
 } // namespace
+
+void check_json_depth(int depth, std::string_view context) {
+  if (depth > MAX_JSON_DEPTH) {
+    throw std::runtime_error("Maximum JSON recursion depth exceeded in " +
+                             std::string(context));
+  }
+}
 
 bool is_empty_json(const jsoncons::json &val) noexcept {
   if (val.is_null()) {
@@ -121,24 +178,41 @@ std::string canonical_json_key(const jsoncons::json &val, int depth) {
 
 int compare_json(const jsoncons::json &a, const jsoncons::json &b) {
   if (a.is_number() && b.is_number()) {
-    if (a.is_int64() && b.is_int64()) {
+    if (a.is_int64()) {
       const int64_t ia = a.as<int64_t>();
-      const int64_t ib = b.as<int64_t>();
-      return (ia < ib) ? -1 : (ia > ib ? 1 : 0);
+      if (b.is_int64()) {
+        const int64_t ib = b.as<int64_t>();
+        return (ia < ib) ? -1 : (ia > ib ? 1 : 0);
+      }
+      if (b.is_uint64()) {
+        return compare_int_uint(ia, b.as<uint64_t>());
+      }
+      return compare_int_double(ia, b.as<double>());
     }
-    if (a.is_uint64() && b.is_uint64()) {
+    if (a.is_uint64()) {
       const uint64_t ua = a.as<uint64_t>();
-      const uint64_t ub = b.as<uint64_t>();
-      return (ua < ub) ? -1 : (ua > ub ? 1 : 0);
+      if (b.is_uint64()) {
+        const uint64_t ub = b.as<uint64_t>();
+        return (ua < ub) ? -1 : (ua > ub ? 1 : 0);
+      }
+      if (b.is_int64()) {
+        return -compare_int_uint(b.as<int64_t>(), ua);
+      }
+      return compare_uint_double(ua, b.as<double>());
     }
-    if (a.is_int64() && b.is_uint64()) {
-      return compare_int_uint(a.as<int64_t>(), b.as<uint64_t>());
+    if (b.is_int64()) {
+      return -compare_int_double(b.as<int64_t>(), a.as<double>());
     }
-    if (a.is_uint64() && b.is_int64()) {
-      return -compare_int_uint(b.as<int64_t>(), a.as<uint64_t>());
+    if (b.is_uint64()) {
+      return -compare_uint_double(b.as<uint64_t>(), a.as<double>());
     }
     const double da = a.as<double>();
     const double db = b.as<double>();
+    const bool na = std::isnan(da);
+    const bool nb = std::isnan(db);
+    if (na || nb) {
+      return na == nb ? 0 : (na ? 1 : -1);
+    }
     if (da < db)
       return -1;
     if (da > db)
@@ -158,12 +232,15 @@ std::string next_unique_key(const jsoncons::json &obj, std::string_view base) {
   if (!obj.is_object() || !obj.contains(base)) {
     return std::string(base);
   }
+  std::string candidate;
+  candidate.reserve(base.size() + 21);
+  char buf[24];
   for (size_t idx = 0;; ++idx) {
-    std::string candidate;
-    candidate.reserve(base.size() + 12);
-    candidate.append(base);
+    const auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), idx);
+    (void)ec;
+    candidate.assign(base);
     candidate.push_back('_');
-    candidate.append(std::to_string(idx));
+    candidate.append(buf, ptr);
     if (!obj.contains(candidate)) {
       return candidate;
     }

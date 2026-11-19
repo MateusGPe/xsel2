@@ -85,3 +85,37 @@ TEST_CASE("DslParser supports jmespath and jsonpath pipelines", "[scraper][dsl]"
   CHECK(res[0].as<std::string>() == "Pen");
   CHECK(res[1].as<std::string>() == "Book");
 }
+
+TEST_CASE("Scraper supports ErrorPolicy modes and multiple postponed steps",
+          "[scraper][error_policy]") {
+  const std::string html = R"(<div><span class="x">hello</span></div>)";
+
+  // 1. CollectErrors captures step errors without throwing or writing to cerr
+  scraper::ScraperBuilder collect_sb;
+  collect_sb.set_error_policy(scraper::ErrorPolicy::CollectErrors);
+  collect_sb.Select("div")
+      .Find(".missing", scraper::QueryAllStep::Type::Text)
+      .Set("val");
+  const auto collected_out = collect_sb.scrape_from_string(html);
+  CHECK(collected_out.empty());
+  CHECK(collect_sb.errors().size() == 1);
+
+  // 2. ThrowOnError propagates step exceptions
+  scraper::ScraperBuilder throw_sb;
+  throw_sb.set_error_policy(scraper::ErrorPolicy::ThrowOnError);
+  throw_sb.Select("div")
+      .Find(".missing", scraper::QueryAllStep::Type::Text)
+      .Set("val");
+  CHECK_THROWS_AS((void)throw_sb.scrape_from_string(html), std::runtime_error);
+
+  // 3. Multiple postponed steps in a single extractor run in order at the end
+  scraper::ScraperBuilder multi_post;
+  multi_post.Select("div")
+      .Find(".x", scraper::QueryAllStep::Type::Text)
+      .Set("val")
+      .OmitKeys({"other"})
+      .RenameKeys({{"val", "renamed"}});
+  const auto post_out = multi_post.scrape_from_string(html);
+  REQUIRE(post_out.contains("renamed"));
+  CHECK(post_out["renamed"].as<std::string>() == "hello");
+}

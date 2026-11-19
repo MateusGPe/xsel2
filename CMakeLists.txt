@@ -4,7 +4,7 @@ project(
   xsel2
   VERSION 0.4.0
   DESCRIPTION "High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine"
-  LANGUAGES CXX)
+  LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -21,6 +21,37 @@ if(DEFINED SCRAPERPY_VERSION_INFO)
 endif()
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
+set(XSEL_FETCH_LIBXML2 "AUTO" CACHE STRING
+  "Whether to fetch libxml2 from source: AUTO (fallback if not found), ON (always fetch), OFF (require system)")
+set_property(CACHE XSEL_FETCH_LIBXML2 PROPERTY STRINGS AUTO ON OFF)
+
+if(XSEL_FETCH_LIBXML2 STREQUAL "OFF")
+  find_package(LibXml2 REQUIRED)
+else()
+  if(XSEL_FETCH_LIBXML2 STREQUAL "AUTO" AND NOT CPM_DOWNLOAD_ALL AND NOT CPM_DOWNLOAD_LibXml2)
+    find_package(LibXml2 QUIET)
+  endif()
+
+  if(NOT LibXml2_FOUND)
+    message(STATUS "xsel2: LibXml2 not found on system; fetching GNOME/libxml2 via CPM")
+    CPMAddPackage(
+      NAME LibXml2
+      GITHUB_REPOSITORY GNOME/libxml2
+      GIT_TAG v2.13.9
+      GIT_SHALLOW TRUE
+      OPTIONS
+        "BUILD_SHARED_LIBS OFF"
+        "LIBXML2_WITH_ICONV OFF"
+        "LIBXML2_WITH_ICU OFF"
+        "LIBXML2_WITH_LZMA OFF"
+        "LIBXML2_WITH_ZLIB OFF"
+        "LIBXML2_WITH_MODULES OFF"
+        "LIBXML2_WITH_PYTHON OFF"
+        "LIBXML2_WITH_PROGRAMS OFF"
+        "LIBXML2_WITH_TESTS OFF")
+  endif()
+endif()
+
 CPMAddPackage(
   NAME jsoncons
   GITHUB_REPOSITORY danielaparker/jsoncons
@@ -40,6 +71,12 @@ CPMAddPackage(
   GITHUB_REPOSITORY MateusGPe/lxml2-query-v1
   GIT_TAG main
   GIT_SHALLOW TRUE)
+
+if(TARGET lxml2-query)
+  # GCC 15+ no longer transitively provides <cstdint> in TagSelector.cpp.
+  target_compile_options(lxml2-query PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-include cstdint>)
+endif()
 
 CPMAddPackage(
   NAME absl
@@ -71,6 +108,7 @@ endif()
 
 set(XSEL_WARN_FLAGS
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
+  $<$<CXX_COMPILER_ID:MSVC>:/W4>
   $<$<CONFIG:Release>:-O3>)
 
 # ── Common library ───────────────────────────────────────────────────────────
@@ -106,6 +144,9 @@ add_library(scraper STATIC
   src/scraper/merge.cpp
   src/scraper/extractor.cpp
   src/scraper/scraper.cpp
+  src/scraper/dsl/lexer.cpp
+  src/scraper/dsl/value.cpp
+  src/scraper/dsl/step_registry.cpp
   src/scraper/dsl_parser.cpp
   src/scraper/steps/text_steps.cpp
   src/scraper/steps/regex_steps.cpp
@@ -169,6 +210,29 @@ if(NOT DEFINED SCRAPERPY_VERSION_INFO)
     list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
     include(Catch)
     catch_discover_tests(xsel_tests)
+
+    add_test(
+      NAME cli_integration_tests
+      COMMAND ${CMAKE_COMMAND}
+        -DCLI_BIN=$<TARGET_FILE:xmlsel-cli>
+        -DPIPE_BIN=$<TARGET_FILE:xmlsel-pipe>
+        -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_cli_tests.cmake)
+
+    find_program(UV_EXECUTABLE uv)
+    if(UV_EXECUTABLE AND Python_EXECUTABLE)
+      if(WIN32)
+        set(_xsel_py_path "$<TARGET_FILE_DIR:_scraperpy>\\;${CMAKE_CURRENT_SOURCE_DIR}")
+      else()
+        set(_xsel_py_path "$<TARGET_FILE_DIR:_scraperpy>:${CMAKE_CURRENT_SOURCE_DIR}")
+      endif()
+      add_test(
+        NAME python_pytest
+        COMMAND ${UV_EXECUTABLE} run --with pytest --python ${Python_EXECUTABLE}
+                pytest ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_python.py -v)
+      set_tests_properties(python_pytest PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${_xsel_py_path}")
+    endif()
   endif()
 
   install(TARGETS _scraperpy LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})

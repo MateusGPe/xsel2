@@ -1,3 +1,4 @@
+#include "cli/cli_common.hpp"
 #include "common/ahocorasick.hpp"
 #include "query/json_query.hpp"
 #include "scraper/dsl_parser.hpp"
@@ -53,14 +54,13 @@ void print_usage() {
                "[--compact]\n";
 }
 
-void print_json(const jsoncons::json &doc, bool compact) {
-  if (compact) {
-    std::string out;
-    doc.dump(out);
-    std::cout << out << '\n';
-  } else {
-    std::cout << jsoncons::pretty_print(doc) << '\n';
+std::string require_flag_value(const std::vector<std::string_view> &args,
+                               size_t &i) {
+  if (i + 1 >= args.size()) {
+    throw std::runtime_error("Missing value for flag: " +
+                             std::string(args[i]));
   }
+  return std::string(args[++i]);
 }
 
 int cmd_scraper(const std::vector<std::string_view> &args) {
@@ -71,16 +71,18 @@ int cmd_scraper(const std::vector<std::string_view> &args) {
   bool compact = false;
 
   for (size_t i = 2; i < args.size(); ++i) {
-    if (args[i] == "--dsl" && i + 1 < args.size()) {
-      dsl_path = std::string(args[++i]);
-    } else if (args[i] == "--name" && i + 1 < args.size()) {
-      scraper_name = std::string(args[++i]);
-    } else if (args[i] == "--selector" && i + 1 < args.size()) {
-      selector = std::string(args[++i]);
-    } else if (args[i] == "--html" && i + 1 < args.size()) {
-      html_input = std::string(args[++i]);
+    if (args[i] == "--dsl") {
+      dsl_path = require_flag_value(args, i);
+    } else if (args[i] == "--name") {
+      scraper_name = require_flag_value(args, i);
+    } else if (args[i] == "--selector") {
+      selector = require_flag_value(args, i);
+    } else if (args[i] == "--html") {
+      html_input = require_flag_value(args, i);
     } else if (args[i] == "--compact" || args[i] == "-c") {
       compact = true;
+    } else {
+      throw std::runtime_error("Unknown flag: " + std::string(args[i]));
     }
   }
 
@@ -93,7 +95,7 @@ int cmd_scraper(const std::vector<std::string_view> &args) {
   if (!selector.empty()) {
     scraper::ScraperBuilder builder;
     builder.Select(selector, "matches").Text().Squish().Set("text");
-    print_json(builder.scrape_from_string(html), compact);
+    xsel::cli::print_json(builder.scrape_from_string(html), compact);
     return 0;
   }
 
@@ -104,31 +106,8 @@ int cmd_scraper(const std::vector<std::string_view> &args) {
 
   scraper::dsl::DslParser parser;
   auto scrapers = parser.parse_file(dsl_path);
-  if (scrapers.empty()) {
-    std::cerr << "Error: No scrapers found in DSL file.\n";
-    return 1;
-  }
-
-  if (!scraper_name.empty()) {
-    auto it = scrapers.find(scraper_name);
-    if (it == scrapers.end()) {
-      std::cerr << "Error: Scraper '" << scraper_name << "' not found.\n";
-      return 1;
-    }
-    print_json(it->second.scrape_from_string(html), compact);
-    return 0;
-  }
-
-  if (scrapers.size() == 1) {
-    print_json(scrapers.begin()->second.scrape_from_string(html), compact);
-    return 0;
-  }
-
-  jsoncons::json all = jsoncons::json::object();
-  for (auto &[name, builder] : scrapers) {
-    all.insert_or_assign(name, builder.scrape_from_string(html));
-  }
-  print_json(all, compact);
+  xsel::cli::print_json(
+      xsel::cli::run_dsl_scrapers(scrapers, scraper_name, html), compact);
   return 0;
 }
 
@@ -136,10 +115,12 @@ int cmd_ahocorasick(const std::vector<std::string_view> &args) {
   std::string patterns_arg;
   std::string text_arg;
   for (size_t i = 2; i < args.size(); ++i) {
-    if (args[i] == "--patterns" && i + 1 < args.size()) {
-      patterns_arg = std::string(args[++i]);
-    } else if (args[i] == "--text" && i + 1 < args.size()) {
-      text_arg = std::string(args[++i]);
+    if (args[i] == "--patterns") {
+      patterns_arg = require_flag_value(args, i);
+    } else if (args[i] == "--text") {
+      text_arg = require_flag_value(args, i);
+    } else {
+      throw std::runtime_error("Unknown flag: " + std::string(args[i]));
     }
   }
   if (patterns_arg.empty() || text_arg.empty()) {
@@ -174,7 +155,7 @@ int cmd_ahocorasick(const std::vector<std::string_view> &args) {
     m.insert_or_assign("pattern_id", static_cast<uint64_t>(match.pattern_id));
     matches.push_back(std::move(m));
   }
-  print_json(matches, false);
+  xsel::cli::print_json(matches, false);
   return 0;
 }
 
@@ -185,12 +166,14 @@ int cmd_query(xsel::query::QueryDialect dialect,
   bool compact = false;
 
   for (size_t i = 2; i < args.size(); ++i) {
-    if (args[i] == "--expr" && i + 1 < args.size()) {
-      expr = std::string(args[++i]);
-    } else if (args[i] == "--json" && i + 1 < args.size()) {
-      json_arg = std::string(args[++i]);
+    if (args[i] == "--expr") {
+      expr = require_flag_value(args, i);
+    } else if (args[i] == "--json") {
+      json_arg = require_flag_value(args, i);
     } else if (args[i] == "--compact" || args[i] == "-c") {
       compact = true;
+    } else {
+      throw std::runtime_error("Unknown flag: " + std::string(args[i]));
     }
   }
   if (expr.empty() || json_arg.empty()) {
@@ -201,7 +184,7 @@ int cmd_query(xsel::query::QueryDialect dialect,
   const std::string raw = read_arg_or_file(json_arg);
   const jsoncons::json doc = jsoncons::json::parse(raw);
   const jsoncons::json result = xsel::query::evaluate(dialect, doc, expr);
-  print_json(result, compact);
+  xsel::cli::print_json(result, compact);
   return 0;
 }
 

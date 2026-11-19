@@ -8,6 +8,9 @@ namespace xsel::common {
 
 inline constexpr int MAX_JSON_DEPTH = 512;
 
+/// Throws `std::runtime_error` if `depth > MAX_JSON_DEPTH`.
+void check_json_depth(int depth, std::string_view context);
+
 /// Returns true if `val` is null, an empty string, an empty array, or an empty object.
 [[nodiscard]] bool is_empty_json(const jsoncons::json &val) noexcept;
 

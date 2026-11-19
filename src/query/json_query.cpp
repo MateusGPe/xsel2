@@ -1,4 +1,6 @@
 #include "query/json_query.hpp"
+#include "common/hex_utils.hpp"
+#include "common/string_utils.hpp"
 #include <cstdint>
 #include <jsoncons_ext/bson/bson.hpp>
 #include <jsoncons_ext/cbor/cbor.hpp>
@@ -19,69 +21,12 @@ namespace xsel::query {
 
 namespace {
 
-std::string strip_json_comments(std::string_view src) {
-  std::string out;
-  out.reserve(src.size());
-  bool in_string = false;
-  for (size_t i = 0; i < src.size(); ++i) {
-    const char c = src[i];
-    if (in_string) {
-      out.push_back(c);
-      if (c == '\\' && i + 1 < src.size()) {
-        out.push_back(src[++i]);
-      } else if (c == '"') {
-        in_string = false;
-      }
-      continue;
-    }
-    if (c == '"') {
-      in_string = true;
-      out.push_back(c);
-    } else if (c == '/' && i + 1 < src.size() && src[i + 1] == '/') {
-      i += 2;
-      while (i < src.size() && src[i] != '\n') {
-        ++i;
-      }
-      if (i < src.size() && src[i] == '\n') {
-        out.push_back('\n');
-      }
-    } else if (c == '/' && i + 1 < src.size() && src[i + 1] == '*') {
-      i += 2;
-      while (i + 1 < src.size() && !(src[i] == '*' && src[i + 1] == '/')) {
-        if (src[i] == '\n') {
-          out.push_back('\n');
-        }
-        ++i;
-      }
-      if (i + 1 < src.size()) {
-        ++i;
-      }
-    } else {
-      out.push_back(c);
-    }
-  }
-  return out;
-}
-
-std::string to_hex(const std::vector<uint8_t> &bytes) {
-  static constexpr char kHex[] = "0123456789abcdef";
-  std::string out;
-  out.reserve(bytes.size() * 2);
-  for (uint8_t b : bytes) {
-    out.push_back(kHex[(b >> 4) & 0x0F]);
-    out.push_back(kHex[b & 0x0F]);
-  }
-  return out;
-}
-
-int hex_nibble(char c) {
-  if (c >= '0' && c <= '9')
-    return c - '0';
-  if (c >= 'a' && c <= 'f')
-    return 10 + (c - 'a');
-  if (c >= 'A' && c <= 'F')
-    return 10 + (c - 'A');
-  return -1;
+jsoncons::csv::csv_options make_csv_options(const CsvOptions &opts) {
+  jsoncons::csv::csv_options copts;
+  copts.assume_header(opts.assume_header)
+      .field_delimiter(opts.delimiter)
+      .trim(opts.trim);
+  return copts;
 }
 
 std::vector<uint8_t> from_hex(std::string_view hex) {
@@ -91,8 +36,8 @@ std::vector<uint8_t> from_hex(std::string_view hex) {
   std::vector<uint8_t> out;
   out.reserve(hex.size() / 2);
   for (size_t i = 0; i < hex.size(); i += 2) {
-    const int hi = hex_nibble(hex[i]);
-    const int lo = hex_nibble(hex[i + 1]);
+    const int hi = xsel::common::hex_nibble(hex[i]);
+    const int lo = xsel::common::hex_nibble(hex[i + 1]);
     if (hi < 0 || lo < 0) {
       throw std::runtime_error("Invalid hex character in binary input");
     }
@@ -148,6 +93,10 @@ std::vector<uint8_t> from_base64(std::string_view b64) {
     const int v1 = b64_val(static_cast<unsigned char>(b64[i + 1]));
     const bool pad2 = (b64[i + 2] == '=');
     const bool pad3 = (b64[i + 3] == '=');
+    if ((pad2 || pad3) && (i + 4 < b64.size())) {
+      throw std::runtime_error(
+          "Invalid base64 padding: '=' may only appear at end of input");
+    }
     const int v2 = pad2 ? 0 : b64_val(static_cast<unsigned char>(b64[i + 2]));
     const int v3 = pad3 ? 0 : b64_val(static_cast<unsigned char>(b64[i + 3]));
     if (v0 < 0 || v1 < 0 || (!pad2 && v2 < 0) || (!pad3 && v3 < 0) ||
@@ -186,7 +135,7 @@ std::string encode_output_bytes(const std::vector<uint8_t> &bytes,
                                 BinaryEncoding enc) {
   switch (enc) {
   case BinaryEncoding::Hex:
-    return to_hex(bytes);
+    return xsel::common::bytes_to_hex(bytes);
   case BinaryEncoding::Base64:
     return to_base64(bytes);
   case BinaryEncoding::Raw:
@@ -239,7 +188,8 @@ jsoncons::json parse_json(std::string_view input,
       jopts.nan_to_num("NaN").inf_to_num("Inf").neginf_to_num("-Inf");
     }
     if (opts.allow_comments) {
-      const std::string stripped = strip_json_comments(input);
+      const std::string stripped =
+          xsel::common::strip_c_comments(input, true, true, true);
       return jsoncons::json::parse(stripped, jopts);
     }
     return jsoncons::json::parse(input, jopts);
@@ -371,11 +321,8 @@ bool validate_json_schema(const jsoncons::json &doc,
 
 jsoncons::json decode_csv(std::string_view input, const CsvOptions &opts) {
   try {
-    jsoncons::csv::csv_options copts;
-    copts.assume_header(opts.assume_header)
-        .field_delimiter(opts.delimiter)
-        .trim(opts.trim);
-    return jsoncons::csv::decode_csv<jsoncons::json>(input, copts);
+    return jsoncons::csv::decode_csv<jsoncons::json>(input,
+                                                     make_csv_options(opts));
   } catch (const jsoncons::ser_error &e) {
     throw std::runtime_error(std::string("CSV decode error: ") + e.what());
   }
@@ -383,12 +330,8 @@ jsoncons::json decode_csv(std::string_view input, const CsvOptions &opts) {
 
 std::string encode_csv(const jsoncons::json &doc, const CsvOptions &opts) {
   try {
-    jsoncons::csv::csv_options copts;
-    copts.assume_header(opts.assume_header)
-        .field_delimiter(opts.delimiter)
-        .trim(opts.trim);
     std::string out;
-    jsoncons::csv::encode_csv(doc, out, copts);
+    jsoncons::csv::encode_csv(doc, out, make_csv_options(opts));
     return out;
   } catch (const std::exception &e) {
     throw std::runtime_error(std::string("CSV encode error: ") + e.what());

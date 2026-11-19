@@ -136,3 +136,27 @@ TEST_CASE("AhoCorasick handles very long pattern without stack overflow",
   REQUIRE(ac.HasAnyPattern(long_pat));
   REQUIRE_FALSE(ac.HasAnyPattern(std::string(19999u, 'x')));
 }
+
+TEST_CASE("AhoCorasick handles duplicate patterns, empty inputs, and Clear reuse",
+          "[ahocorasick]") {
+  AhoCorasick ac;
+  CHECK(ac.AddPattern("") == AhoCorasick::kInvalidPattern);
+  const uint32_t p0 = ac.AddPattern("alpha");
+  const uint32_t p0_dup = ac.AddPattern("alpha");
+  CHECK(p0 == 0u);
+  CHECK(p0_dup == p0);
+  CHECK(ac.PatternCount() == 1u);
+
+  ac.Compile();
+  CHECK_THROWS_AS(ac.AddPattern("beta"), std::logic_error);
+  CHECK_FALSE(ac.HasAnyPattern(""));
+  CHECK_FALSE(ac.HasAllPatterns(""));
+
+  ac.Clear();
+  CHECK(ac.IsEmpty());
+  CHECK_FALSE(ac.IsCompiled());
+  CHECK(ac.AddPattern("gamma") == 0u);
+  ac.Compile();
+  CHECK(ac.HasAnyPattern("delta gamma"));
+  CHECK_FALSE(ac.HasAnyPattern("delta alpha"));
+}

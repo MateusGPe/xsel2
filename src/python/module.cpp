@@ -23,6 +23,17 @@ public:
   }
 };
 
+py::dict scrapers_to_py_dict(
+    absl::flat_hash_map<std::string, scraper::ScraperBuilder> &parsed) {
+  py::dict out;
+  for (auto &[name, builder] : parsed) {
+    ScraperPy py_scraper;
+    py_scraper.set_extractors(builder.get_extractors());
+    out[py::str(name)] = py::cast(std::move(py_scraper));
+  }
+  return out;
+}
+
 } // namespace
 
 PYBIND11_MODULE(_scraperpy, m) {
@@ -67,7 +78,10 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def(py::init<>())
       .def("add_pattern", &AhoCorasick::AddPattern)
       .def("build", &AhoCorasick::Compile)
+      .def("clear", &AhoCorasick::Clear)
+      .def("pattern_count", &AhoCorasick::PatternCount)
       .def("contains_any", &AhoCorasick::HasAnyPattern)
+      .def("has_all", &AhoCorasick::HasAllPatterns)
       .def("search", [](const AhoCorasick &ac, const std::string &text) {
         AhoCorasick::MatchList matches;
         ac.Find(text, matches);
@@ -452,24 +466,12 @@ PYBIND11_MODULE(_scraperpy, m) {
   m.def("parse_dsl_string", [](const std::string &dsl_content) {
     scraper::dsl::DslParser parser;
     auto parsed = parser.parse(dsl_content);
-    py::dict out;
-    for (auto &[name, builder] : parsed) {
-      ScraperPy py_scraper;
-      py_scraper.set_extractors(builder.get_extractors());
-      out[py::str(name)] = py::cast(std::move(py_scraper));
-    }
-    return out;
+    return scrapers_to_py_dict(parsed);
   });
 
   m.def("load_scrapers", [](const std::string &filepath) {
     scraper::dsl::DslParser parser;
     auto parsed = parser.parse_file(filepath);
-    py::dict out;
-    for (auto &[name, builder] : parsed) {
-      ScraperPy py_scraper;
-      py_scraper.set_extractors(builder.get_extractors());
-      out[py::str(name)] = py::cast(std::move(py_scraper));
-    }
-    return out;
+    return scrapers_to_py_dict(parsed);
   });
 }

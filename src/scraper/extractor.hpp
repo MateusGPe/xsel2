@@ -11,6 +11,17 @@
 
 namespace scraper {
 
+enum class ErrorPolicy {
+  LogAndContinue, ///< Format error to error_stream, clear values, continue
+  ThrowOnError,   ///< Rethrow step exceptions immediately
+  CollectErrors   ///< Append formatted error to errors vector, clear values, continue
+};
+
+struct ExtractionOptions {
+  ErrorPolicy error_policy = ErrorPolicy::LogAndContinue;
+  std::vector<std::string> *errors = nullptr;
+};
+
 class Extractor {
 public:
   Extractor() = default;
@@ -24,6 +35,10 @@ public:
 
   void extract(QueryResult &selection, jsoncons::json &dest,
                std::string_view err_prefix, std::ostream &stream = std::cerr);
+
+  void extract(QueryResult &selection, jsoncons::json &dest,
+               std::string_view err_prefix, std::ostream &stream,
+               const ExtractionOptions &opts);
 
 private:
   std::vector<std::shared_ptr<Step>> steps_;

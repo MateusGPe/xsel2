@@ -1,7 +1,10 @@
 #include "scraper/steps/text_steps.hpp"
+#include "common/hex_utils.hpp"
+#include "common/string_utils.hpp"
 #include "common/utf.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <iterator>
 #include <lxml2-query.h>
 #include <stdexcept>
@@ -51,21 +54,12 @@ std::vector<std::string> split_string(std::string_view s,
 }
 
 std::string url_unescape(std::string_view escaped_url) {
-  auto hex_val = [](char c) -> int {
-    if (c >= '0' && c <= '9')
-      return c - '0';
-    if (c >= 'a' && c <= 'f')
-      return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-      return c - 'A' + 10;
-    return -1;
-  };
   std::string out;
   out.reserve(escaped_url.size());
   for (size_t i = 0; i < escaped_url.size(); ++i) {
     if (escaped_url[i] == '%' && i + 2 < escaped_url.size()) {
-      const int hi = hex_val(escaped_url[i + 1]);
-      const int lo = hex_val(escaped_url[i + 2]);
+      const int hi = xsel::common::hex_nibble(escaped_url[i + 1]);
+      const int lo = xsel::common::hex_nibble(escaped_url[i + 2]);
       if (hi >= 0 && lo >= 0) {
         out.push_back(static_cast<char>((hi << 4) | lo));
         i += 2;
@@ -78,69 +72,6 @@ std::string url_unescape(std::string_view escaped_url) {
 }
 
 } // namespace detail
-
-namespace {
-
-int parse_hex_4(std::string_view s, size_t pos) {
-  if (pos + 4 > s.size())
-    return -1;
-  int val = 0;
-  for (size_t i = 0; i < 4; ++i) {
-    const char c = s[pos + i];
-    int d = 0;
-    if (c >= '0' && c <= '9')
-      d = c - '0';
-    else if (c >= 'a' && c <= 'f')
-      d = c - 'a' + 10;
-    else if (c >= 'A' && c <= 'F')
-      d = c - 'A' + 10;
-    else
-      return -1;
-    val = (val << 4) | d;
-  }
-  return val;
-}
-
-std::string strip_comments_impl(std::string_view content, bool multiline,
-                                bool single_line) {
-  std::string result;
-  result.reserve(content.size());
-  char quote = '\0';
-  for (size_t i = 0; i < content.size(); ++i) {
-    if (quote != '\0') {
-      result += content[i];
-      if (content[i] == '\\' && i + 1 < content.size()) {
-        result += content[++i];
-      } else if (content[i] == quote) {
-        quote = '\0';
-      }
-      continue;
-    }
-    if (content[i] == '\'' || content[i] == '"') {
-      quote = content[i];
-      result += content[i];
-    } else if (content[i] == '/' && i + 1 < content.size()) {
-      if (single_line && content[i + 1] == '/') {
-        const size_t end_pos = content.find('\n', i + 2);
-        if (end_pos == std::string_view::npos)
-          break;
-        i = end_pos - 1;
-      } else if (multiline && content[i + 1] == '*') {
-        const size_t end_pos = content.find("*/", i + 2);
-        if (end_pos == std::string_view::npos)
-          break;
-        i = end_pos + 1;
-      } else {
-        result += content[i];
-      }
-    } else {
-      result += content[i];
-    }
-  }
-  return result;
-}
-
-} // namespace
 
 void TrimStep::apply(Node, std::vector<std::string> &values, jsoncons::json &) {
   for (auto &v : values) {
@@ -256,28 +187,34 @@ void RemoveEmptyStep::apply(Node, std::vector<std::string> &values,
 void SubstringStep::apply(Node, std::vector<std::string> &values,
                           jsoncons::json &) {
   for (auto &v : values) {
-    const int n = static_cast<int>(v.size());
-    int start = start_pos_;
-    if (start < 0)
-      start = std::max(0, n + start);
+    const size_t n = v.size();
+    size_t start = 0;
+    if (start_pos_ >= 0) {
+      start = static_cast<size_t>(start_pos_);
+    } else {
+      const size_t offset = static_cast<size_t>(-static_cast<int64_t>(start_pos_));
+      start = (offset >= n) ? 0 : (n - offset);
+    }
     if (start >= n) {
       v.clear();
       continue;
     }
-    int count = n - start;
+    size_t count = n - start;
     if (length_.has_value()) {
       if (*length_ == 0) {
         v.clear();
         continue;
       }
       if (*length_ > 0) {
-        count = std::min(*length_, n - start);
+        count = std::min(static_cast<size_t>(*length_), n - start);
       } else {
-        const int end = n + *length_;
+        const size_t trim_end =
+            static_cast<size_t>(-static_cast<int64_t>(*length_));
+        const size_t end = (trim_end >= n) ? 0 : (n - trim_end);
         count = (end > start) ? (end - start) : 0;
       }
     }
-    v = v.substr(static_cast<size_t>(start), static_cast<size_t>(count));
+    v = v.substr(start, count);
   }
 }
 
@@ -310,12 +247,12 @@ void UnescapeStep::apply(Node, std::vector<std::string> &values,
           continue;
         }
         if (next == 'u' && i + 5 < v.size()) {
-          const int cp = parse_hex_4(v, i + 2);
+          const int cp = xsel::common::parse_hex_4(v, i + 2);
           if (cp >= 0) {
             uint32_t codepoint = static_cast<uint32_t>(cp);
             if (codepoint >= 0xD800 && codepoint <= 0xDBFF &&
                 i + 11 < v.size() && v[i + 6] == '\\' && v[i + 7] == 'u') {
-              const int low = parse_hex_4(v, i + 8);
+              const int low = xsel::common::parse_hex_4(v, i + 8);
               if (low >= 0xDC00 && low <= 0xDFFF) {
                 codepoint =
                     0x10000 + (((codepoint - 0xD800) << 10) |
@@ -323,13 +260,9 @@ void UnescapeStep::apply(Node, std::vector<std::string> &values,
                 i += 6;
               }
             }
-            char buf[5]{};
-            size_t len = 0;
-            if (utf8_encode(static_cast<int32_t>(codepoint), buf, &len) == 0) {
-              decoded.append(buf, len);
-              i += 5;
-              continue;
-            }
+            xsel::common::append_utf8_codepoint(decoded, codepoint);
+            i += 5;
+            continue;
           }
         }
       }
@@ -342,7 +275,7 @@ void UnescapeStep::apply(Node, std::vector<std::string> &values,
 void StripCommentsStep::apply(Node, std::vector<std::string> &values,
                               jsoncons::json &) {
   for (auto &v : values) {
-    v = strip_comments_impl(v, multiline_, single_line_);
+    v = xsel::common::strip_c_comments(v, multiline_, single_line_, false);
   }
 }
 

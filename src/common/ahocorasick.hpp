@@ -42,8 +42,6 @@ public:
   // Duplicate patterns return their original pattern_id.
   // Empty patterns are ignored and return kInvalidPattern.
   uint32_t AddPattern(std::string_view s) {
-    assert(!is_compiled_ &&
-           "Cannot add patterns after Compile() without Clear()");
     if (is_compiled_) {
       throw std::logic_error(
           "AhoCorasick: cannot add patterns after Compile() without Clear()");
@@ -58,6 +56,10 @@ public:
       uint32_t next_state = raw_trie_[state].children[uch];
 
       if (next_state == kInvalidState) {
+        if (raw_trie_.size() >= kInvalidState) {
+          throw std::overflow_error(
+              "AhoCorasick: maximum trie state capacity exceeded");
+        }
         next_state = static_cast<uint32_t>(raw_trie_.size());
         raw_trie_[state].children[uch] = next_state;
         raw_trie_.emplace_back(raw_trie_[state].depth + 1u);
@@ -66,6 +68,10 @@ public:
     }
 
     if (raw_trie_[state].pattern_id == kInvalidPattern) {
+      if (num_patterns_ >= kInvalidPattern) {
+        throw std::overflow_error(
+            "AhoCorasick: maximum pattern count exceeded");
+      }
       raw_trie_[state].pattern_id = num_patterns_++;
     }
     return raw_trie_[state].pattern_id;
@@ -310,7 +316,6 @@ private:
   };
 
   void EnsureCompiled() const {
-    assert(is_compiled_ && "Call Compile() before searching");
     if (!is_compiled_) {
       throw std::logic_error(
           "AhoCorasick: Compile() must be called before searching");

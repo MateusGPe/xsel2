@@ -262,6 +262,25 @@ static inline void dump_string(const char *str, size_t len, std::ostream &out) {
     pos = next;
   }
 }
+
+namespace xsel::common {
+
+/// Appends a Unicode codepoint encoded as UTF-8 to `out`.
+/// Rejects UTF-16 surrogates (U+D800..U+DFFF) and out-of-range codepoints
+/// (> U+10FFFF) by emitting the UTF-8 replacement character U+FFFD.
+inline void append_utf8_codepoint(std::string &out, uint32_t cp) {
+  if (cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) {
+    out.append("\xEF\xBF\xBD", 3);
+    return;
+  }
+  char buf[4];
+  size_t len = 0;
+  if (utf8_encode(static_cast<int32_t>(cp), buf, &len) == 0) {
+    out.append(buf, len);
+  }
+}
+
+} // namespace xsel::common
 #endif // __cplusplus
 
 #endif // UTF_H

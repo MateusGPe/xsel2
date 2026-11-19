@@ -70,3 +70,17 @@ TEST_CASE("has_no_common_key and merge_into handle Merge mode and arrays",
   CHECK_FALSE(orphan.contains("@key"));
   CHECK(orphan["keep"].as<int64_t>() == 1);
 }
+
+TEST_CASE("merge_item_at_path handles nested object and array destinations",
+          "[merge]") {
+  jsoncons::json obj = jsoncons::json::null();
+  scraper::merge_item_at_path(obj, {"a", "b"}, jsoncons::json(42));
+  REQUIRE(obj.is_object());
+  CHECK(obj["a"]["b"].as<int>() == 42);
+
+  jsoncons::json arr = jsoncons::json::array();
+  scraper::merge_item_at_path(arr, {"item", "name"}, jsoncons::json("Widget"));
+  REQUIRE(arr.is_array());
+  REQUIRE(arr.size() == 1);
+  CHECK(arr[0]["item"]["name"].as<std::string>() == "Widget");
+}

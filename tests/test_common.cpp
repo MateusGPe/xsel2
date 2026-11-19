@@ -1,7 +1,9 @@
+#include "common/hex_utils.hpp"
 #include "common/json_utils.hpp"
 #include "common/utf.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -127,4 +129,49 @@ TEST_CASE("next_unique_key and json_to_string behave as expected",
   CHECK(xsel::common::json_to_string(jsoncons::json(42)) == "42");
   CHECK(xsel::common::json_to_string(jsoncons::json(true)) == "true");
   CHECK(xsel::common::json_to_string(jsoncons::json::null()) == "null");
+}
+
+TEST_CASE("hex_utils and check_json_depth handle valid and invalid inputs",
+          "[common][hex]") {
+  CHECK_NOTHROW(xsel::common::check_json_depth(xsel::common::MAX_JSON_DEPTH, "ok"));
+  CHECK_THROWS_AS(
+      xsel::common::check_json_depth(xsel::common::MAX_JSON_DEPTH + 1, "deep"),
+      std::runtime_error);
+
+  const uint8_t bytes[] = {0x00, 0x0f, 0xa5, 0xff};
+  CHECK(xsel::common::bytes_to_hex(bytes) == "000fa5ff");
+}
+
+TEST_CASE("compare_json handles mixed int64/uint64/double and NaN ordering",
+          "[common][json_utils][edge]") {
+  const jsoncons::json big_i(int64_t{9007199254740993LL}); // 2^53 + 1
+  const jsoncons::json dbl_2_53(9007199254740992.0);        // 2^53
+  CHECK(xsel::common::compare_json(big_i, dbl_2_53) > 0);
+  CHECK(xsel::common::compare_json(dbl_2_53, big_i) < 0);
+
+  const jsoncons::json neg_inf(-std::numeric_limits<double>::infinity());
+  const jsoncons::json pos_inf(std::numeric_limits<double>::infinity());
+  const jsoncons::json nan_val(std::numeric_limits<double>::quiet_NaN());
+  const jsoncons::json min_i(std::numeric_limits<int64_t>::min());
+  const jsoncons::json max_u(std::numeric_limits<uint64_t>::max());
+
+  CHECK(xsel::common::compare_json(neg_inf, min_i) < 0);
+  CHECK(xsel::common::compare_json(min_i, neg_inf) > 0);
+  CHECK(xsel::common::compare_json(max_u, pos_inf) < 0);
+  CHECK(xsel::common::compare_json(pos_inf, max_u) > 0);
+
+  // NaN obeys strict weak ordering (sorts after finite/infinite numbers)
+  CHECK(xsel::common::compare_json(pos_inf, nan_val) < 0);
+  CHECK(xsel::common::compare_json(nan_val, pos_inf) > 0);
+  CHECK(xsel::common::compare_json(nan_val, nan_val) == 0);
+}
+
+TEST_CASE("append_utf8_codepoint replaces surrogates and out-of-range values",
+          "[common][utf][edge]") {
+  std::string out;
+  xsel::common::append_utf8_codepoint(out, 0xD800u);
+  xsel::common::append_utf8_codepoint(out, 0xDFFFu);
+  xsel::common::append_utf8_codepoint(out, 0x110000u);
+  CHECK(out == "\xEF\xBF\xBD\xEF\xBF\xBD\xEF\xBF\xBD");
+  CHECK(utf8_check_string(out.data(), out.size()) == 1);
 }

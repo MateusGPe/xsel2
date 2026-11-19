@@ -1,18 +1,10 @@
 #include "scraper/steps/dict_steps.hpp"
 #include "common/json_utils.hpp"
 #include <algorithm>
-#include <stdexcept>
 
 namespace scraper {
 
 namespace {
-
-void check_depth(int depth, const char *fn) {
-  if (depth > xsel::common::MAX_JSON_DEPTH) {
-    throw std::runtime_error(
-        std::string("Maximum JSON recursion depth exceeded in ") + fn);
-  }
-}
 
 void add_or_append_json(jsoncons::json &obj, const std::string &key,
                         const jsoncons::json &val) {
@@ -33,7 +25,7 @@ void add_or_append_json(jsoncons::json &obj, const std::string &key,
 
 void flatten_recursive(const jsoncons::json &cur, jsoncons::json &out,
                        const std::string &prefix, int depth) {
-  check_depth(depth, "flatten_recursive");
+  xsel::common::check_json_depth(depth, "FlattenDictStep");
 
   if (cur.is_object()) {
     for (const auto &kv : cur.object_range()) {
@@ -60,7 +52,7 @@ void flatten_recursive(const jsoncons::json &cur, jsoncons::json &out,
 jsoncons::json filter_recursive(
     const jsoncons::json &cur,
     const absl::flat_hash_set<std::string> &keys_to_keep, int depth) {
-  check_depth(depth, "filter_recursive");
+  xsel::common::check_json_depth(depth, "FilterDictStep");
 
   if (cur.is_object()) {
     jsoncons::json out = jsoncons::json::object();
@@ -96,29 +88,23 @@ jsoncons::json filter_recursive(
 
 // ── FlattenDictStep ──────────────────────────────────────────────────────────
 
-void FlattenDictStep::apply(Node, std::vector<std::string> &,
-                            jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = flatten_impl(dict);
-  }
+jsoncons::json
+FlattenDictStep::transform(const jsoncons::json &input) const {
+  return flatten_impl(input, 0);
 }
 
-jsoncons::json
-FlattenDictStep::execute_postponed(const jsoncons::json &dest) const {
-  return flatten_impl(dest);
-}
-
-jsoncons::json
-FlattenDictStep::flatten_impl(const jsoncons::json &input) const {
+jsoncons::json FlattenDictStep::flatten_impl(const jsoncons::json &input,
+                                             int depth) const {
+  xsel::common::check_json_depth(depth, "FlattenDictStep");
   if (input.is_object()) {
     jsoncons::json out = jsoncons::json::object();
-    flatten_recursive(input, out, "", 0);
+    flatten_recursive(input, out, "", depth);
     return out;
   }
   if (input.is_array()) {
     jsoncons::json out = jsoncons::json::array();
     for (const auto &el : input.array_range()) {
-      out.push_back(flatten_impl(el));
+      out.push_back(flatten_impl(el, depth + 1));
     }
     return out;
   }
@@ -127,39 +113,21 @@ FlattenDictStep::flatten_impl(const jsoncons::json &input) const {
 
 // ── FilterDictStep ───────────────────────────────────────────────────────────
 
-void FilterDictStep::apply(Node, std::vector<std::string> &,
-                           jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = filter_impl(dict);
-  }
-}
-
 jsoncons::json
-FilterDictStep::execute_postponed(const jsoncons::json &dest) const {
-  return filter_impl(dest);
-}
-
-jsoncons::json FilterDictStep::filter_impl(const jsoncons::json &input) const {
+FilterDictStep::transform(const jsoncons::json &input) const {
   return filter_recursive(input, keys_to_keep_, 0);
 }
 
 // ── RemoveKeysStep ───────────────────────────────────────────────────────────
 
-void RemoveKeysStep::apply(Node, std::vector<std::string> &,
-                           jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = remove_impl(dict, 0);
-  }
-}
-
 jsoncons::json
-RemoveKeysStep::execute_postponed(const jsoncons::json &dest) const {
-  return remove_impl(dest, 0);
+RemoveKeysStep::transform(const jsoncons::json &input) const {
+  return remove_impl(input, 0);
 }
 
 jsoncons::json RemoveKeysStep::remove_impl(const jsoncons::json &input,
                                            int depth) const {
-  check_depth(depth, "RemoveKeysStep");
+  xsel::common::check_json_depth(depth, "RemoveKeysStep");
   if (input.is_object()) {
     jsoncons::json out = jsoncons::json::object();
     for (const auto &kv : input.object_range()) {
@@ -181,30 +149,21 @@ jsoncons::json RemoveKeysStep::remove_impl(const jsoncons::json &input,
 
 // ── RenameKeysStep ───────────────────────────────────────────────────────────
 
-void RenameKeysStep::apply(Node, std::vector<std::string> &,
-                           jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = rename_impl(dict, 0);
-  }
-}
-
 jsoncons::json
-RenameKeysStep::execute_postponed(const jsoncons::json &dest) const {
-  return rename_impl(dest, 0);
+RenameKeysStep::transform(const jsoncons::json &input) const {
+  return rename_impl(input, 0);
 }
 
 jsoncons::json RenameKeysStep::rename_impl(const jsoncons::json &input,
                                            int depth) const {
-  check_depth(depth, "RenameKeysStep");
+  xsel::common::check_json_depth(depth, "RenameKeysStep");
   if (input.is_object()) {
     jsoncons::json out = jsoncons::json::object();
     for (const auto &kv : input.object_range()) {
       const auto it = rename_map_.find(kv.key());
-      if (it != rename_map_.end()) {
-        out.insert_or_assign(it->second, rename_impl(kv.value(), depth + 1));
-      } else {
-        out.insert_or_assign(kv.key(), rename_impl(kv.value(), depth + 1));
-      }
+      const std::string_view new_key =
+          (it != rename_map_.end()) ? std::string_view(it->second) : kv.key();
+      out.insert_or_assign(new_key, rename_impl(kv.value(), depth + 1));
     }
     return out;
   }
@@ -220,27 +179,17 @@ jsoncons::json RenameKeysStep::rename_impl(const jsoncons::json &input,
 
 // ── MergeKeysStep ────────────────────────────────────────────────────────────
 
-void MergeKeysStep::apply(Node, std::vector<std::string> &,
-                          jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = merge_impl(dict);
-  }
-}
-
 jsoncons::json
-MergeKeysStep::execute_postponed(const jsoncons::json &dest) const {
-  return merge_impl(dest);
-}
-
-jsoncons::json MergeKeysStep::merge_impl(const jsoncons::json &input) const {
+MergeKeysStep::transform(const jsoncons::json &input) const {
   if (!input.is_object()) {
     return input;
   }
   jsoncons::json out = input;
   jsoncons::json merged_arr = jsoncons::json::array();
   for (const auto &k : source_keys_) {
-    if (!out.contains(k))
+    if (!out.contains(k)) {
       continue;
+    }
     jsoncons::json &val = out.at(k);
     if (val.is_array()) {
       for (auto &el : val.array_range()) {
@@ -259,21 +208,14 @@ jsoncons::json MergeKeysStep::merge_impl(const jsoncons::json &input) const {
 
 // ── SortKeysStep ─────────────────────────────────────────────────────────────
 
-void SortKeysStep::apply(Node, std::vector<std::string> &,
-                         jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = sort_impl(dict, 0);
-  }
-}
-
 jsoncons::json
-SortKeysStep::execute_postponed(const jsoncons::json &dest) const {
-  return sort_impl(dest, 0);
+SortKeysStep::transform(const jsoncons::json &input) const {
+  return sort_impl(input, 0);
 }
 
 jsoncons::json SortKeysStep::sort_impl(const jsoncons::json &input,
                                        int depth) const {
-  check_depth(depth, "SortKeysStep");
+  xsel::common::check_json_depth(depth, "SortKeysStep");
   if (input.is_array()) {
     std::vector<jsoncons::json> items;
     items.reserve(input.size());
@@ -303,21 +245,14 @@ jsoncons::json SortKeysStep::sort_impl(const jsoncons::json &input,
 
 // ── DeduplicateStep ──────────────────────────────────────────────────────────
 
-void DeduplicateStep::apply(Node, std::vector<std::string> &,
-                            jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = dedup_impl(dict, 0);
-  }
-}
-
 jsoncons::json
-DeduplicateStep::execute_postponed(const jsoncons::json &dest) const {
-  return dedup_impl(dest, 0);
+DeduplicateStep::transform(const jsoncons::json &input) const {
+  return dedup_impl(input, 0);
 }
 
 jsoncons::json DeduplicateStep::dedup_impl(const jsoncons::json &input,
                                            int depth) const {
-  check_depth(depth, "DeduplicateStep");
+  xsel::common::check_json_depth(depth, "DeduplicateStep");
   if (input.is_array()) {
     jsoncons::json out = jsoncons::json::array();
     absl::flat_hash_set<std::string> seen;
@@ -343,16 +278,9 @@ jsoncons::json DeduplicateStep::dedup_impl(const jsoncons::json &input,
 
 // ── JsonQueryStep ────────────────────────────────────────────────────────────
 
-void JsonQueryStep::apply(Node, std::vector<std::string> &,
-                          jsoncons::json &dict) {
-  if (!postponable_) {
-    dict = xsel::query::evaluate(dialect_, dict, expr_);
-  }
-}
-
 jsoncons::json
-JsonQueryStep::execute_postponed(const jsoncons::json &dest) const {
-  return xsel::query::evaluate(dialect_, dest, expr_);
+JsonQueryStep::transform(const jsoncons::json &input) const {
+  return xsel::query::evaluate(dialect_, input, expr_);
 }
 
 } // namespace scraper

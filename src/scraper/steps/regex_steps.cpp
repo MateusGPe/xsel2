@@ -11,7 +11,7 @@ namespace detail {
 re2::RE2::Options get_re2_options(const std::optional<std::string> &flags_opt) {
   re2::RE2::Options opts;
   opts.set_log_errors(false);
-  if (!flags_opt.has_value()) {
+  if (!flags_opt.has_value() || flags_opt->empty()) {
     opts.set_case_sensitive(false);
     return opts;
   }
@@ -96,7 +96,7 @@ void RegexExtractStep::apply(Node, std::vector<std::string> &values,
       if (group_index_ <= 0) {
         size_t start_group = 0;
         if (group_index_ < 0) {
-          start_group = static_cast<size_t>(-group_index_);
+          start_group = static_cast<size_t>(-static_cast<int64_t>(group_index_));
           if (start_group == 0)
             start_group = 1;
         }

@@ -1,3 +1,5 @@
+#include "common/json_utils.hpp"
+#include "digger/digger.hpp"
 #include "scraper/scraper.hpp"
 #include "scraper/steps/block_steps.hpp"
 #include "scraper/steps/dict_steps.hpp"
@@ -6,6 +8,7 @@
 #include "scraper/steps/regex_steps.hpp"
 #include "scraper/steps/text_steps.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <limits>
 #include <lxml2-query.h>
 #include <sstream>
 #include <stdexcept>
@@ -347,4 +350,43 @@ Widget,3
       .apply(dummy_node(), vals, decoded_dict);
   REQUIRE(vals.size() == 1);
   CHECK(vals[0] == R"({"x":7})");
+}
+
+TEST_CASE("Edge cases: RegexExtractStep INT_MIN, SubstringStep, and FlattenDictStep depth",
+          "[steps][edge]") {
+  // INT_MIN group_index must not trigger signed overflow UB
+  std::vector<std::string> vals = {"a=1"};
+  jsoncons::json dict = jsoncons::json::object();
+  scraper::RegexExtractStep("(\\w+)=(\\d+)", std::numeric_limits<int>::min())
+      .apply(dummy_node(), vals, dict);
+  CHECK(vals.empty());
+
+  // SubstringStep negative start and negative length
+  std::vector<std::string> sub_vals = {"abcdef"};
+  scraper::SubstringStep(-4, -1).apply(dummy_node(), sub_vals, dict);
+  REQUIRE(sub_vals.size() == 1);
+  CHECK(sub_vals[0] == "cde");
+
+  // FlattenDictStep enforces MAX_JSON_DEPTH on deeply nested arrays
+  jsoncons::json deep = 1;
+  for (int i = 0; i <= xsel::common::MAX_JSON_DEPTH + 2; ++i) {
+    jsoncons::json arr = jsoncons::json::array();
+    arr.push_back(std::move(deep));
+    deep = std::move(arr);
+  }
+  CHECK_THROWS_AS(
+      (void)scraper::FlattenDictStep(true).execute_postponed(deep),
+      std::runtime_error);
+
+  // BlockSeekerStep ignores braces and quotes inside JS comments
+  std::vector<std::string> commented = {
+      "window.__DATA__ = {\n"
+      "  // comment with unmatched { and \"\n"
+      "  /* block comment with } and ' */\n"
+      "  ok: 42\n"
+      "};"};
+  scraper::BlockSeekerStep("window.__DATA__").apply(dummy_node(), commented, dict);
+  REQUIRE(commented.size() == 1);
+  const auto parsed_block = digger::parse_object(commented[0], true);
+  CHECK(parsed_block["ok"].as<int64_t>() == 42);
 }

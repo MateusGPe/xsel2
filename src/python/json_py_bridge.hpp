@@ -69,7 +69,11 @@ namespace xsel::python {
     return jsoncons::json(obj.cast<bool>());
   }
   if (py::isinstance<py::int_>(obj)) {
-    return jsoncons::json(obj.cast<int64_t>());
+    try {
+      return jsoncons::json(obj.cast<int64_t>());
+    } catch (const py::cast_error &) {
+      return jsoncons::json(obj.cast<uint64_t>());
+    }
   }
   if (py::isinstance<py::float_>(obj)) {
     return jsoncons::json(obj.cast<double>());

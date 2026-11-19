@@ -125,3 +125,27 @@ TEST_CASE("digger parse_object_into merges into existing container",
   CHECK(out["existing"].as<std::string>() == "keep");
   CHECK(out["added"].as<int64_t>() == 99);
 }
+
+TEST_CASE("digger handles malformed numbers, empty inputs, and unbalanced brackets",
+          "[digger][edge]") {
+  CHECK(digger::parse_object("", true).is_null());
+  CHECK(digger::parse_object("   // only comment\n/* block */", true).is_null());
+
+  const auto nums = digger::parse_object(
+      R"({dot: .5, negdot: -.25, huge: 1e999, valid: 42})", true);
+  REQUIRE(nums.is_object());
+  CHECK(nums["dot"].as<double>() == Catch::Approx(0.5));
+  CHECK(nums["negdot"].as<double>() == Catch::Approx(-0.25));
+  CHECK(nums["huge"].is_string());
+  CHECK(nums["valid"].as<int64_t>() == 42);
+
+  // Unbalanced closing bracket at root should not crash
+  const auto unbal = digger::parse_object("} ] {a: 1}", true);
+  CHECK((unbal.is_null() || unbal.is_object()));
+
+  // Surrogate codepoints in \u{...} or unpaired \uD800 produce valid UTF-8 (U+FFFD)
+  const auto sur = digger::parse_object(R"({a: "\u{D800}", b: "\uD800"})", true);
+  REQUIRE(sur.is_object());
+  CHECK(sur["a"].as<std::string>() == "\xEF\xBF\xBD");
+  CHECK(sur["b"].as<std::string>() == "\xEF\xBF\xBD");
+}

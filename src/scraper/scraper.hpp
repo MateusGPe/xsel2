@@ -32,12 +32,31 @@ public:
                        std::string_view error_prefix,
                        std::ostream &error_stream = std::cerr);
 
+  void scrape_document(Document &document, jsoncons::json &data,
+                       std::string_view error_prefix,
+                       std::ostream &error_stream,
+                       const ExtractionOptions &opts);
+
   void perform_extraction(QueryResult &selection, jsoncons::json &data,
                           std::string_view error_prefix,
                           std::ostream &error_stream = std::cerr);
 
+  void perform_extraction(QueryResult &selection, jsoncons::json &data,
+                          std::string_view error_prefix,
+                          std::ostream &error_stream,
+                          const ExtractionOptions &opts);
+
   [[nodiscard]] jsoncons::json scrape_from_string(std::string_view content);
   [[nodiscard]] jsoncons::json scrape_from_file(std::string_view filename);
+
+  void set_error_policy(ErrorPolicy policy) noexcept { error_policy_ = policy; }
+  [[nodiscard]] ErrorPolicy error_policy() const noexcept {
+    return error_policy_;
+  }
+  [[nodiscard]] const std::vector<std::string> &errors() const noexcept {
+    return errors_;
+  }
+  void clear_errors() noexcept { errors_.clear(); }
 
   [[nodiscard]] const std::vector<std::shared_ptr<Extractor>> &
   get_extractors() const noexcept {
@@ -51,6 +70,8 @@ public:
 protected:
   void add_step(std::shared_ptr<Step> step);
   std::vector<std::shared_ptr<Extractor>> extractors_;
+  ErrorPolicy error_policy_ = ErrorPolicy::LogAndContinue;
+  std::vector<std::string> errors_;
 };
 
 template <typename Derived> class ScraperBuilderBase : public Scraper {

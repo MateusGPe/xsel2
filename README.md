@@ -23,7 +23,7 @@ High-performance HTML/XML scraping, multi-pattern text search, and JSON transfor
 
 ## Quick Build & Test
 
-Requires a C++20 compiler (GCC or Clang), CMake >= 3.24, `libxml2` dev headers, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `Catch2`) are fetched automatically via [CPM.cmake](cmake/CPM.cmake).
+Requires a C++20 compiler (GCC or Clang), CMake >= 3.24, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `Catch2`) are fetched automatically via [CPM.cmake](cmake/CPM.cmake). `libxml2` uses the system package if found, and falls back to fetching `GNOME/libxml2` via CPM otherwise (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`).
 
 ```bash
 cmake --preset debug

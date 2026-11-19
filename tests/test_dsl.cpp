@@ -210,4 +210,10 @@ TEST_CASE("DslParser validates new sugar edge cases and errors", "[dsl][sugar]")
                   std::runtime_error);
   CHECK_THROWS_AS(parser.parse(R"(s = Scraper() | select;)"),
                   std::runtime_error);
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper() | $("li").nth(-1);)"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper() | $("li").nth("12abc");)"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper() | $("li").slice(-1, 2);)"),
+                  std::runtime_error);
 }

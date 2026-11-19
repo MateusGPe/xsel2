@@ -32,6 +32,9 @@ protected:
   std::string attr_name_;
 
   [[nodiscard]] QueryResult select_nodes(Node node) const;
+  [[nodiscard]] bool handle_empty_selection(const QueryResult &selected,
+                                            std::vector<std::string> &values,
+                                            std::string_view step_name) const;
   [[nodiscard]] std::string
   extract_value_from_node(const std::optional<Node> &node_opt, Type type,
                           std::string_view attr) const;

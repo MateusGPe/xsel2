@@ -62,16 +62,29 @@ QueryAllStep::extract_value_from_node(const std::optional<Node> &node_opt,
   return "";
 }
 
+bool QueryAllStep::handle_empty_selection(const QueryResult &selected,
+                                          std::vector<std::string> &values,
+                                          std::string_view step_name) const {
+  if (selected.size() > 0) {
+    return false;
+  }
+  if (query_type_ == Type::ElementExists ||
+      query_type_ == Type::AttributeExists) {
+    values.push_back(
+        extract_value_from_node(std::nullopt, query_type_, attr_name_));
+    return true;
+  }
+  std::ostringstream err;
+  err << step_name << "(" << std::quoted(selector_->toString())
+      << "): no match for non-existence query type.";
+  throw std::runtime_error(err.str());
+}
+
 void QueryAllStep::apply(Node node, std::vector<std::string> &values,
                          jsoncons::json &) {
   QueryResult selected = select_nodes(node);
-
-  if (selected.size() == 0 && query_type_ != Type::ElementExists &&
-      query_type_ != Type::AttributeExists) {
-    std::ostringstream err;
-    err << "queryAll(" << std::quoted(selector_->toString())
-        << "): no match for non-existence query type.";
-    throw std::runtime_error(err.str());
+  if (handle_empty_selection(selected, values, "queryAll")) {
+    return;
   }
 
   for (const auto &n : selected) {
@@ -102,20 +115,7 @@ void QueryStep::apply(Node node, std::vector<std::string> &values,
   }
 
   QueryResult selected = select_nodes(node);
-  if (selected.size() == 0 && query_type_ != Type::ElementExists &&
-      query_type_ != Type::AttributeExists) {
-    std::ostringstream err;
-    err << "query(" << std::quoted(selector_->toString())
-        << "): no match for non-existence query type.";
-    throw std::runtime_error(err.str());
-  }
-
-  if (selected.empty()) {
-    if (query_type_ == Type::ElementExists ||
-        query_type_ == Type::AttributeExists) {
-      values.push_back(
-          extract_value_from_node(std::nullopt, query_type_, attr_name_));
-    }
+  if (handle_empty_selection(selected, values, "query")) {
     return;
   }
 

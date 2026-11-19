@@ -15,7 +15,7 @@ inline constexpr size_t MAX_PARSE_DEPTH = 512;
 /**
  * Tolerant lexer for JavaScript / JSON-like snippets.
  *
- * Strips comments (// and /* ... *\/), filters JS control keywords, decodes
+ * Strips single-line and block comments, filters JS control keywords, decodes
  * quoted/template string literals (including \xHH, \uHHHH with surrogate pairs,
  * and \u{H...}), and lexes numeric literals (including negative and scientific
  * notation) as TokenType::Number.
@@ -88,8 +88,6 @@ private:
   void handle_string_token(Token &out_token);
   [[nodiscard]] bool handle_identifier_or_keyword(Token &out_token);
   void decode_escape_sequence(std::string &out);
-  [[nodiscard]] bool parse_four_hex_digits(size_t start_pos,
-                                             uint32_t &out_value) const noexcept;
 };
 
 void tokenize_and_simplify(std::string_view source,

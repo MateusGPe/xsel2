@@ -110,177 +110,135 @@ private:
   std::string source_key_;
 };
 
-class JsonPathReplaceStep final : public Step {
+class JsonPathReplaceStep final : public PostponableJsonStep {
 public:
   JsonPathReplaceStep(std::string_view expr, jsoncons::json replacement,
                       bool postponable = true)
-      : expr_(expr), replacement_(std::move(replacement)),
-        postponable_(postponable) {}
+      : PostponableJsonStep(postponable),
+        expr_(expr),
+        replacement_(std::move(replacement)) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
+  transform(const jsoncons::json &input) const override;
 
 private:
   std::string expr_;
   jsoncons::json replacement_;
-  bool postponable_;
 };
 
-class JsonFlattenStep final : public Step {
+class JsonFlattenStep final : public PostponableJsonStep {
 public:
-  explicit JsonFlattenStep(bool postponable = true)
-      : postponable_(postponable) {}
+  explicit JsonFlattenStep(bool postponable = true) noexcept
+      : PostponableJsonStep(postponable) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
-
-private:
-  bool postponable_;
+  transform(const jsoncons::json &input) const override;
 };
 
-class JsonUnflattenStep final : public Step {
+class JsonUnflattenStep final : public PostponableJsonStep {
 public:
-  explicit JsonUnflattenStep(bool postponable = true)
-      : postponable_(postponable) {}
+  explicit JsonUnflattenStep(bool postponable = true) noexcept
+      : PostponableJsonStep(postponable) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
-
-private:
-  bool postponable_;
+  transform(const jsoncons::json &input) const override;
 };
 
-class JsonPointerGetStep final : public Step {
+class JsonPointerGetStep final : public PostponableJsonStep {
 public:
   JsonPointerGetStep(std::string_view pointer, std::string_view target_key = "",
                      bool postponable = true)
-      : pointer_(pointer), target_key_(target_key), postponable_(postponable) {}
+      : PostponableJsonStep(postponable),
+        pointer_(pointer),
+        target_key_(target_key) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
+  transform(const jsoncons::json &input) const override;
 
 private:
   std::string pointer_;
   std::string target_key_;
-  bool postponable_;
 };
 
-class JsonPointerSetStep final : public Step {
+class JsonPointerSetStep final : public PostponableJsonStep {
 public:
   JsonPointerSetStep(std::string_view pointer, jsoncons::json value,
                      bool postponable = true)
-      : pointer_(pointer), value_(std::move(value)),
-        postponable_(postponable) {}
+      : PostponableJsonStep(postponable),
+        pointer_(pointer),
+        value_(std::move(value)) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
+  transform(const jsoncons::json &input) const override;
 
 private:
   std::string pointer_;
   jsoncons::json value_;
-  bool postponable_;
 };
 
-class JsonPointerRemoveStep final : public Step {
+class JsonPointerRemoveStep final : public PostponableJsonStep {
 public:
-  JsonPointerRemoveStep(std::string_view pointer, bool postponable = true)
-      : pointer_(pointer), postponable_(postponable) {}
+  explicit JsonPointerRemoveStep(std::string_view pointer,
+                                 bool postponable = true)
+      : PostponableJsonStep(postponable), pointer_(pointer) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
+  transform(const jsoncons::json &input) const override;
 
 private:
   std::string pointer_;
-  bool postponable_;
 };
 
-class JsonPatchStep final : public Step {
+class JsonPatchStep final : public PostponableJsonStep {
 public:
-  JsonPatchStep(jsoncons::json patch, bool postponable = true)
-      : patch_(std::move(patch)), postponable_(postponable) {}
+  explicit JsonPatchStep(jsoncons::json patch, bool postponable = true)
+      : PostponableJsonStep(postponable), patch_(std::move(patch)) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
+  transform(const jsoncons::json &input) const override;
 
 private:
   jsoncons::json patch_;
-  bool postponable_;
 };
 
-class MergePatchStep final : public Step {
+class MergePatchStep final : public PostponableJsonStep {
 public:
-  MergePatchStep(jsoncons::json patch, bool postponable = true)
-      : patch_(std::move(patch)), postponable_(postponable) {}
+  explicit MergePatchStep(jsoncons::json patch, bool postponable = true)
+      : PostponableJsonStep(postponable), patch_(std::move(patch)) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
+  transform(const jsoncons::json &input) const override;
 
 private:
   jsoncons::json patch_;
-  bool postponable_;
 };
 
-class JsonSchemaStep final : public Step {
+class JsonSchemaStep final : public PostponableJsonStep {
 public:
-  JsonSchemaStep(jsoncons::json schema, bool strict = true,
-                 std::string_view error_key = "_schema_errors",
-                 bool postponable = true)
-      : schema_(std::move(schema)), strict_(strict), error_key_(error_key),
-        postponable_(postponable) {}
+  explicit JsonSchemaStep(jsoncons::json schema, bool strict = true,
+                          std::string_view error_key = "_schema_errors",
+                          bool postponable = true)
+      : PostponableJsonStep(postponable),
+        schema_(std::move(schema)),
+        strict_(strict),
+        error_key_(error_key) {}
 
-  [[nodiscard]] bool is_postponable() const noexcept override {
-    return postponable_;
-  }
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
+protected:
   [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const override;
+  transform(const jsoncons::json &input) const override;
 
 private:
   jsoncons::json schema_;
   bool strict_;
   std::string error_key_;
-  bool postponable_;
 };
 
 } // namespace scraper
