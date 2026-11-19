@@ -248,7 +248,9 @@ get_method_registry() {
                 static_cast<size_t>(opt_int(args, 4, "nth_val", 0)));
        }},
       {"trim", [](ScraperBuilder &b, const DslArgList &) { b.Trim(); }},
+      {"strip", [](ScraperBuilder &b, const DslArgList &) { b.Trim(); }},
       {"squish", [](ScraperBuilder &b, const DslArgList &) { b.Squish(); }},
+      {"clean", [](ScraperBuilder &b, const DslArgList &) { b.Squish(); }},
       {"normalize_whitespace",
        [](ScraperBuilder &b, const DslArgList &) { b.Squish(); }},
       {"lower", [](ScraperBuilder &b, const DslArgList &) { b.Lower(); }},
@@ -314,9 +316,30 @@ get_method_registry() {
          }
          b.RegexReplace(as_str(pat), as_str(rep), flags);
        }},
+      {"sub",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &pat = require_arg(args, 0, "pattern", "sub");
+         const auto &rep = require_arg(args, 1, "replacement", "sub");
+         std::optional<std::string> flags;
+         if (const DslValue *fv = find_arg(args, 2, "flags");
+             fv && !fv->is_null()) {
+           flags = as_str(*fv);
+         }
+         b.RegexReplace(as_str(pat), as_str(rep), flags);
+       }},
       {"regex_filter",
        [](ScraperBuilder &b, const DslArgList &args) {
          const auto &pat = require_arg(args, 0, "pattern", "regex_filter");
+         std::optional<std::string> flags;
+         if (const DslValue *fv = find_arg(args, 2, "flags");
+             fv && !fv->is_null()) {
+           flags = as_str(*fv);
+         }
+         b.RegexFilter(as_str(pat), opt_bool(args, 1, "negate", false), flags);
+       }},
+      {"grep",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &pat = require_arg(args, 0, "pattern", "grep");
          std::optional<std::string> flags;
          if (const DslValue *fv = find_arg(args, 2, "flags");
              fv && !fv->is_null()) {
@@ -334,6 +357,16 @@ get_method_registry() {
          }
          b.RegexExtract(as_str(pat), opt_int(args, 1, "group_index", 0), flags);
        }},
+      {"extract",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &pat = require_arg(args, 0, "pattern", "extract");
+         std::optional<std::string> flags;
+         if (const DslValue *fv = find_arg(args, 2, "flags");
+             fv && !fv->is_null()) {
+           flags = as_str(*fv);
+         }
+         b.RegexExtract(as_str(pat), opt_int(args, 1, "group_index", 0), flags);
+       }},
       {"filter",
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Filter(as_str_list(require_arg(args, 0, "patterns", "filter")));
@@ -342,11 +375,19 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Set(as_str(require_arg(args, 0, "name", "set")));
        }},
+      {"as",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Set(as_str(require_arg(args, 0, "name", "as")));
+       }},
       {"count",
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Count(as_str(require_arg(args, 0, "dict_key", "count")));
        }},
       {"first",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.First(static_cast<size_t>(opt_int(args, 0, "count", 1)));
+       }},
+      {"limit",
        [](ScraperBuilder &b, const DslArgList &args) {
          b.First(static_cast<size_t>(opt_int(args, 0, "count", 1)));
        }},
@@ -368,6 +409,10 @@ get_method_registry() {
                  require_arg(args, 1, "end_index_inclusive", "slice"))));
        }},
       {"unique",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Unique(opt_bool(args, 0, "preserve_order", true));
+       }},
+      {"dedup",
        [](ScraperBuilder &b, const DslArgList &args) {
          b.Unique(opt_bool(args, 0, "preserve_order", true));
        }},
@@ -468,6 +513,12 @@ get_method_registry() {
                     opt_bool(args, 1, "postponable", true));
        }},
       {"json_parse",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonParse(opt_str(args, 0, "objname", ""),
+                     parse_json_opts(args, 1),
+                     opt_bool(args, 6, "strict", true));
+       }},
+      {"json",
        [](ScraperBuilder &b, const DslArgList &args) {
          b.JsonParse(opt_str(args, 0, "objname", ""),
                      parse_json_opts(args, 1),
@@ -739,10 +790,26 @@ Token Lexer::next_token() {
     }
     return {Token::Type::COLON, ":", tok_line, tok_col};
   }
-  if (c == '|' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '>') {
+  if (c == '|') {
+    advance();
+    if (peek() == '>') {
+      advance();
+      return {Token::Type::PIPE, "|>", tok_line, tok_col};
+    }
+    return {Token::Type::PIPE, "|", tok_line, tok_col};
+  }
+  if (c == '$') {
+    advance();
+    return {Token::Type::DOLLAR, "$", tok_line, tok_col};
+  }
+  if (c == '@') {
+    advance();
+    return {Token::Type::AT, "@", tok_line, tok_col};
+  }
+  if (c == '?' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '?') {
     advance();
     advance();
-    return {Token::Type::PIPE, "|>", tok_line, tok_col};
+    return {Token::Type::DOUBLE_QUESTION, "??", tok_line, tok_col};
   }
   if (c == '-' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '>') {
     advance();
@@ -1054,6 +1121,24 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       first_in_block = false;
       continue;
     }
+    if (current_.type == Token::Type::DOUBLE_QUESTION) {
+      advance_token();
+      DslValue def_val = parse_arg(depth + 1);
+      builder.Default(as_str(def_val));
+      first_in_block = false;
+      continue;
+    }
+    if (current_.type == Token::Type::IDENTIFIER && current_.value == "as") {
+      advance_token();
+      if (current_.type == Token::Type::LPAREN) {
+        apply_method(builder, "as", parse_arg_list(depth + 1));
+      } else {
+        DslValue key = parse_arg(depth + 1);
+        builder.Set(as_str(key));
+      }
+      first_in_block = false;
+      continue;
+    }
 
     bool has_sep = false;
     if (current_.type == Token::Type::DOT ||
@@ -1074,13 +1159,61 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       expect(Token::Type::RPAREN, "Expected ')' after group");
       continue;
     }
+    if (current_.type == Token::Type::DOLLAR) {
+      advance_token();
+      if (current_.type == Token::Type::LPAREN) {
+        apply_method(builder, "select", parse_arg_list(depth + 1));
+      } else {
+        DslValue sel = parse_arg(depth + 1);
+        builder.Select(as_str(sel));
+      }
+      if (current_.type == Token::Type::LBRACE) {
+        advance_token();
+        parse_chain(builder, depth + 1, true);
+        expect(Token::Type::RBRACE, "Expected '}' after select block");
+      }
+      continue;
+    }
+    if (current_.type == Token::Type::AT) {
+      advance_token();
+      if (current_.type == Token::Type::LPAREN) {
+        apply_method(builder, "attr", parse_arg_list(depth + 1));
+      } else {
+        DslValue attr_name = parse_arg(depth + 1);
+        builder.Attr(as_str(attr_name));
+      }
+      continue;
+    }
+    if (current_.type == Token::Type::LBRACKET) {
+      advance_token();
+      const int idx = as_int(parse_arg(depth + 1));
+      expect(Token::Type::RBRACKET, "Expected ']' after index");
+      if (idx >= 0) {
+        builder.Nth(static_cast<size_t>(idx));
+      } else if (idx == -1) {
+        builder.Last(1);
+      } else {
+        throw std::runtime_error(
+            "Negative index other than -1 is not supported in DSL chain");
+      }
+      continue;
+    }
+    if (current_.type == Token::Type::DOUBLE_QUESTION) {
+      advance_token();
+      DslValue def_val = parse_arg(depth + 1);
+      builder.Default(as_str(def_val));
+      continue;
+    }
     if (current_.type != Token::Type::IDENTIFIER) {
       throw std::runtime_error("Expected method name in chain at line " +
                                std::to_string(current_.line));
     }
     const std::string method = current_.value;
     advance_token();
-    auto args = parse_arg_list(depth + 1);
+    DslArgList args;
+    if (current_.type == Token::Type::LPAREN) {
+      args = parse_arg_list(depth + 1);
+    }
     apply_method(builder, method, args);
 
     if (method == "select" && current_.type == Token::Type::LBRACE) {

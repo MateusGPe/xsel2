@@ -53,18 +53,27 @@ page = Scraper()
 - **Number enum**: `Number.All` (`All`, `all`), `Number.Last` (`Last`, `last`), `Number.Nth` (`Nth`, `nth`)
 
 ### Syntax Sugar
-- **Pipe chaining (`|>`)**: Use `|>` interchangeably with `.` to chain steps.
-- **Set shorthands (`->`, `>>`)**: `-> "key"` or `>> "key"` is shorthand for `.set("key")`.
-- **Group blocks (`select(...) { ... }`)**: Scope steps under a `select(selector)` using `{ ... }` (leading `.` or `|>` on the first step inside `{ ... }` is optional).
-- **Keyword arguments**: Pass named arguments to any step, e.g. `json_parse("cfg", allow_comments=true, allow_trailing_comma=true)`.
+- **Pipe chaining (`|`, `|>`)**: Use `|` or `|>` interchangeably with `.` to chain steps.
+- **Paren-free zero-arg steps**: Omit `()` on zero-argument steps (e.g., `text | clean | lower`).
+- **Selector shorthand (`$("...")` / `$ "..."`)**: Shorthand for `select("...")` (supports `{ ... }` blocks).
+- **Attribute shorthand (`@attr` / `@"attr"`)**: Shorthand for `attr("attr")`.
+- **Default shorthand (`?? "val"`)**: Shorthand for `default("val")`.
+- **Index shorthand (`[i]` / `[-1]`)**: `[i]` is shorthand for `nth(i)`; `[-1]` is shorthand for `last(1)`.
+- **Set shorthands (`->`, `>>`, `as`)**: `-> "key"`, `>> "key"`, or `as "key"` is shorthand for `.set("key")`.
+- **Group blocks (`select(...) { ... }` / `$(...) { ... }`)**: Scope steps under a selector using `{ ... }` (leading `.`, `|`, or `|>` on the first step inside `{ ... }` is optional).
+- **Keyword arguments**: Pass named arguments to any step, e.g. `json("cfg", allow_comments=true, allow_trailing_comma=true)`.
+- **Plain-English aliases**: `strip` (`trim`), `clean` (`squish`), `grep` (`regex_filter`), `extract` (`regex_extract`), `sub` (`regex_replace`), `limit` (`first`), `dedup` (`unique`), `json` (`json_parse`).
 
 ```text
 let tag_sel = ".tag"
 
 product: Scraper()
-  |> select("h1") { text() |> trim() -> "title" }
-  |> select("body") { find_all("${tag_sel}", Value.Text) |> trim() >> "tags" }
-  |> merge_patch({"source": "web"})
+  | $("h1")       { text | clean as "title" }
+  | $("a.docs")   { @href | prepend("https://example.com") -> "manual_url" }
+  | $(".price")   { text | extract("([0-9]+\\.[0-9]+)", 1) ?? "0.00" -> "price" }
+  | $("body")     { find_all("${tag_sel}", Value.Text) | strip | dedup | limit(5) >> "tags" }
+  | $("li.spec")  { text | [0] -> "primary_spec" }
+  | merge_patch({"source": "web"})
 ```
 
 ---
