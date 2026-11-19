@@ -188,7 +188,205 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("jsonpath", &ScraperPy::JsonPath, py::arg("expr"),
            py::arg("postponable") = true,
-           py::return_value_policy::reference_internal);
+           py::return_value_policy::reference_internal)
+      .def(
+          "json_parse",
+          [](ScraperPy &self, const std::string &objname, bool allow_comments,
+             bool allow_trailing_comma, bool allow_inf_and_nan,
+             bool lossless_number, int max_nesting_depth,
+             bool strict) -> ScraperPy & {
+            xsel::query::JsonParseOptions opts;
+            opts.allow_comments = allow_comments;
+            opts.allow_trailing_comma = allow_trailing_comma;
+            opts.allow_inf_and_nan = allow_inf_and_nan;
+            opts.lossless_number = lossless_number;
+            opts.max_nesting_depth = max_nesting_depth;
+            return self.JsonParse(objname, opts, strict);
+          },
+          py::arg("objname") = "", py::arg("allow_comments") = false,
+          py::arg("allow_trailing_comma") = false,
+          py::arg("allow_inf_and_nan") = false,
+          py::arg("lossless_number") = false,
+          py::arg("max_nesting_depth") = 1024, py::arg("strict") = true,
+          py::return_value_policy::reference_internal)
+      .def("json_dump", &ScraperPy::JsonDump, py::arg("pretty") = false,
+           py::arg("indent") = 2, py::arg("source_key") = "",
+           py::return_value_policy::reference_internal)
+      .def(
+          "csv_parse",
+          [](ScraperPy &self, const std::string &objname, bool assume_header,
+             const std::string &delimiter, bool trim,
+             bool strict) -> ScraperPy & {
+            xsel::query::CsvOptions opts;
+            opts.assume_header = assume_header;
+            opts.delimiter = delimiter.empty() ? ',' : delimiter[0];
+            opts.trim = trim;
+            return self.CsvParse(objname, opts, strict);
+          },
+          py::arg("objname") = "", py::arg("assume_header") = true,
+          py::arg("delimiter") = ",", py::arg("trim") = true,
+          py::arg("strict") = true,
+          py::return_value_policy::reference_internal)
+      .def(
+          "csv_dump",
+          [](ScraperPy &self, bool assume_header, const std::string &delimiter,
+             bool trim, const std::string &source_key) -> ScraperPy & {
+            xsel::query::CsvOptions opts;
+            opts.assume_header = assume_header;
+            opts.delimiter = delimiter.empty() ? ',' : delimiter[0];
+            opts.trim = trim;
+            return self.CsvDump(opts, source_key);
+          },
+          py::arg("assume_header") = true, py::arg("delimiter") = ",",
+          py::arg("trim") = true, py::arg("source_key") = "",
+          py::return_value_policy::reference_internal)
+      .def(
+          "jsonpath_replace",
+          [](ScraperPy &self, const std::string &expr, py::object replacement,
+             bool postponable) -> ScraperPy & {
+            return self.JsonPathReplace(
+                expr, xsel::python::python_to_json(replacement), postponable);
+          },
+          py::arg("expr"), py::arg("replacement"), py::arg("postponable") = true,
+          py::return_value_policy::reference_internal)
+      .def("json_flatten", &ScraperPy::JsonFlatten,
+           py::arg("postponable") = true,
+           py::return_value_policy::reference_internal)
+      .def("json_unflatten", &ScraperPy::JsonUnflatten,
+           py::arg("postponable") = true,
+           py::return_value_policy::reference_internal)
+      .def("jsonpointer_get", &ScraperPy::JsonPointerGet, py::arg("pointer"),
+           py::arg("target_key") = "", py::arg("postponable") = true,
+           py::return_value_policy::reference_internal)
+      .def(
+          "jsonpointer_set",
+          [](ScraperPy &self, const std::string &pointer, py::object value,
+             bool postponable) -> ScraperPy & {
+            return self.JsonPointerSet(
+                pointer, xsel::python::python_to_json(value), postponable);
+          },
+          py::arg("pointer"), py::arg("value"), py::arg("postponable") = true,
+          py::return_value_policy::reference_internal)
+      .def("jsonpointer_remove", &ScraperPy::JsonPointerRemove,
+           py::arg("pointer"), py::arg("postponable") = true,
+           py::return_value_policy::reference_internal)
+      .def(
+          "json_patch",
+          [](ScraperPy &self, py::object patch,
+             bool postponable) -> ScraperPy & {
+            return self.JsonPatch(xsel::python::python_to_json(patch),
+                                  postponable);
+          },
+          py::arg("patch"), py::arg("postponable") = true,
+          py::return_value_policy::reference_internal)
+      .def(
+          "merge_patch",
+          [](ScraperPy &self, py::object patch,
+             bool postponable) -> ScraperPy & {
+            return self.MergePatch(xsel::python::python_to_json(patch),
+                                   postponable);
+          },
+          py::arg("patch"), py::arg("postponable") = true,
+          py::return_value_policy::reference_internal)
+      .def(
+          "json_schema",
+          [](ScraperPy &self, py::object schema, bool strict,
+             const std::string &error_key, bool postponable) -> ScraperPy & {
+            return self.JsonSchema(xsel::python::python_to_json(schema), strict,
+                                   error_key, postponable);
+          },
+          py::arg("schema"), py::arg("strict") = true,
+          py::arg("error_key") = "_schema_errors",
+          py::arg("postponable") = true,
+          py::return_value_policy::reference_internal)
+      .def(
+          "from_cbor",
+          [](ScraperPy &self, const std::string &objname,
+             const std::string &encoding, bool strict) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.FromCbor(objname, enc, strict);
+          },
+          py::arg("objname") = "", py::arg("encoding") = "hex",
+          py::arg("strict") = true, py::return_value_policy::reference_internal)
+      .def(
+          "to_cbor",
+          [](ScraperPy &self, const std::string &encoding,
+             const std::string &source_key) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.ToCbor(enc, source_key);
+          },
+          py::arg("encoding") = "hex", py::arg("source_key") = "",
+          py::return_value_policy::reference_internal)
+      .def(
+          "from_msgpack",
+          [](ScraperPy &self, const std::string &objname,
+             const std::string &encoding, bool strict) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.FromMsgPack(objname, enc, strict);
+          },
+          py::arg("objname") = "", py::arg("encoding") = "hex",
+          py::arg("strict") = true, py::return_value_policy::reference_internal)
+      .def(
+          "to_msgpack",
+          [](ScraperPy &self, const std::string &encoding,
+             const std::string &source_key) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.ToMsgPack(enc, source_key);
+          },
+          py::arg("encoding") = "hex", py::arg("source_key") = "",
+          py::return_value_policy::reference_internal)
+      .def(
+          "from_bson",
+          [](ScraperPy &self, const std::string &objname,
+             const std::string &encoding, bool strict) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.FromBson(objname, enc, strict);
+          },
+          py::arg("objname") = "", py::arg("encoding") = "hex",
+          py::arg("strict") = true, py::return_value_policy::reference_internal)
+      .def(
+          "to_bson",
+          [](ScraperPy &self, const std::string &encoding,
+             const std::string &source_key) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.ToBson(enc, source_key);
+          },
+          py::arg("encoding") = "hex", py::arg("source_key") = "",
+          py::return_value_policy::reference_internal)
+      .def(
+          "from_ubjson",
+          [](ScraperPy &self, const std::string &objname,
+             const std::string &encoding, bool strict) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.FromUbjson(objname, enc, strict);
+          },
+          py::arg("objname") = "", py::arg("encoding") = "hex",
+          py::arg("strict") = true, py::return_value_policy::reference_internal)
+      .def(
+          "to_ubjson",
+          [](ScraperPy &self, const std::string &encoding,
+             const std::string &source_key) -> ScraperPy & {
+            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
+                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
+                                            : xsel::query::BinaryEncoding::Hex;
+            return self.ToUbjson(enc, source_key);
+          },
+          py::arg("encoding") = "hex", py::arg("source_key") = "",
+          py::return_value_policy::reference_internal);
 
   m.def("jmespath_eval", [](py::object data, const std::string &expr) {
     const jsoncons::json doc = xsel::python::python_to_json(data);
@@ -200,6 +398,42 @@ PYBIND11_MODULE(_scraperpy, m) {
     const jsoncons::json doc = xsel::python::python_to_json(data);
     return xsel::python::json_to_python(
         xsel::query::evaluate_jsonpath(doc, expr));
+  });
+
+  m.def("json_patch_apply", [](py::object data, py::object patch) {
+    const jsoncons::json doc = xsel::python::python_to_json(data);
+    const jsoncons::json p = xsel::python::python_to_json(patch);
+    return xsel::python::json_to_python(xsel::query::apply_json_patch(doc, p));
+  });
+
+  m.def("merge_patch_apply", [](py::object data, py::object patch) {
+    const jsoncons::json doc = xsel::python::python_to_json(data);
+    const jsoncons::json p = xsel::python::python_to_json(patch);
+    return xsel::python::json_to_python(xsel::query::apply_merge_patch(doc, p));
+  });
+
+  m.def("json_schema_validate", [](py::object data, py::object schema) {
+    const jsoncons::json doc = xsel::python::python_to_json(data);
+    const jsoncons::json s = xsel::python::python_to_json(schema);
+    std::vector<std::string> errors;
+    const bool ok = xsel::query::validate_json_schema(doc, s, &errors);
+    return py::make_tuple(ok, errors);
+  });
+
+  m.def("jsonpointer_get", [](py::object data, const std::string &pointer) {
+    const jsoncons::json doc = xsel::python::python_to_json(data);
+    return xsel::python::json_to_python(
+        xsel::query::jsonpointer_get(doc, pointer));
+  });
+
+  m.def("json_flatten", [](py::object data) {
+    const jsoncons::json doc = xsel::python::python_to_json(data);
+    return xsel::python::json_to_python(xsel::query::json_flatten(doc));
+  });
+
+  m.def("json_unflatten", [](py::object data) {
+    const jsoncons::json doc = xsel::python::python_to_json(data);
+    return xsel::python::json_to_python(xsel::query::json_unflatten(doc));
   });
 
   m.def("parse_dsl_string", [](const std::string &dsl_content) {

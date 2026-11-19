@@ -4,6 +4,7 @@
 #include "scraper/steps/block_steps.hpp"
 #include "scraper/steps/dict_steps.hpp"
 #include "scraper/steps/dom_steps.hpp"
+#include "scraper/steps/json_steps.hpp"
 #include "scraper/steps/regex_steps.hpp"
 #include "scraper/steps/text_steps.hpp"
 #include <absl/container/flat_hash_map.h>
@@ -309,6 +310,156 @@ public:
   Derived &JsonPath(std::string_view expr, bool postponable = true) {
     add_step(std::make_shared<JsonQueryStep>(
         xsel::query::QueryDialect::JsonPath, expr, postponable));
+    return self();
+  }
+
+  Derived &JsonParse(std::string_view objname = "",
+                     xsel::query::JsonParseOptions opts = {},
+                     bool strict = true, InsertOptions insert_opts = {}) {
+    add_step(std::make_shared<JsonParseStep>(objname, opts, strict, insert_opts));
+    return self();
+  }
+
+  Derived &JsonDump(bool pretty = false, int indent = 2,
+                    std::string_view source_key = "") {
+    add_step(std::make_shared<JsonDumpStep>(pretty, indent, source_key));
+    return self();
+  }
+
+  Derived &CsvParse(std::string_view objname = "",
+                    xsel::query::CsvOptions opts = {}, bool strict = true,
+                    InsertOptions insert_opts = {}) {
+    add_step(std::make_shared<CsvParseStep>(objname, opts, strict, insert_opts));
+    return self();
+  }
+
+  Derived &CsvDump(xsel::query::CsvOptions opts = {},
+                   std::string_view source_key = "") {
+    add_step(std::make_shared<CsvDumpStep>(opts, source_key));
+    return self();
+  }
+
+  Derived &FromCbor(
+      std::string_view objname = "",
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      bool strict = true, InsertOptions insert_opts = {}) {
+    add_step(std::make_shared<BinaryDecodeStep>(
+        xsel::query::BinaryFormat::Cbor, objname, enc, strict, insert_opts));
+    return self();
+  }
+
+  Derived &ToCbor(
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      std::string_view source_key = "") {
+    add_step(std::make_shared<BinaryEncodeStep>(
+        xsel::query::BinaryFormat::Cbor, enc, source_key));
+    return self();
+  }
+
+  Derived &FromMsgPack(
+      std::string_view objname = "",
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      bool strict = true, InsertOptions insert_opts = {}) {
+    add_step(std::make_shared<BinaryDecodeStep>(
+        xsel::query::BinaryFormat::MsgPack, objname, enc, strict, insert_opts));
+    return self();
+  }
+
+  Derived &ToMsgPack(
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      std::string_view source_key = "") {
+    add_step(std::make_shared<BinaryEncodeStep>(
+        xsel::query::BinaryFormat::MsgPack, enc, source_key));
+    return self();
+  }
+
+  Derived &FromBson(
+      std::string_view objname = "",
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      bool strict = true, InsertOptions insert_opts = {}) {
+    add_step(std::make_shared<BinaryDecodeStep>(
+        xsel::query::BinaryFormat::Bson, objname, enc, strict, insert_opts));
+    return self();
+  }
+
+  Derived &ToBson(
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      std::string_view source_key = "") {
+    add_step(std::make_shared<BinaryEncodeStep>(
+        xsel::query::BinaryFormat::Bson, enc, source_key));
+    return self();
+  }
+
+  Derived &FromUbjson(
+      std::string_view objname = "",
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      bool strict = true, InsertOptions insert_opts = {}) {
+    add_step(std::make_shared<BinaryDecodeStep>(
+        xsel::query::BinaryFormat::Ubjson, objname, enc, strict, insert_opts));
+    return self();
+  }
+
+  Derived &ToUbjson(
+      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
+      std::string_view source_key = "") {
+    add_step(std::make_shared<BinaryEncodeStep>(
+        xsel::query::BinaryFormat::Ubjson, enc, source_key));
+    return self();
+  }
+
+  Derived &JsonPathReplace(std::string_view expr, jsoncons::json replacement,
+                           bool postponable = true) {
+    add_step(std::make_shared<JsonPathReplaceStep>(expr, std::move(replacement),
+                                                   postponable));
+    return self();
+  }
+
+  Derived &JsonFlatten(bool postponable = true) {
+    add_step(std::make_shared<JsonFlattenStep>(postponable));
+    return self();
+  }
+
+  Derived &JsonUnflatten(bool postponable = true) {
+    add_step(std::make_shared<JsonUnflattenStep>(postponable));
+    return self();
+  }
+
+  Derived &JsonPointerGet(std::string_view pointer,
+                          std::string_view target_key = "",
+                          bool postponable = true) {
+    add_step(std::make_shared<JsonPointerGetStep>(pointer, target_key,
+                                                  postponable));
+    return self();
+  }
+
+  Derived &JsonPointerSet(std::string_view pointer, jsoncons::json value,
+                          bool postponable = true) {
+    add_step(std::make_shared<JsonPointerSetStep>(pointer, std::move(value),
+                                                  postponable));
+    return self();
+  }
+
+  Derived &JsonPointerRemove(std::string_view pointer,
+                             bool postponable = true) {
+    add_step(std::make_shared<JsonPointerRemoveStep>(pointer, postponable));
+    return self();
+  }
+
+  Derived &JsonPatch(jsoncons::json patch, bool postponable = true) {
+    add_step(std::make_shared<JsonPatchStep>(std::move(patch), postponable));
+    return self();
+  }
+
+  Derived &MergePatch(jsoncons::json patch, bool postponable = true) {
+    add_step(std::make_shared<MergePatchStep>(std::move(patch), postponable));
+    return self();
+  }
+
+  Derived &JsonSchema(jsoncons::json schema, bool strict = true,
+                      std::string_view error_key = "_schema_errors",
+                      bool postponable = true) {
+    add_step(std::make_shared<JsonSchemaStep>(std::move(schema), strict,
+                                              error_key, postponable));
     return self();
   }
 

@@ -7,8 +7,14 @@ from _scraperpy import (
     Value,
     __version__,
     jmespath_eval,
+    json_flatten,
+    json_patch_apply,
+    json_schema_validate,
+    json_unflatten,
     jsonpath_query,
+    jsonpointer_get,
     load_scrapers,
+    merge_patch_apply,
     parse_dsl_string,
 )
 
@@ -21,7 +27,13 @@ __all__ = [
     "Value",
     "__version__",
     "jmespath_eval",
+    "json_flatten",
+    "json_patch_apply",
+    "json_schema_validate",
+    "json_unflatten",
     "jsonpath_query",
+    "jsonpointer_get",
     "load_scrapers",
+    "merge_patch_apply",
     "parse_dsl_string",
 ]

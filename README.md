@@ -1,69 +1,62 @@
 # xsel2
 
-High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine written in C++20, with CLI tools (`xmlsel-cli`, `xmlsel-pipe`) and Python bindings (`scraperpy`).
+High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine written in C++20, with CLI tools (`xmlsel-cli`, `xmlsel-pipe`), Python bindings (`scraperpy`), and a fluent `.dsl` pipeline language.
 
 ## Features
 
 - **HTML/XML Scraping & DSL**: CSS selector extraction (`lxml2-query`) with fluent C++/Python pipelines and a `.dsl` parser (`parse_dsl_string`, `load_scrapers`).
-- **JS/JSON Digger**: Extracts and parses embedded JavaScript/JSON objects, comments, string concatenations, and typed scalars.
-- **Multi-Pattern Search**: Fast Aho-Corasick matcher (`AhoCorasick`) for scanning text against multiple patterns.
+- **JS/JSON Digger**: Heuristically extracts and parses embedded JavaScript/JSON objects, comments, string concatenations, and typed scalars without executing JS.
+- **Multi-Pattern Search**: Compressed-DFA Aho-Corasick matcher (`AhoCorasick`) for scanning text against many literal patterns in a single pass.
 - **JSON Queries**: JMESPath and JSONPath evaluation (`jmespath_eval`, `jsonpath_query`) powered by `jsoncons`.
 - **Regex & Text Steps**: RE2-backed regex filtering/replacement/extraction, string normalization, block parsing, and dictionary transformations.
 
-## Requirements
+## Documentation
 
-- C++20 compiler (GCC or Clang)
-- CMake >= 3.24
-- `libxml2` development headers (used by `lxml2-query`)
-- Python 3 development headers (for `_scraperpy` / `scraperpy`)
-- Internet access on first configure (dependencies are fetched via [CPM.cmake](cmake/CPM.cmake): `jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `Catch2`)
+| Guide | Description |
+| --- | --- |
+| [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, building, testing, and 5-minute walkthrough |
+| [CLI Reference](docs/cli.md) | `xmlsel-cli` (`scraper`, `ahocorasick`, `jmespath`, `jsonpath`) and `xmlsel-pipe` |
+| [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `InsertMode`, `AhoCorasick`, `.dsl` loading, and JSON queries |
+| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` syntax, execution model, and all pipeline steps |
+| [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
+| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), and [`scrape_example.py`](examples/scrape_example.py) |
 
-## Building & Testing
+## Quick Build & Test
 
-Using `CMakePresets.json`:
+Requires a C++20 compiler (GCC or Clang), CMake >= 3.24, `libxml2` dev headers, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `Catch2`) are fetched automatically via [CPM.cmake](cmake/CPM.cmake).
 
 ```bash
 cmake --preset debug
-cmake --build build
+cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-For an optimized Release build:
+Use `--preset release` (`build-release/`) for an optimized `-O3` build. See [Quickstart](docs/quickstart.md) for install and `asan-ubsan` details.
+
+## Quick Examples
+
+### CLI (`xmlsel-cli` & `xmlsel-pipe`)
 
 ```bash
-cmake --preset release
-cmake --build build-release
-ctest --test-dir build-release --output-on-failure
+# Quick CSS selector extraction
+./build/xmlsel-cli scraper --selector "h1.product-title" --html examples/sample.html
+
+# Run a .dsl scraper
+./build/xmlsel-cli scraper --dsl examples/product.dsl --name summary --html examples/sample.html
+
+# Stream HTML through stdin with xmlsel-pipe
+cat examples/sample.html | ./build/xmlsel-pipe -d examples/product.dsl -n summary -c
+
+# Multi-pattern search & JSON queries
+./build/xmlsel-cli ahocorasick --patterns "Mechanical,USB-C,Bluetooth" --text examples/sample.html
+./build/xmlsel-cli jmespath --expr "items[*].name" --json '{"items":[{"name":"A"},{"name":"B"}]}' --compact
 ```
 
-## CLI Usage
-
-### `xmlsel-cli`
+### Python (`scraperpy`)
 
 ```bash
-# Run a DSL scraper or CSS selector on an HTML file (or '-' for stdin)
-xmlsel-cli scraper --dsl scrapers.dsl --name my_scraper --html page.html
-xmlsel-cli scraper --selector "div.title" --html page.html --compact
-
-# Multi-pattern search with Aho-Corasick
-xmlsel-cli ahocorasick --patterns "foo,bar,baz" --text input.txt
-
-# Evaluate JMESPath or JSONPath
-xmlsel-cli jmespath --expr "items[*].name" --json data.json
-xmlsel-cli jsonpath --expr "$.items[*].name" --json data.json --compact
+PYTHONPATH=build:. python3 examples/scrape_example.py
 ```
-
-### `xmlsel-pipe`
-
-Reads HTML from `stdin` and writes extracted JSON to `stdout`:
-
-```bash
-cat page.html | xmlsel-pipe -d scrapers.dsl -n my_scraper -c
-```
-
-## Python Bindings (`scraperpy`)
-
-The build produces the `_scraperpy` extension module. Type stubs are available in `scraperpy-stubs/_scraperpy.pyi`.
 
 ```python
 import scraperpy
@@ -72,6 +65,8 @@ s = scraperpy.ScraperPy()
 s.push("h1").text().trim().set("title")
 result = s.from_string("<html><body><h1>  Hello  </h1></body></html>")
 ```
+
+Type stubs are provided in [`scraperpy-stubs/_scraperpy.pyi`](scraperpy-stubs/_scraperpy.pyi).
 
 ## Project Structure
 
@@ -82,4 +77,5 @@ result = s.from_string("<html><body><h1>  Hello  </h1></body></html>")
 - `src/cli/` — `xmlsel-cli` and `xmlsel-pipe` executables
 - `src/python/` — `pybind11` bindings (`_scraperpy`)
 - `scraperpy/` & `scraperpy-stubs/` — Python wrapper and `.pyi` type stubs
+- `docs/` & `examples/` — User guides, API references, and runnable examples
 - `tests/` — Catch2 unit test suite

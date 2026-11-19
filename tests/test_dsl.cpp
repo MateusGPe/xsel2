@@ -57,3 +57,69 @@ TEST_CASE("DslParser reports syntax, method, and file errors", "[dsl]") {
   CHECK_THROWS_AS(parser.parse_file("/nonexistent/path/to/scrapers.dsl"),
                   std::runtime_error);
 }
+
+
+TEST_CASE("DslParser supports syntax sugar: pipes, arrows, blocks, kwargs, objects, and interpolation",
+          "[dsl][sugar]") {
+  const std::string dsl = R"(
+    let role = "admin"
+    let tag_sel = ".tag"
+
+    # Colon declaration + push block + pipe + arrow + interpolation + kwargs + object literal
+    user: Scraper()
+      |> push("h1") {
+           text() |> trim() -> "title"
+         }
+      |> push("body") {
+           query_all("${tag_sel}", Value.Text) |> trim() >> "tags"
+         }
+      |> push("script#cfg") {
+           text()
+           |> json_parse("cfg", allow_comments=true, allow_trailing_comma=true)
+           |> jsonpointer_set("/cfg/role", "${role}", postponable=false)
+           |> jsonpointer_set("/cfg/weight", 1.5, postponable=false)
+           |> jsonpointer_set("/cfg/removed", null, postponable=false)
+         }
+      |> merge_patch({"meta": {source: "dsl", escaped: "\${role}"}})
+      |> rename_keys({"title": "heading"})
+      |> json_schema({
+           type: "object",
+           required: ["heading", "cfg", "meta"]
+         })
+  )";
+
+  const std::string html = R"(
+    <html><body>
+      <h1>  Hello World  </h1>
+      <span class="tag">c++</span>
+      <span class="tag">json</span>
+      <script id="cfg">{ /* c */ "active": true, }</script>
+    </body></html>
+  )";
+
+  scraper::dsl::DslParser parser;
+  auto scrapers = parser.parse(dsl);
+  REQUIRE(scrapers.contains("user"));
+
+  const auto out = scrapers.at("user").scrape_from_string(html);
+  CHECK(out["heading"].as<std::string>() == "Hello World");
+  REQUIRE(out["tags"].is_array());
+  CHECK(out["tags"].size() == 2);
+  CHECK(out["cfg"]["active"].as<bool>() == true);
+  CHECK(out["cfg"]["role"].as<std::string>() == "admin");
+  CHECK(out["cfg"]["weight"].as<double>() == 1.5);
+  CHECK(out["cfg"]["removed"].is_null());
+  CHECK(out["meta"]["source"].as<std::string>() == "dsl");
+  CHECK(out["meta"]["escaped"].as<std::string>() == "${role}");
+}
+
+TEST_CASE("DslParser rejects invalid kwargs and undefined interpolation variables",
+          "[dsl][sugar]") {
+  scraper::dsl::DslParser parser;
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper().push("h1", key="a", "b");)"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper().push("h1", key="a", key="b");)"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper().push("${missing_var}");)"),
+                  std::runtime_error);
+}

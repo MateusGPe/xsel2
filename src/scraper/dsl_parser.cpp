@@ -36,6 +36,17 @@ QueryStep::Number parse_number_type(const std::string &s) {
   throw std::runtime_error("Unknown Number enum in DSL: " + s);
 }
 
+xsel::query::BinaryEncoding parse_binary_encoding(const std::string &s) {
+  if (s == "hex" || s == "Hex")
+    return xsel::query::BinaryEncoding::Hex;
+  if (s == "base64" || s == "Base64")
+    return xsel::query::BinaryEncoding::Base64;
+  if (s == "raw" || s == "Raw")
+    return xsel::query::BinaryEncoding::Raw;
+  throw std::runtime_error("Unknown binary encoding in DSL: " + s +
+                           " (expected 'hex', 'base64', or 'raw')");
+}
+
 std::string as_str(const DslValue &v) {
   if (v.is_string())
     return v.get_string();
@@ -43,8 +54,15 @@ std::string as_str(const DslValue &v) {
     return v.get_identifier();
   if (v.is_int())
     return std::to_string(v.get_int());
+  if (v.is_double()) {
+    std::ostringstream oss;
+    oss << v.get_double();
+    return oss.str();
+  }
   if (v.is_bool())
     return v.get_bool() ? "true" : "false";
+  if (v.is_null())
+    return "null";
   throw std::runtime_error("Expected scalar string/identifier in DSL");
 }
 
@@ -61,6 +79,8 @@ bool as_bool(const DslValue &v) {
 int as_int(const DslValue &v) {
   if (v.is_int())
     return v.get_int();
+  if (v.is_double())
+    return static_cast<int>(v.get_double());
   if (v.is_string())
     return std::stoi(v.get_string());
   throw std::runtime_error("Expected integer in DSL");
@@ -77,273 +97,499 @@ std::vector<std::string> as_str_list(const DslValue &v) {
   return out;
 }
 
+jsoncons::json dsl_value_to_json(const DslValue &v, int depth = 0) {
+  if (depth > MAX_DSL_DEPTH) {
+    throw std::runtime_error("Maximum DSL nesting depth exceeded");
+  }
+  if (v.is_null())
+    return jsoncons::json::null();
+  if (v.is_string())
+    return jsoncons::json(v.get_string());
+  if (v.is_int())
+    return jsoncons::json(v.get_int());
+  if (v.is_double())
+    return jsoncons::json(v.get_double());
+  if (v.is_bool())
+    return jsoncons::json(v.get_bool());
+  if (v.is_identifier())
+    return jsoncons::json(v.get_identifier());
+  if (v.is_list()) {
+    jsoncons::json arr = jsoncons::json::array();
+    for (const auto &el : v.get_list()) {
+      arr.push_back(dsl_value_to_json(el, depth + 1));
+    }
+    return arr;
+  }
+  if (v.is_object()) {
+    jsoncons::json obj = jsoncons::json::object();
+    for (const auto &[k, val] : v.get_object()) {
+      obj.insert_or_assign(k, dsl_value_to_json(val, depth + 1));
+    }
+    return obj;
+  }
+  return jsoncons::json::null();
+}
+
+jsoncons::json as_json_document(const DslValue &v) {
+  if (v.is_string()) {
+    return xsel::query::parse_json(v.get_string());
+  }
+  return dsl_value_to_json(v);
+}
+
+const DslValue *find_arg(const DslArgList &args, size_t idx,
+                         std::string_view name) {
+  if (!name.empty()) {
+    auto it = args.named.find(name);
+    if (it != args.named.end()) {
+      return &it->second;
+    }
+  }
+  if (idx < args.positional.size()) {
+    return &args.positional[idx];
+  }
+  return nullptr;
+}
+
+const DslValue &require_arg(const DslArgList &args, size_t idx,
+                            std::string_view name, std::string_view method) {
+  const DslValue *v = find_arg(args, idx, name);
+  if (!v) {
+    throw std::runtime_error(std::string(method) + "() missing required argument '" +
+                             std::string(name) + "'");
+  }
+  return *v;
+}
+
+std::string opt_str(const DslArgList &args, size_t idx, std::string_view name,
+                    std::string def = "") {
+  if (const DslValue *v = find_arg(args, idx, name)) {
+    return as_str(*v);
+  }
+  return def;
+}
+
+bool opt_bool(const DslArgList &args, size_t idx, std::string_view name,
+              bool def = false) {
+  if (const DslValue *v = find_arg(args, idx, name)) {
+    return as_bool(*v);
+  }
+  return def;
+}
+
+int opt_int(const DslArgList &args, size_t idx, std::string_view name,
+            int def = 0) {
+  if (const DslValue *v = find_arg(args, idx, name)) {
+    return as_int(*v);
+  }
+  return def;
+}
+
+xsel::query::JsonParseOptions parse_json_opts(const DslArgList &args,
+                                              size_t start_idx) {
+  xsel::query::JsonParseOptions opts;
+  opts.allow_comments = opt_bool(args, start_idx, "allow_comments", false);
+  opts.allow_trailing_comma =
+      opt_bool(args, start_idx + 1, "allow_trailing_comma", false);
+  opts.allow_inf_and_nan =
+      opt_bool(args, start_idx + 2, "allow_inf_and_nan", false);
+  opts.lossless_number =
+      opt_bool(args, start_idx + 3, "lossless_number", false);
+  opts.max_nesting_depth =
+      opt_int(args, start_idx + 4, "max_nesting_depth", 1024);
+  return opts;
+}
+
+xsel::query::CsvOptions parse_csv_opts(const DslArgList &args,
+                                       size_t start_idx) {
+  xsel::query::CsvOptions opts;
+  opts.assume_header = opt_bool(args, start_idx, "assume_header", true);
+  const std::string delim = opt_str(args, start_idx + 1, "delimiter", ",");
+  opts.delimiter = delim.empty() ? ',' : delim[0];
+  opts.trim = opt_bool(args, start_idx + 2, "trim", true);
+  return opts;
+}
+
 using MethodHandler =
-    std::function<void(ScraperBuilder &, const std::vector<DslValue> &)>;
+    std::function<void(ScraperBuilder &, const DslArgList &)>;
 
 const absl::flat_hash_map<std::string_view, MethodHandler> &
 get_method_registry() {
   static const absl::flat_hash_map<std::string_view, MethodHandler> registry = {
       {"push",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("push() requires at least 1 argument");
-         b.Group(as_str(args[0]), args.size() > 1 ? as_str(args[1]) : "");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &sel = require_arg(args, 0, "selector", "push");
+         b.Group(as_str(sel), opt_str(args, 1, "key", ""));
        }},
       {"text",
-       [](ScraperBuilder &b, const auto &args) {
-         b.Text(args.empty() ? false : as_bool(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Text(opt_bool(args, 0, "own_text", false));
        }},
       {"attr",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("attr() requires 1 argument");
-         b.Attr(as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Attr(as_str(require_arg(args, 0, "attr_name", "attr")));
        }},
       {"query_all",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.size() < 2)
-           throw std::runtime_error("query_all() requires 2+ arguments");
-         b.QueryAll(as_str(args[0]), parse_value_type(as_str(args[1])),
-                    args.size() > 2 ? as_str(args[2]) : "");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &sel = require_arg(args, 0, "selector", "query_all");
+         const auto &type = require_arg(args, 1, "type", "query_all");
+         b.QueryAll(as_str(sel), parse_value_type(as_str(type)),
+                    opt_str(args, 2, "attr", ""));
        }},
       {"query",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.size() < 2)
-           throw std::runtime_error("query() requires 2+ arguments");
-         b.Query(as_str(args[0]), parse_value_type(as_str(args[1])),
-                 args.size() > 2 ? as_str(args[2]) : "",
-                 args.size() > 3 ? parse_number_type(as_str(args[3]))
-                                 : QueryStep::Number::All,
-                 args.size() > 4 ? static_cast<size_t>(as_int(args[4])) : 0);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &sel = require_arg(args, 0, "selector", "query");
+         const auto &type = require_arg(args, 1, "type", "query");
+         const auto *num = find_arg(args, 3, "number");
+         b.Query(as_str(sel), parse_value_type(as_str(type)),
+                 opt_str(args, 2, "attr", ""),
+                 num ? parse_number_type(as_str(*num))
+                     : QueryStep::Number::All,
+                 static_cast<size_t>(opt_int(args, 4, "nth_val", 0)));
        }},
-      {"trim", [](ScraperBuilder &b, const auto &) { b.Trim(); }},
-      {"strip", [](ScraperBuilder &b, const auto &) { b.Normspace(); }},
-      {"normspace", [](ScraperBuilder &b, const auto &) { b.Normspace(); }},
-      {"lower", [](ScraperBuilder &b, const auto &) { b.Lower(); }},
-      {"upper", [](ScraperBuilder &b, const auto &) { b.Upper(); }},
+      {"trim", [](ScraperBuilder &b, const DslArgList &) { b.Trim(); }},
+      {"strip", [](ScraperBuilder &b, const DslArgList &) { b.Normspace(); }},
+      {"normspace",
+       [](ScraperBuilder &b, const DslArgList &) { b.Normspace(); }},
+      {"lower", [](ScraperBuilder &b, const DslArgList &) { b.Lower(); }},
+      {"upper", [](ScraperBuilder &b, const DslArgList &) { b.Upper(); }},
       {"unescape",
-       [](ScraperBuilder &b, const auto &args) {
-         b.Unescape(args.empty() ? true : as_bool(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Unescape(opt_bool(args, 0, "url_decode", true));
        }},
       {"replace",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("replace() requires 1+ arguments");
-         b.Replace(as_str(args[0]), args.size() > 1 ? as_str(args[1]) : "");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Replace(as_str(require_arg(args, 0, "from", "replace")),
+                   opt_str(args, 1, "to", ""));
        }},
       {"substitute",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("substitute() requires 1+ arguments");
-         b.Substitute(as_str(args[0]), args.size() > 1 ? as_str(args[1]) : "");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Substitute(as_str(require_arg(args, 0, "from", "substitute")),
+                      opt_str(args, 1, "to", ""));
        }},
       {"split",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("split() requires 1+ arguments");
-         b.Split(as_str(args[0]), args.size() > 1 ? as_bool(args[1]) : false);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Split(as_str(require_arg(args, 0, "delimiter", "split")),
+                 opt_bool(args, 1, "keep_empty_parts", false));
        }},
       {"join",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("join() requires 1 argument");
-         b.Join(as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Join(as_str(require_arg(args, 0, "delimiter", "join")));
        }},
       {"prepend",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("prepend() requires 1 argument");
-         b.Prepend(as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Prepend(as_str(require_arg(args, 0, "prefix", "prepend")));
        }},
       {"append",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("append() requires 1 argument");
-         b.Append(as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Append(as_str(require_arg(args, 0, "suffix", "append")));
        }},
       {"remove_empty",
-       [](ScraperBuilder &b, const auto &args) {
-         b.RemoveEmpty(args.empty() ? true : as_bool(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.RemoveEmpty(opt_bool(args, 0, "also_trim", true));
        }},
       {"substring",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("substring() requires 1+ arguments");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const int start = as_int(require_arg(args, 0, "start_pos", "substring"));
          std::optional<int> len;
-         if (args.size() > 1)
-           len = as_int(args[1]);
-         b.Substring(as_int(args[0]), len);
+         if (const DslValue *lv = find_arg(args, 1, "length");
+             lv && !lv->is_null()) {
+           len = as_int(*lv);
+         }
+         b.Substring(start, len);
        }},
       {"strip_comments",
-       [](ScraperBuilder &b, const auto &args) {
-         b.StripComments(args.empty() ? true : as_bool(args[0]),
-                         args.size() > 1 ? as_bool(args[1]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.StripComments(opt_bool(args, 0, "multiline", true),
+                         opt_bool(args, 1, "single_line", true));
        }},
       {"regex_replace",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.size() < 2)
-           throw std::runtime_error("regex_replace() requires 2+ arguments");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &pat = require_arg(args, 0, "pattern", "regex_replace");
+         const auto &rep = require_arg(args, 1, "replacement", "regex_replace");
          std::optional<std::string> flags;
-         if (args.size() > 2)
-           flags = as_str(args[2]);
-         b.RegexReplace(as_str(args[0]), as_str(args[1]), flags);
+         if (const DslValue *fv = find_arg(args, 2, "flags");
+             fv && !fv->is_null()) {
+           flags = as_str(*fv);
+         }
+         b.RegexReplace(as_str(pat), as_str(rep), flags);
        }},
       {"regex_filter",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("regex_filter() requires 1+ arguments");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &pat = require_arg(args, 0, "pattern", "regex_filter");
          std::optional<std::string> flags;
-         if (args.size() > 2)
-           flags = as_str(args[2]);
-         b.RegexFilter(as_str(args[0]),
-                       args.size() > 1 ? as_bool(args[1]) : false, flags);
+         if (const DslValue *fv = find_arg(args, 2, "flags");
+             fv && !fv->is_null()) {
+           flags = as_str(*fv);
+         }
+         b.RegexFilter(as_str(pat), opt_bool(args, 1, "negate", false), flags);
        }},
       {"regex_extract",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("regex_extract() requires 1+ arguments");
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const auto &pat = require_arg(args, 0, "pattern", "regex_extract");
          std::optional<std::string> flags;
-         if (args.size() > 2)
-           flags = as_str(args[2]);
-         b.RegexExtract(as_str(args[0]),
-                        args.size() > 1 ? as_int(args[1]) : 0, flags);
+         if (const DslValue *fv = find_arg(args, 2, "flags");
+             fv && !fv->is_null()) {
+           flags = as_str(*fv);
+         }
+         b.RegexExtract(as_str(pat), opt_int(args, 1, "group_index", 0), flags);
        }},
       {"filter",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("filter() requires 1 argument");
-         b.Filter(as_str_list(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Filter(as_str_list(require_arg(args, 0, "patterns", "filter")));
        }},
       {"set",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("set() requires 1 argument");
-         b.Set(as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Set(as_str(require_arg(args, 0, "name", "set")));
        }},
       {"count_values",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("count_values() requires 1 argument");
-         b.CountValues(as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.CountValues(as_str(require_arg(args, 0, "dict_key", "count_values")));
        }},
       {"first",
-       [](ScraperBuilder &b, const auto &args) {
-         b.First(args.empty() ? 1 : static_cast<size_t>(as_int(args[0])));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.First(static_cast<size_t>(opt_int(args, 0, "count", 1)));
        }},
       {"last",
-       [](ScraperBuilder &b, const auto &args) {
-         b.Last(args.empty() ? 1 : static_cast<size_t>(as_int(args[0])));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Last(static_cast<size_t>(opt_int(args, 0, "count", 1)));
        }},
       {"nth",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("nth() requires 1 argument");
-         b.Nth(static_cast<size_t>(as_int(args[0])));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Nth(static_cast<size_t>(
+             as_int(require_arg(args, 0, "index", "nth"))));
        }},
       {"slice_values",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.size() < 2)
-           throw std::runtime_error("slice_values() requires 2 arguments");
-         b.SliceValues(static_cast<size_t>(as_int(args[0])),
-                       static_cast<size_t>(as_int(args[1])));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.SliceValues(
+             static_cast<size_t>(
+                 as_int(require_arg(args, 0, "start_index", "slice_values"))),
+             static_cast<size_t>(as_int(
+                 require_arg(args, 1, "end_index_inclusive", "slice_values"))));
        }},
       {"unique",
-       [](ScraperBuilder &b, const auto &args) {
-         b.Unique(args.empty() ? true : as_bool(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Unique(opt_bool(args, 0, "preserve_order", true));
        }},
       {"default_if_empty",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("default_if_empty() requires 1 argument");
-         b.DefaultIfEmpty(as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.DefaultIfEmpty(as_str(
+             require_arg(args, 0, "default_value", "default_if_empty")));
        }},
       {"block_seeker",
-       [](ScraperBuilder &b, const auto &args) {
-         b.BlockSeeker(args.empty() ? "" : as_str(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.BlockSeeker(opt_str(args, 0, "prefix", ""));
        }},
       {"block_parser",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("block_parser() requires 1 argument");
-         b.BlockParser(as_str_list(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.BlockParser(
+             as_str_list(require_arg(args, 0, "prefixes", "block_parser")));
        }},
       {"parse",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("parse() requires 1+ arguments");
-         b.Parse(as_str(args[0]), args.size() > 1 ? as_bool(args[1]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Parse(as_str(require_arg(args, 0, "objname", "parse")),
+                 opt_bool(args, 1, "simplify", true));
        }},
       {"flatten_dict",
-       [](ScraperBuilder &b, const auto &args) {
-         b.FlattenDict(args.empty() ? true : as_bool(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.FlattenDict(opt_bool(args, 0, "postponable", true));
        }},
-      {"flatten_local", [](ScraperBuilder &b, const auto &) { b.FlattenLocal(); }},
+      {"flatten_local",
+       [](ScraperBuilder &b, const DslArgList &) { b.FlattenLocal(); }},
       {"filter_dict",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("filter_dict() requires 1+ arguments");
-         b.FilterDict(as_str_list(args[0]),
-                      args.size() > 1 ? as_bool(args[1]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.FilterDict(
+             as_str_list(require_arg(args, 0, "keys_to_keep", "filter_dict")),
+             opt_bool(args, 1, "postponable", true));
        }},
       {"remove_keys",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("remove_keys() requires 1+ arguments");
-         b.RemoveKeys(as_str_list(args[0]),
-                      args.size() > 1 ? as_bool(args[1]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.RemoveKeys(
+             as_str_list(require_arg(args, 0, "keys_to_remove", "remove_keys")),
+             opt_bool(args, 1, "postponable", true));
        }},
       {"rename_keys",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("rename_keys() requires 1+ arguments");
-         const auto pairs = as_str_list(args[0]);
-         if (pairs.size() % 2 != 0) {
-           throw std::runtime_error(
-               "rename_keys() requires an even-length list of [old, new] pairs");
-         }
+       [](ScraperBuilder &b, const DslArgList &args) {
+         const DslValue &mapping = require_arg(args, 0, "pairs", "rename_keys");
          absl::flat_hash_map<std::string, std::string> rename_map;
-         rename_map.reserve(pairs.size() / 2);
-         for (size_t i = 0; i < pairs.size(); i += 2) {
-           rename_map.emplace(pairs[i], pairs[i + 1]);
+         if (mapping.is_object()) {
+           rename_map.reserve(mapping.get_object().size());
+           for (const auto &[k, val] : mapping.get_object()) {
+             rename_map.emplace(k, as_str(val));
+           }
+         } else {
+           const auto pairs = as_str_list(mapping);
+           if (pairs.size() % 2 != 0) {
+             throw std::runtime_error(
+                 "rename_keys() requires an object {old: new} or even-length "
+                 "list [old, new, ...]");
+           }
+           rename_map.reserve(pairs.size() / 2);
+           for (size_t i = 0; i < pairs.size(); i += 2) {
+             rename_map.emplace(pairs[i], pairs[i + 1]);
+           }
          }
          b.RenameKeys(std::move(rename_map),
-                      args.size() > 1 ? as_bool(args[1]) : true);
+                      opt_bool(args, 1, "postponable", true));
        }},
       {"merge_keys",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.size() < 2)
-           throw std::runtime_error("merge_keys() requires 2+ arguments");
-         b.MergeKeys(as_str_list(args[0]), as_str(args[1]),
-                     args.size() > 2 ? as_bool(args[2]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.MergeKeys(
+             as_str_list(require_arg(args, 0, "source_keys", "merge_keys")),
+             as_str(require_arg(args, 1, "target_key", "merge_keys")),
+             opt_bool(args, 2, "postponable", true));
        }},
       {"sort_keys",
-       [](ScraperBuilder &b, const auto &args) {
-         b.SortKeys(args.empty() ? true : as_bool(args[0]),
-                    args.size() > 1 ? as_bool(args[1]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.SortKeys(opt_bool(args, 0, "ascending", true),
+                    opt_bool(args, 1, "postponable", true));
        }},
       {"deduplicate",
-       [](ScraperBuilder &b, const auto &args) {
-         b.Deduplicate(args.empty() ? true : as_bool(args[0]));
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.Deduplicate(opt_bool(args, 0, "postponable", true));
        }},
       {"jmespath",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("jmespath() requires 1+ arguments");
-         b.JmesPath(as_str(args[0]),
-                    args.size() > 1 ? as_bool(args[1]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JmesPath(as_str(require_arg(args, 0, "expr", "jmespath")),
+                    opt_bool(args, 1, "postponable", true));
        }},
       {"jsonpath",
-       [](ScraperBuilder &b, const auto &args) {
-         if (args.empty())
-           throw std::runtime_error("jsonpath() requires 1+ arguments");
-         b.JsonPath(as_str(args[0]),
-                    args.size() > 1 ? as_bool(args[1]) : true);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonPath(as_str(require_arg(args, 0, "expr", "jsonpath")),
+                    opt_bool(args, 1, "postponable", true));
+       }},
+      {"json_parse",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonParse(opt_str(args, 0, "objname", ""),
+                     parse_json_opts(args, 1),
+                     opt_bool(args, 6, "strict", true));
+       }},
+      {"json_dump",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonDump(opt_bool(args, 0, "pretty", false),
+                    opt_int(args, 1, "indent", 2),
+                    opt_str(args, 2, "source_key", ""));
+       }},
+      {"csv_parse",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.CsvParse(opt_str(args, 0, "objname", ""),
+                    parse_csv_opts(args, 1),
+                    opt_bool(args, 4, "strict", true));
+       }},
+      {"csv_dump",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.CsvDump(parse_csv_opts(args, 0),
+                   opt_str(args, 3, "source_key", ""));
+       }},
+      {"from_cbor",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.FromCbor(opt_str(args, 0, "objname", ""),
+                    parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
+                    opt_bool(args, 2, "strict", true));
+       }},
+      {"to_cbor",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.ToCbor(parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
+                  opt_str(args, 1, "source_key", ""));
+       }},
+      {"from_msgpack",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.FromMsgPack(
+             opt_str(args, 0, "objname", ""),
+             parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
+             opt_bool(args, 2, "strict", true));
+       }},
+      {"to_msgpack",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.ToMsgPack(
+             parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
+             opt_str(args, 1, "source_key", ""));
+       }},
+      {"from_bson",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.FromBson(opt_str(args, 0, "objname", ""),
+                    parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
+                    opt_bool(args, 2, "strict", true));
+       }},
+      {"to_bson",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.ToBson(parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
+                  opt_str(args, 1, "source_key", ""));
+       }},
+      {"from_ubjson",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.FromUbjson(
+             opt_str(args, 0, "objname", ""),
+             parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
+             opt_bool(args, 2, "strict", true));
+       }},
+      {"to_ubjson",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.ToUbjson(parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
+                    opt_str(args, 1, "source_key", ""));
+       }},
+      {"jsonpath_replace",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonPathReplace(
+             as_str(require_arg(args, 0, "expr", "jsonpath_replace")),
+             dsl_value_to_json(
+                 require_arg(args, 1, "replacement", "jsonpath_replace")),
+             opt_bool(args, 2, "postponable", true));
+       }},
+      {"json_flatten",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonFlatten(opt_bool(args, 0, "postponable", true));
+       }},
+      {"json_unflatten",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonUnflatten(opt_bool(args, 0, "postponable", true));
+       }},
+      {"jsonpointer_get",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonPointerGet(
+             as_str(require_arg(args, 0, "pointer", "jsonpointer_get")),
+             opt_str(args, 1, "target_key", ""),
+             opt_bool(args, 2, "postponable", true));
+       }},
+      {"jsonpointer_set",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonPointerSet(
+             as_str(require_arg(args, 0, "pointer", "jsonpointer_set")),
+             dsl_value_to_json(
+                 require_arg(args, 1, "value", "jsonpointer_set")),
+             opt_bool(args, 2, "postponable", true));
+       }},
+      {"jsonpointer_remove",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonPointerRemove(
+             as_str(require_arg(args, 0, "pointer", "jsonpointer_remove")),
+             opt_bool(args, 1, "postponable", true));
+       }},
+      {"json_patch",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonPatch(
+             as_json_document(require_arg(args, 0, "patch", "json_patch")),
+             opt_bool(args, 1, "postponable", true));
+       }},
+      {"merge_patch",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.MergePatch(
+             as_json_document(require_arg(args, 0, "patch", "merge_patch")),
+             opt_bool(args, 1, "postponable", true));
+       }},
+      {"json_schema",
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.JsonSchema(
+             as_json_document(require_arg(args, 0, "schema", "json_schema")),
+             opt_bool(args, 1, "strict", true),
+             opt_str(args, 2, "error_key", "_schema_errors"),
+             opt_bool(args, 3, "postponable", true));
        }},
       {"debug_print",
-       [](ScraperBuilder &b, const auto &args) {
-         b.DebugPrint(args.empty() ? "DEBUG: " : as_str(args[0]),
-                      args.size() > 1 ? as_bool(args[1]) : false,
-                      args.size() > 2 ? as_bool(args[2]) : false);
+       [](ScraperBuilder &b, const DslArgList &args) {
+         b.DebugPrint(opt_str(args, 0, "prefix", "DEBUG: "),
+                      opt_bool(args, 1, "print_dict", false),
+                      opt_bool(args, 2, "print_node", false));
        }},
   };
   return registry;
@@ -360,14 +606,23 @@ DslValue::DslValue(std::string name, bool is_ident) {
 }
 
 std::string DslValue::to_string() const {
+  if (is_null())
+    return "null";
   if (is_string())
     return get_string();
   if (is_int())
     return std::to_string(get_int());
+  if (is_double()) {
+    std::ostringstream oss;
+    oss << get_double();
+    return oss.str();
+  }
   if (is_bool())
     return get_bool() ? "true" : "false";
   if (is_identifier())
     return get_identifier();
+  if (is_object())
+    return "<object>";
   return "<list>";
 }
 
@@ -467,10 +722,28 @@ Token Lexer::next_token() {
     advance();
     return {Token::Type::ASSIGN, "=", tok_line, tok_col};
   }
-  if (c == ':' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '=') {
+  if (c == ':') {
+    advance();
+    if (peek() == '=') {
+      advance();
+      return {Token::Type::COLON_ASSIGN, ":=", tok_line, tok_col};
+    }
+    return {Token::Type::COLON, ":", tok_line, tok_col};
+  }
+  if (c == '|' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '>') {
     advance();
     advance();
-    return {Token::Type::COLON_ASSIGN, ":=", tok_line, tok_col};
+    return {Token::Type::PIPE, "|>", tok_line, tok_col};
+  }
+  if (c == '-' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '>') {
+    advance();
+    advance();
+    return {Token::Type::ARROW, "->", tok_line, tok_col};
+  }
+  if (c == '>' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '>') {
+    advance();
+    advance();
+    return {Token::Type::DOUBLE_ARROW, ">>", tok_line, tok_col};
   }
 
   if (c == '"' || c == '\'') {
@@ -490,6 +763,11 @@ Token Lexer::next_token() {
             break;
           case 'r':
             val += '\r';
+            break;
+          case '$':
+            // Preserve escaped \$ so interpolate_string() keeps literal '$'
+            val.push_back('\0');
+            val.push_back('$');
             break;
           default:
             val += esc;
@@ -518,6 +796,15 @@ Token Lexer::next_token() {
            std::isdigit(static_cast<unsigned char>(peek()))) {
       num += advance();
     }
+    if (peek() == '.' && pos_ + 1 < src_.size() &&
+        std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
+      num += advance();
+      while (pos_ < src_.size() &&
+             std::isdigit(static_cast<unsigned char>(peek()))) {
+        num += advance();
+      }
+      return {Token::Type::FLOAT, std::move(num), tok_line, tok_col};
+    }
     return {Token::Type::NUMBER, std::move(num), tok_line, tok_col};
   }
 
@@ -527,7 +814,6 @@ Token Lexer::next_token() {
       const char ch = peek();
       if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' ||
           ch == '.') {
-        // Stop before '.' if it's followed by '(' or whitespace (method chain)
         if (ch == '.') {
           break;
         }
@@ -536,7 +822,6 @@ Token Lexer::next_token() {
         break;
       }
     }
-    // Support dotted enum names like Value.Text / Number.Nth
     if (peek() == '.' && (ident == "Value" || ident == "Number")) {
       ident += advance();
       while (pos_ < src_.size() &&
@@ -549,6 +834,8 @@ Token Lexer::next_token() {
       return {Token::Type::LET, ident, tok_line, tok_col};
     if (ident == "true" || ident == "false")
       return {Token::Type::BOOL, ident, tok_line, tok_col};
+    if (ident == "null")
+      return {Token::Type::NULL_LIT, ident, tok_line, tok_col};
     return {Token::Type::IDENTIFIER, std::move(ident), tok_line, tok_col};
   }
 
@@ -568,13 +855,42 @@ void DslParser::expect(Token::Type type, std::string_view msg) {
   advance_token();
 }
 
+std::string DslParser::interpolate_string(const std::string &raw) const {
+  std::string out;
+  out.reserve(raw.size());
+  for (size_t i = 0; i < raw.size(); ++i) {
+    if (raw[i] == '\0' && i + 1 < raw.size() && raw[i + 1] == '$') {
+      out.push_back('$');
+      ++i;
+      continue;
+    }
+    if (raw[i] == '$' && i + 1 < raw.size() && raw[i + 1] == '{') {
+      const size_t close = raw.find('}', i + 2);
+      if (close == std::string::npos) {
+        throw std::runtime_error("Unterminated '${...}' interpolation in DSL");
+      }
+      const std::string var_name = raw.substr(i + 2, close - (i + 2));
+      const auto it = variables_.find(var_name);
+      if (it == variables_.end()) {
+        throw std::runtime_error("Undefined variable in string interpolation: " +
+                                 var_name);
+      }
+      out += it->second.to_string();
+      i = close;
+      continue;
+    }
+    out.push_back(raw[i]);
+  }
+  return out;
+}
+
 DslValue DslParser::parse_arg(int depth) {
   if (depth > MAX_DSL_DEPTH) {
     throw std::runtime_error("Maximum DSL nesting depth exceeded");
   }
 
   if (current_.type == Token::Type::STRING) {
-    DslValue v(current_.value);
+    DslValue v(interpolate_string(current_.value));
     advance_token();
     return v;
   }
@@ -583,10 +899,19 @@ DslValue DslParser::parse_arg(int depth) {
     advance_token();
     return v;
   }
+  if (current_.type == Token::Type::FLOAT) {
+    DslValue v(std::stod(current_.value));
+    advance_token();
+    return v;
+  }
   if (current_.type == Token::Type::BOOL) {
     DslValue v(current_.value == "true");
     advance_token();
     return v;
+  }
+  if (current_.type == Token::Type::NULL_LIT) {
+    advance_token();
+    return DslValue(std::monostate{});
   }
   if (current_.type == Token::Type::IDENTIFIER) {
     const std::string name = current_.value;
@@ -612,17 +937,80 @@ DslValue DslParser::parse_arg(int depth) {
     expect(Token::Type::RBRACKET, "Expected ']'");
     return DslValue(std::move(items));
   }
+  if (current_.type == Token::Type::LBRACE) {
+    advance_token();
+    DslValue::ObjectType obj;
+    while (current_.type != Token::Type::RBRACE &&
+           current_.type != Token::Type::END_OF_FILE) {
+      std::string key;
+      if (current_.type == Token::Type::STRING) {
+        key = interpolate_string(current_.value);
+        advance_token();
+      } else if (current_.type == Token::Type::IDENTIFIER) {
+        key = current_.value;
+        advance_token();
+      } else {
+        throw std::runtime_error(
+            "Expected string or identifier key in object literal at line " +
+            std::to_string(current_.line));
+      }
+      expect(Token::Type::COLON, "Expected ':' after object key");
+      DslValue val = parse_arg(depth + 1);
+      obj.emplace_back(std::move(key), std::move(val));
+      if (current_.type == Token::Type::COMMA) {
+        advance_token();
+      } else {
+        break;
+      }
+    }
+    expect(Token::Type::RBRACE, "Expected '}'");
+    return DslValue(std::move(obj));
+  }
   throw std::runtime_error("Unexpected token in DSL argument at line " +
                            std::to_string(current_.line) + ": '" +
                            current_.value + "'");
 }
 
-std::vector<DslValue> DslParser::parse_arg_list(int depth) {
-  std::vector<DslValue> args;
+DslArgList DslParser::parse_arg_list(int depth) {
+  DslArgList args;
   expect(Token::Type::LPAREN, "Expected '('");
+  bool seen_named = false;
   while (current_.type != Token::Type::RPAREN &&
          current_.type != Token::Type::END_OF_FILE) {
-    args.push_back(parse_arg(depth + 1));
+    if (current_.type == Token::Type::IDENTIFIER) {
+      const std::string ident_name = current_.value;
+      const int ident_line = current_.line;
+      advance_token();
+      if (current_.type == Token::Type::ASSIGN) {
+        advance_token();
+        seen_named = true;
+        DslValue val = parse_arg(depth + 1);
+        if (!args.named.emplace(ident_name, std::move(val)).second) {
+          throw std::runtime_error("Duplicate keyword argument '" + ident_name +
+                                   "' at line " + std::to_string(ident_line));
+        }
+      } else {
+        if (seen_named) {
+          throw std::runtime_error(
+              "Positional argument cannot follow keyword argument at line " +
+              std::to_string(ident_line));
+        }
+        auto it = variables_.find(ident_name);
+        if (it != variables_.end()) {
+          args.positional.push_back(it->second);
+        } else {
+          args.positional.emplace_back(ident_name, true);
+        }
+      }
+    } else {
+      if (seen_named) {
+        throw std::runtime_error(
+            "Positional argument cannot follow keyword argument at line " +
+            std::to_string(current_.line));
+      }
+      args.positional.push_back(parse_arg(depth + 1));
+    }
+
     if (current_.type == Token::Type::COMMA) {
       advance_token();
     } else {
@@ -634,7 +1022,7 @@ std::vector<DslValue> DslParser::parse_arg_list(int depth) {
 }
 
 void DslParser::apply_method(ScraperBuilder &builder, std::string_view name,
-                             const std::vector<DslValue> &args) {
+                             const DslArgList &args) {
   const auto &reg = get_method_registry();
   const auto it = reg.find(name);
   if (it == reg.end()) {
@@ -643,26 +1031,54 @@ void DslParser::apply_method(ScraperBuilder &builder, std::string_view name,
   it->second(builder, args);
 }
 
-void DslParser::parse_chain(ScraperBuilder &builder, int depth) {
+void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
   if (depth > MAX_DSL_DEPTH) {
     throw std::runtime_error("Maximum DSL chain depth exceeded");
   }
-  while (current_.type == Token::Type::DOT) {
-    advance_token();
-    if (current_.type == Token::Type::LPAREN) {
+  bool first_in_block = in_block;
+  while (true) {
+    if (current_.type == Token::Type::ARROW ||
+        current_.type == Token::Type::DOUBLE_ARROW) {
       advance_token();
-      parse_chain(builder, depth + 1);
+      DslValue key = parse_arg(depth + 1);
+      builder.Set(as_str(key));
+      first_in_block = false;
+      continue;
+    }
+
+    bool has_sep = false;
+    if (current_.type == Token::Type::DOT ||
+        current_.type == Token::Type::PIPE) {
+      has_sep = true;
+      advance_token();
+    } else if (!first_in_block) {
+      break;
+    } else if (current_.type == Token::Type::RBRACE ||
+               current_.type == Token::Type::END_OF_FILE) {
+      break;
+    }
+    first_in_block = false;
+
+    if (has_sep && current_.type == Token::Type::LPAREN) {
+      advance_token();
+      parse_chain(builder, depth + 1, false);
       expect(Token::Type::RPAREN, "Expected ')' after group");
       continue;
     }
     if (current_.type != Token::Type::IDENTIFIER) {
-      throw std::runtime_error("Expected method name after '.' at line " +
+      throw std::runtime_error("Expected method name in chain at line " +
                                std::to_string(current_.line));
     }
     const std::string method = current_.value;
     advance_token();
     auto args = parse_arg_list(depth + 1);
     apply_method(builder, method, args);
+
+    if (method == "push" && current_.type == Token::Type::LBRACE) {
+      advance_token();
+      parse_chain(builder, depth + 1, true);
+      expect(Token::Type::RBRACE, "Expected '}' after push block");
+    }
   }
 }
 
@@ -693,6 +1109,7 @@ DslParser::parse(const std::string &dsl_source) {
       const std::string name = current_.value;
       advance_token();
       if (current_.type == Token::Type::ASSIGN ||
+          current_.type == Token::Type::COLON ||
           current_.type == Token::Type::COLON_ASSIGN) {
         advance_token();
       }

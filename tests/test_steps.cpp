@@ -1,6 +1,8 @@
+#include "scraper/scraper.hpp"
 #include "scraper/steps/block_steps.hpp"
 #include "scraper/steps/dict_steps.hpp"
 #include "scraper/steps/dom_steps.hpp"
+#include "scraper/steps/json_steps.hpp"
 #include "scraper/steps/regex_steps.hpp"
 #include "scraper/steps/text_steps.hpp"
 #include <catch2/catch_test_macros.hpp>
@@ -271,4 +273,78 @@ TEST_CASE("dict_steps cover flatten, filter, remove, rename, merge, sort, dedup"
 
   scraper::FlattenDictStep(false).apply(dummy_node(), vals, dict);
   CHECK(dict["meta_writer"].as<std::string>() == "Bob");
+}
+
+
+TEST_CASE("json_steps cover json_parse, json_dump, csv, binary, patch, pointer, and schema",
+          "[steps][json]") {
+  const std::string html = R"(
+    <html><body>
+      <script id="data">{"a": 1, /* comment */ "b": [10, 20,],}</script>
+      <pre id="csv">name,qty
+Widget,3
+</pre>
+    </body></html>
+  )";
+
+  scraper::ScraperBuilder sb;
+  sb.Group("#data")
+      .Text()
+      .JsonParse("payload", {/*allow_comments=*/true,
+                             /*allow_trailing_comma=*/true})
+      .Group("#csv")
+      .Text()
+      .Trim()
+      .CsvParse("rows")
+      .JsonPathReplace("$.payload.b[1]", jsoncons::json(99))
+      .JsonPointerSet("/payload/status", jsoncons::json("ok"))
+      .MergePatch(jsoncons::json::parse(R"({"payload": {"a": 2}})"))
+      .JsonPatch(jsoncons::json::parse(
+          R"([{"op": "add", "path": "/patched", "value": true}])"))
+      .JsonSchema(jsoncons::json::parse(R"({
+        "type": "object",
+        "required": ["payload", "rows", "patched"]
+      })"));
+
+  const auto out = sb.scrape_from_string(html);
+  CHECK(out["payload"]["a"].as<int>() == 2);
+  CHECK(out["payload"]["b"][1].as<int>() == 99);
+  CHECK(out["payload"]["status"].as<std::string>() == "ok");
+  CHECK(out["patched"].as<bool>() == true);
+  REQUIRE(out["rows"].is_array());
+  CHECK(out["rows"][0]["name"].as<std::string>() == "Widget");
+  CHECK(out["rows"][0]["qty"].as<int>() == 3);
+
+  // Non-strict json_schema records errors into error_key
+  scraper::ScraperBuilder sb_nonstrict;
+  sb_nonstrict.Group("#data")
+      .Text()
+      .JsonParse("payload", {/*allow_comments=*/true,
+                             /*allow_trailing_comma=*/true})
+      .JsonSchema(
+          jsoncons::json::parse(
+              R"({"type": "object", "required": ["missing_field"]})"),
+          /*strict=*/false, "_errors");
+  const auto out_err = sb_nonstrict.scrape_from_string(html);
+  REQUIRE(out_err.contains("_errors"));
+  CHECK(out_err["_errors"].is_array());
+  CHECK_FALSE(out_err["_errors"].empty());
+
+  // Binary round-trip + JsonDump
+  jsoncons::json dict = jsoncons::json::parse(R"({"x": 7})");
+  std::vector<std::string> vals;
+  scraper::BinaryEncodeStep(xsel::query::BinaryFormat::Cbor,
+                            xsel::query::BinaryEncoding::Base64)
+      .apply(dummy_node(), vals, dict);
+  REQUIRE(vals.size() == 1);
+  jsoncons::json decoded_dict = jsoncons::json::object();
+  scraper::BinaryDecodeStep(xsel::query::BinaryFormat::Cbor, "decoded",
+                            xsel::query::BinaryEncoding::Base64)
+      .apply(dummy_node(), vals, decoded_dict);
+  CHECK(decoded_dict["decoded"]["x"].as<int>() == 7);
+
+  scraper::JsonDumpStep(false, 2, "decoded")
+      .apply(dummy_node(), vals, decoded_dict);
+  REQUIRE(vals.size() == 1);
+  CHECK(vals[0] == R"({"x":7})");
 }
