@@ -163,6 +163,7 @@ TEST_CASE("DslParser supports universal idioms: |, $, @, ??, [i], as, paren-free
           | find_all("p.note", text) | grep("keep") | sub("keep:", "") | strip -> "notes"
         }
       | $("script#cfg") { text | json("cfg", allow_comments=true) }
+      | $("script#js") { text | json("js_cfg", lenient=true) }
   )dsl";
 
   const std::string html = R"(
@@ -182,6 +183,7 @@ TEST_CASE("DslParser supports universal idioms: |, $, @, ??, [i], as, paren-free
       <p class="note">drop me</p>
       <p class="note">keep:ok</p>
       <script id="cfg">{ /* ok */ "v": 2 }</script>
+      <script id="js">{ unquoted: 'yes', items: [1, 2,], }</script>
     </body></html>
   )";
 
@@ -202,6 +204,9 @@ TEST_CASE("DslParser supports universal idioms: |, $, @, ??, [i], as, paren-free
   CHECK(out["last_spec"].as<std::string>() == "typed");
   CHECK(out["notes"].as<std::string>() == "ok");
   CHECK(out["cfg"]["v"].as<int>() == 2);
+  CHECK(out["js_cfg"]["unquoted"].as<std::string>() == "yes");
+  REQUIRE(out["js_cfg"]["items"].is_array());
+  CHECK(out["js_cfg"]["items"].size() == 2);
 }
 
 TEST_CASE("DslParser validates new sugar edge cases and errors", "[dsl][sugar]") {

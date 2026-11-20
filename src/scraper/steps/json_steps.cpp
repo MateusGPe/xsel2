@@ -1,5 +1,6 @@
 #include "scraper/steps/json_steps.hpp"
 #include "common/json_utils.hpp"
+#include "digger/digger.hpp"
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -71,6 +72,9 @@ void JsonParseStep::apply(Node, std::vector<std::string> &values,
                           jsoncons::json &dict) {
   parse_and_store(values, dict, objname_, strict_, insert_opts_,
                   [this](std::string_view input) {
+                    if (lenient_) {
+                      return digger::parse_object(input, /*simplify=*/true);
+                    }
                     return xsel::query::parse_json(input, opts_);
                   });
 }

@@ -222,7 +222,7 @@ flowchart LR
 | `deduplicate` | `(postponable=true)` | Removes duplicate elements from JSON arrays |
 | `jmespath` | `(expr, postponable=true)` | Transforms the JSON object using a JMESPath expression |
 | `jsonpath` | `(expr, postponable=true)` | Queries the JSON object using a JSONPath expression |
-| `json_parse` | `(objname="", allow_comments=false, allow_trailing_comma=false, allow_inf_and_nan=false, lossless_number=false, max_nesting_depth=1024, strict=true)` | Parses strict or relaxed JSON in `values` via `jsoncons::json::parse` into `dict` |
+| `json_parse` | `(objname="", allow_comments=false, allow_trailing_comma=false, allow_inf_and_nan=false, lossless_number=false, max_nesting_depth=1024, strict=true, lenient=false)` | Parses strict or relaxed JSON in `values` via `jsoncons::json::parse` into `dict` (or uses the lenient JS/JSON digger when `lenient=true`) |
 | `json_dump` | `(pretty=false, indent=2, source_key="")` | Serializes `dict` (or `dict[source_key]`) to JSON in `values` |
 | `csv_parse` | `(objname="", assume_header=true, delimiter=",", trim=true, strict=true)` | Decodes CSV text in `values` into `dict` |
 | `csv_dump` | `(assume_header=true, delimiter=",", trim=true, source_key="")` | Encodes `dict` (or `dict[source_key]`) into CSV in `values` |
@@ -239,6 +239,8 @@ flowchart LR
 | `from_msgpack` / `to_msgpack` | `(objname="", encoding="hex", strict=true)` / `(encoding="hex", source_key="")` | Decodes/encodes MessagePack (`hex`, `base64`, or `raw`) |
 | `from_bson` / `to_bson` | `(objname="", encoding="hex", strict=true)` / `(encoding="hex", source_key="")` | Decodes/encodes BSON (`hex`, `base64`, or `raw`) |
 | `from_ubjson` / `to_ubjson` | `(objname="", encoding="hex", strict=true)` / `(encoding="hex", source_key="")` | Decodes/encodes UBJSON (`hex`, `base64`, or `raw`) |
+
+> **Note on `json_parse(..., lenient=true)` vs `parse_js`:** Setting `lenient=true` on `json_parse` (or its `json` alias) delegates to the same heuristic JS/JSON digger as `parse_js` (with `simplify=true`), allowing unquoted keys, single-quoted strings, `undefined`, and `+`-joined strings. When `lenient=true`, `jsoncons` options (`allow_comments`, `allow_trailing_comma`, `allow_inf_and_nan`, `lossless_number`, `max_nesting_depth`) are ignored, and empty or unparseable input yields `null` (which is skipped unless `allow_empty=true`) rather than throwing.
 
 ### 7. Tier 2 Steps: XPath, Tables, Metadata, Dates, Unicode & Fuzzy Matching
 

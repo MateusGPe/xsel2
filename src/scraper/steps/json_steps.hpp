@@ -12,9 +12,9 @@ class JsonParseStep final : public Step {
 public:
   JsonParseStep(std::string_view objname = "",
                 xsel::query::JsonParseOptions opts = {}, bool strict = true,
-                InsertOptions insert_opts = {})
+                InsertOptions insert_opts = {}, bool lenient = false)
       : objname_(objname), opts_(opts), strict_(strict),
-        insert_opts_(insert_opts) {}
+        insert_opts_(insert_opts), lenient_(lenient) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -24,6 +24,7 @@ private:
   xsel::query::JsonParseOptions opts_;
   bool strict_;
   InsertOptions insert_opts_;
+  bool lenient_;
 };
 
 class JsonDumpStep final : public Step {

@@ -1,4 +1,5 @@
 #include "common/ahocorasick.hpp"
+#include "digger/digger.hpp"
 #include "python/json_py_bridge.hpp"
 #include "query/json_query.hpp"
 #include "scraper/dsl_parser.hpp"
@@ -249,21 +250,23 @@ PYBIND11_MODULE(_scraperpy, m) {
           "json_parse",
           [](ScraperPy &self, const std::string &objname, bool allow_comments,
              bool allow_trailing_comma, bool allow_inf_and_nan,
-             bool lossless_number, int max_nesting_depth,
-             bool strict) -> ScraperPy & {
+             bool lossless_number, int max_nesting_depth, bool strict,
+             bool lenient) -> ScraperPy & {
             xsel::query::JsonParseOptions opts;
             opts.allow_comments = allow_comments;
             opts.allow_trailing_comma = allow_trailing_comma;
             opts.allow_inf_and_nan = allow_inf_and_nan;
             opts.lossless_number = lossless_number;
             opts.max_nesting_depth = max_nesting_depth;
-            return self.JsonParse(objname, opts, strict);
+            return self.JsonParse(objname, opts, strict,
+                                  scraper::InsertOptions{}, lenient);
           },
           py::arg("objname") = "", py::arg("allow_comments") = false,
           py::arg("allow_trailing_comma") = false,
           py::arg("allow_inf_and_nan") = false,
           py::arg("lossless_number") = false,
           py::arg("max_nesting_depth") = 1024, py::arg("strict") = true,
+          py::arg("lenient") = false,
           py::return_value_policy::reference_internal)
       .def("json_dump", &ScraperPy::JsonDump, py::arg("pretty") = false,
            py::arg("indent") = 2, py::arg("source_key") = "",
@@ -560,6 +563,38 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def("similarity", &ScraperPy::Similarity, py::arg("query"),
            py::arg("algo") = "jaro_winkler", py::arg("case_sensitive") = false,
            py::arg("key") = "", py::return_value_policy::reference_internal);
+
+  m.def(
+      "parse_js",
+      [](const std::string &source, bool simplify) {
+        return xsel::python::json_to_python(
+            digger::parse_object(source, simplify));
+      },
+      py::arg("source"), py::arg("simplify") = true);
+
+  m.def(
+      "json_parse",
+      [](const std::string &text, bool allow_comments,
+         bool allow_trailing_comma, bool allow_inf_and_nan,
+         bool lossless_number, int max_nesting_depth, bool lenient,
+         bool simplify) {
+        if (lenient) {
+          return xsel::python::json_to_python(
+              digger::parse_object(text, simplify));
+        }
+        xsel::query::JsonParseOptions opts;
+        opts.allow_comments = allow_comments;
+        opts.allow_trailing_comma = allow_trailing_comma;
+        opts.allow_inf_and_nan = allow_inf_and_nan;
+        opts.lossless_number = lossless_number;
+        opts.max_nesting_depth = max_nesting_depth;
+        return xsel::python::json_to_python(xsel::query::parse_json(text, opts));
+      },
+      py::arg("text"), py::arg("allow_comments") = false,
+      py::arg("allow_trailing_comma") = false,
+      py::arg("allow_inf_and_nan") = false, py::arg("lossless_number") = false,
+      py::arg("max_nesting_depth") = 1024, py::arg("lenient") = false,
+      py::arg("simplify") = true);
 
   m.def("jmespath_eval", [](py::object data, const std::string &expr) {
     const jsoncons::json doc = xsel::python::python_to_json(data);

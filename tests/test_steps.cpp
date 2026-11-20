@@ -350,6 +350,29 @@ Widget,3
       .apply(dummy_node(), vals, decoded_dict);
   REQUIRE(vals.size() == 1);
   CHECK(vals[0] == R"({"x":7})");
+
+  // Lenient JS/JSON mode on JsonParseStep
+  scraper::ScraperBuilder sb_lenient;
+  sb_lenient.Select("#js")
+      .Text()
+      .JsonParse("js_data", {}, /*strict=*/true, {}, /*lenient=*/true);
+  const auto out_lenient = sb_lenient.scrape_from_string(
+      R"(<script id="js">{unquoted: 'hello' + ' world', flag: true, missing: undefined, trailing: [1, 2,],}</script>)");
+  REQUIRE(out_lenient.contains("js_data"));
+  CHECK(out_lenient["js_data"]["unquoted"].as<std::string>() == "hello world");
+  CHECK(out_lenient["js_data"]["flag"].as<bool>() == true);
+  CHECK(out_lenient["js_data"]["missing"].is_null());
+  CHECK(out_lenient["js_data"]["trailing"].size() == 2);
+
+  // Lenient mode on empty or whitespace/punctuation-only input does not throw
+  // even with strict=true, and skips inserting an empty/null result when allow_empty=false.
+  const auto out_lenient_empty = sb_lenient.scrape_from_string(
+      R"(<script id="js">{}</script>)");
+  CHECK(!out_lenient_empty.contains("js_data"));
+
+  const auto out_lenient_blank = sb_lenient.scrape_from_string(
+      R"(<script id="js">   </script>)");
+  CHECK(!out_lenient_blank.contains("js_data"));
 }
 
 TEST_CASE("Edge cases: RegexExtractStep INT_MIN, SubstringStep, and FlattenDictStep depth",

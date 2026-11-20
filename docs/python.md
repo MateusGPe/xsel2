@@ -27,6 +27,8 @@ PYTHONPATH=build:. python3 examples/scrape_example.py
 | `json_schema_validate(data, schema)` | Function | Validates Python data against a JSON Schema, returning `(is_valid, errors)` |
 | `jsonpointer_get(data, pointer)` | Function | Extracts a value at an RFC 6901 JSON Pointer |
 | `json_flatten(data)` / `json_unflatten(data)` | Function | Flattens or unflattens Python dicts/lists using JSONPath keys |
+| `parse_js(source, simplify=True)` | Function | Heuristically parses JS/JSON-like text into Python objects without executing JS |
+| `json_parse(text, ..., lenient=False, simplify=True)` | Function | Parses strict/relaxed JSON (or delegates to `parse_js` when `lenient=True`) |
 | `parse_dsl_string(dsl_content)` | Function | Parses a `.dsl` string into `dict[str, ScraperPy]` |
 | `load_scrapers(filepath)` | Function | Loads a `.dsl` file into `dict[str, ScraperPy]` |
 
@@ -140,5 +142,31 @@ valid, errors = scraperpy.json_schema_validate(merged, {
     "properties": {"currency": {"type": "string"}},
 })
 ```
+
+---
+
+## Standalone JS & JSON Parsing (`parse_js`, `json_parse`)
+
+Parse JS object literals or strict/relaxed JSON strings directly without building a `ScraperPy` pipeline:
+
+```python
+import scraperpy
+
+# Strict JSON by default (raises RuntimeError on invalid JSON)
+data = scraperpy.json_parse('{"a": 1, "b": [true, null]}')
+
+# Relaxed JSON options (comments, trailing commas, etc.)
+relaxed = scraperpy.json_parse('/* c */ {"a": 1,}', allow_comments=True, allow_trailing_comma=True)
+
+# Lenient JS/JSON digger (unquoted keys, single quotes, undefined, '+' string concatenation)
+js_obj = scraperpy.parse_js("{unquoted: 'a' + 'b', n: 42, extra: undefined,}")
+# Equivalent via json_parse(..., lenient=True):
+js_obj2 = scraperpy.json_parse("{unquoted: 'a' + 'b', n: 42, extra: undefined,}", lenient=True)
+
+# Disable simplification (e.g. '+' concatenation) if raw token folding is not desired
+raw = scraperpy.parse_js("{s: 'a' + 'b'}", simplify=False)  # {"s": "a"}
+```
+
+> **Note:** When `lenient=True` on `json_parse`, `jsoncons` options (`allow_comments`, `allow_trailing_comma`, `allow_inf_and_nan`, `lossless_number`, `max_nesting_depth`) are ignored, and empty or unparseable input returns `None` instead of raising `RuntimeError`.
 
 For a full runnable demonstration of all `ScraperPy` steps, `InsertMode`s, `AhoCorasick`, and JSON utilities, see [`examples/all_steps_showcase.py`](../examples/all_steps_showcase.py).

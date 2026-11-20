@@ -387,3 +387,49 @@ def test_python_binary_encoding_hardening():
         check=True,
     )
     assert "Unknown binary encoding" in proc.stderr
+
+
+def test_python_json_parse_lenient():
+    s = sp.ScraperPy()
+    s.select("script").text().json_parse("data", lenient=True)
+    out = s.from_string("<script>{unquoted: 'a' + 'b', n: 42, extra: undefined,}</script>")
+    assert out["data"] == {"unquoted": "ab", "n": 42, "extra": None}
+
+    # Merging into root dict when objname is empty
+    s_root = sp.ScraperPy()
+    s_root.select("script").text().json_parse(lenient=True)
+    out_root = s_root.from_string("<script>{k: 'v', list: [1, 2,]}</script>")
+    assert out_root == {"k": "v", "list": [1, 2]}
+
+
+def test_python_module_parse_js_and_json_parse():
+    # parse_js uses digger::parse_object directly
+    js = "{unquoted: 'a' + 'b', n: 42, extra: undefined, list: [1, 2,]}"
+    assert sp.parse_js(js) == {"unquoted": "ab", "n": 42, "extra": None, "list": [1, 2]}
+    assert sp.parse_js("") is None
+
+    # simplify=False disables '+' concatenation and other simplifications
+    raw = sp.parse_js("{s: 'a' + 'b'}", simplify=False)
+    assert raw == {"s": "a"}
+
+    # json_parse strict by default (raises RuntimeError on non-JSON)
+    assert sp.json_parse('{"a": 1, "b": [true, null]}') == {"a": 1, "b": [True, None]}
+    with pytest.raises(RuntimeError):
+        sp.json_parse(js)
+
+    # json_parse with JSON options
+    assert sp.json_parse('/* c */ {"a": 1,}', allow_comments=True, allow_trailing_comma=True) == {"a": 1}
+
+    # json_parse with lenient=True delegates to digger::parse_object
+    assert sp.json_parse(js, lenient=True) == {
+        "unquoted": "ab",
+        "n": 42,
+        "extra": None,
+        "list": [1, 2],
+    }
+    assert sp.json_parse("{s: 'a' + 'b'}", lenient=True, simplify=False) == {"s": "a"}
+
+    # Empty or whitespace/punctuation-only input returns None in lenient/parse_js mode without throwing
+    assert sp.parse_js("   ") is None
+    assert sp.json_parse("", lenient=True) is None
+    assert sp.json_parse(";;;", lenient=True) is None

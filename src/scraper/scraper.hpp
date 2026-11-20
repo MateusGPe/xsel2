@@ -341,8 +341,10 @@ public:
 
   Derived &JsonParse(std::string_view objname = "",
                      xsel::query::JsonParseOptions opts = {},
-                     bool strict = true, InsertOptions insert_opts = {}) {
-    add_step(std::make_shared<JsonParseStep>(objname, opts, strict, insert_opts));
+                     bool strict = true, InsertOptions insert_opts = {},
+                     bool lenient = false) {
+    add_step(std::make_shared<JsonParseStep>(objname, opts, strict, insert_opts,
+                                             lenient));
     return self();
   }
 

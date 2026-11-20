@@ -360,7 +360,9 @@ get_method_registry() {
       {"json_parse",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
          b.JsonParse(opt_str(args, 0, "objname", ""), parse_json_opts(args, 1),
-                     opt_bool(args, 6, "strict", true));
+                     opt_bool(args, 6, "strict", true),
+                     scraper::InsertOptions{},
+                     opt_bool(args, 7, "lenient", false));
        }},
       {"json_dump",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
