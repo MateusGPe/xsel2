@@ -258,3 +258,42 @@ TEST_CASE("DslParser executes Tier 1 steps and aliases", "[dsl][tier1]") {
   CHECK(res["id_hash"].as<std::string>() ==
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 }
+
+TEST_CASE("DslParser executes Tier 2 steps", "[dsl][tier2]") {
+  const std::string dsl = R"DSL(
+    page = Scraper()
+      | $("head") { extract_meta("meta") }
+      | $("#main") { xpath(".//span[@class='sku']/text()") -> "sku" }
+      | $("table") { table(key="rows", header=true, normalize_headers=true) }
+      | $(".pub") { text | parse_date(output="iso", key="published_iso") }
+      | $(".word") { text | unicode_normalize("NFD") | strip_accents() -> "plain" }
+      | $(".cand") { find_all("li", "text") | fuzzy_filter("Apple", threshold=0.8) -> "matches" }
+  )DSL";
+
+  scraper::dsl::DslParser parser;
+  auto scrapers = parser.parse(dsl);
+  REQUIRE(scrapers.contains("page"));
+
+  const std::string html = R"(
+    <html>
+      <head><title>Store</title><meta name="author" content="Ada"></head>
+      <body>
+        <div id="main"><span class="sku">SKU-42</span></div>
+        <table><tr><th>Key Name</th><th>Val</th></tr><tr><td>A</td><td>1</td></tr></table>
+        <span class="pub">2026-11-19</span>
+        <span class="word">São Paulo</span>
+        <ul class="cand"><li>Apple</li><li>Apply</li><li>Banana</li></ul>
+      </body>
+    </html>
+  )";
+
+  const auto res = scrapers["page"].scrape_from_string(html);
+  CHECK(res["meta"]["title"].as<std::string>() == "Store");
+  CHECK(res["meta"]["author"].as<std::string>() == "Ada");
+  CHECK(res["sku"].as<std::string>() == "SKU-42");
+  CHECK(res["rows"][0]["key_name"].as<std::string>() == "A");
+  CHECK(res["published_iso"].as<std::string>() == "2026-11-19T00:00:00Z");
+  CHECK(res["plain"].as<std::string>() == "Sao Paulo");
+  REQUIRE(res["matches"].is_array());
+  CHECK(res["matches"].size() == 2);
+}

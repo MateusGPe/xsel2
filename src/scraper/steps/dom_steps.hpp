@@ -242,4 +242,51 @@ private:
   std::ostream &out_;
 };
 
+class XPathStep final : public Step {
+public:
+  explicit XPathStep(std::string_view expr, std::string_view attr = "")
+      : expr_(expr), attr_name_(attr) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string expr_;
+  std::string attr_name_;
+};
+
+class TableStep final : public Step {
+public:
+  TableStep(std::string_view key = "", bool header = true,
+            bool normalize_headers = false, bool trim_cells = true,
+            InsertOptions opts = {})
+      : key_(key), header_(header), normalize_headers_(normalize_headers),
+        trim_cells_(trim_cells), opts_(opts) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string key_;
+  bool header_;
+  bool normalize_headers_;
+  bool trim_cells_;
+  InsertOptions opts_;
+};
+
+class ExtractMetaStep final : public Step {
+public:
+  ExtractMetaStep(std::string_view key = "meta", bool include_json_ld = true,
+                  InsertOptions opts = {})
+      : key_(key), include_json_ld_(include_json_ld), opts_(opts) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string key_;
+  bool include_json_ld_;
+  InsertOptions opts_;
+};
+
 } // namespace scraper

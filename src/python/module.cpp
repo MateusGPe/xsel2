@@ -531,7 +531,34 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def("zip_keys", &ScraperPy::ZipKeys, py::arg("keys_key"),
            py::arg("values_key"), py::arg("target_key") = "",
            py::arg("postponable") = true,
-           py::return_value_policy::reference_internal);
+           py::return_value_policy::reference_internal)
+      .def("xpath", &ScraperPy::XPath, py::arg("expr"), py::arg("attr") = "",
+           py::return_value_policy::reference_internal)
+      .def("table", &ScraperPy::Table, py::arg("key") = "",
+           py::arg("header") = true, py::arg("normalize_headers") = false,
+           py::arg("trim_cells") = true,
+           py::arg("opts") = scraper::InsertOptions{},
+           py::return_value_policy::reference_internal)
+      .def("extract_meta", &ScraperPy::ExtractMeta, py::arg("key") = "meta",
+           py::arg("include_json_ld") = true,
+           py::arg("opts") = scraper::InsertOptions{},
+           py::return_value_policy::reference_internal)
+      .def("parse_date", &ScraperPy::ParseDate, py::arg("fmt") = "",
+           py::arg("output") = "iso", py::arg("key") = "",
+           py::arg("tz") = "UTC", py::arg("opts") = scraper::InsertOptions{},
+           py::return_value_policy::reference_internal)
+      .def("unicode_normalize", &ScraperPy::UnicodeNormalize,
+           py::arg("form") = "NFC",
+           py::return_value_policy::reference_internal)
+      .def("strip_accents", &ScraperPy::StripAccents,
+           py::return_value_policy::reference_internal)
+      .def("fuzzy_filter", &ScraperPy::FuzzyFilter, py::arg("query"),
+           py::arg("threshold") = 0.8, py::arg("algo") = "jaro_winkler",
+           py::arg("case_sensitive") = false, py::arg("sort_by_score") = false,
+           py::return_value_policy::reference_internal)
+      .def("similarity", &ScraperPy::Similarity, py::arg("query"),
+           py::arg("algo") = "jaro_winkler", py::arg("case_sensitive") = false,
+           py::arg("key") = "", py::return_value_policy::reference_internal);
 
   m.def("jmespath_eval", [](py::object data, const std::string &expr) {
     const jsoncons::json doc = xsel::python::python_to_json(data);

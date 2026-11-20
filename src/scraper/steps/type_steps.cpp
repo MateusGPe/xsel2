@@ -2,6 +2,8 @@
 #include "common/json_utils.hpp"
 #include "digger/scalar_parser.hpp"
 #include <absl/strings/ascii.h>
+#include <absl/time/time.h>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <cctype>
@@ -310,6 +312,105 @@ jsoncons::json CastKeysStep::cast_impl(const jsoncons::json &input,
     }
   }
   return out;
+}
+
+namespace {
+
+bool parse_with_auto_formats(std::string_view text, absl::TimeZone tz,
+                            std::string_view explicit_fmt, absl::Time *out) {
+  std::string err;
+  if (!explicit_fmt.empty()) {
+    return absl::ParseTime(explicit_fmt, text, tz, out, &err);
+  }
+  static constexpr std::array<std::string_view, 15> kFormats = {
+      "%Y-%m-%dT%H:%M:%E*S%Ez",
+      "%Y-%m-%dT%H:%M:%E*SZ",
+      "%Y-%m-%dT%H:%M:%S",
+      "%Y-%m-%d %H:%M:%S%Ez",
+      "%Y-%m-%d %H:%M:%S",
+      "%a, %d %b %Y %H:%M:%S %Z",
+      "%a, %d %b %Y %H:%M:%S %z",
+      "%Y-%m-%d",
+      "%Y/%m/%d",
+      "%d/%m/%Y",
+      "%m/%d/%Y",
+      "%d-%m-%Y",
+      "%b %d, %Y",
+      "%B %d, %Y",
+      "%d %b %Y",
+  };
+  for (std::string_view fmt : kFormats) {
+    if (absl::ParseTime(fmt, text, tz, out, &err)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
+
+void ParseDateStep::apply(Node, std::vector<std::string> &values,
+                          jsoncons::json &dict) {
+  absl::TimeZone tz = absl::UTCTimeZone();
+  if (!tz_.empty() && tz_ != "UTC") {
+    if (!absl::LoadTimeZone(tz_, &tz)) {
+      throw std::invalid_argument("parse_date: unknown timezone '" + tz_ + "'");
+    }
+  }
+
+  std::vector<std::string> out_values;
+  std::vector<jsoncons::json> out_json;
+  out_values.reserve(values.size());
+  out_json.reserve(values.size());
+
+  for (const auto &raw : values) {
+    std::string_view trimmed = absl::StripAsciiWhitespace(raw);
+    if (trimmed.empty()) {
+      continue;
+    }
+    absl::Time parsed;
+    if (!parse_with_auto_formats(trimmed, tz, fmt_, &parsed)) {
+      continue;
+    }
+    if (output_ == "unix") {
+      const int64_t sec = absl::ToUnixSeconds(parsed);
+      out_values.push_back(std::to_string(sec));
+      out_json.emplace_back(sec);
+    } else if (output_ == "unix_ms") {
+      const int64_t ms = absl::ToUnixMillis(parsed);
+      out_values.push_back(std::to_string(ms));
+      out_json.emplace_back(ms);
+    } else if (output_ == "date") {
+      std::string formatted = absl::FormatTime("%Y-%m-%d", parsed, tz);
+      out_values.push_back(formatted);
+      out_json.emplace_back(std::move(formatted));
+    } else if (output_.empty() || output_ == "iso") {
+      const std::string_view iso_fmt =
+          (tz_ == "UTC" || tz_.empty()) ? "%Y-%m-%dT%H:%M:%SZ"
+                                        : "%Y-%m-%dT%H:%M:%S%Ez";
+      std::string formatted = absl::FormatTime(iso_fmt, parsed, tz);
+      out_values.push_back(formatted);
+      out_json.emplace_back(std::move(formatted));
+    } else {
+      std::string formatted = absl::FormatTime(output_, parsed, tz);
+      out_values.push_back(formatted);
+      out_json.emplace_back(std::move(formatted));
+    }
+  }
+
+  values = std::move(out_values);
+
+  if (!key_.empty() && !out_json.empty()) {
+    if (out_json.size() == 1) {
+      insert_into_json(dict, key_, std::move(out_json.front()), opts_);
+    } else {
+      jsoncons::json arr = jsoncons::json::array();
+      for (auto &item : out_json) {
+        arr.push_back(std::move(item));
+      }
+      insert_into_json(dict, key_, std::move(arr), opts_);
+    }
+  }
 }
 
 } // namespace scraper

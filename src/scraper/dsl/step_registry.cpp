@@ -631,6 +631,62 @@ get_method_registry() {
                    opt_str(args, 2, "target_key", ""),
                    opt_bool(args, 3, "postponable", true));
        }},
+      {"xpath",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.XPath(as_str(require_arg(args, 0, "expr", name)),
+                 opt_str(args, 1, "attr", ""));
+       }},
+      {"table",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Table(opt_str(args, 0, "key", ""), opt_bool(args, 1, "header", true),
+                 opt_bool(args, 2, "normalize_headers", false),
+                 opt_bool(args, 3, "trim_cells", true));
+       }},
+      {"extract_meta",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.ExtractMeta(opt_str(args, 0, "key", "meta"),
+                       opt_bool(args, 1, "include_json_ld", true));
+       }},
+      {"parse_date",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.ParseDate(opt_str(args, 0, "fmt", ""),
+                     opt_str(args, 1, "output", "iso"),
+                     opt_str(args, 2, "key", ""), opt_str(args, 3, "tz", "UTC"));
+       }},
+      {"unicode_normalize",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.UnicodeNormalize(opt_str(args, 0, "form", "NFC"));
+       }},
+      {"strip_accents",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.StripAccents();
+       }},
+      {"fuzzy_filter",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         double threshold = 0.8;
+         if (const DslValue *th = find_arg(args, 1, "threshold");
+             th && !th->is_null()) {
+           if (th->is_double()) {
+             threshold = std::get<double>(th->value);
+           } else if (th->is_int()) {
+             threshold = static_cast<double>(std::get<int>(th->value));
+           } else {
+             throw std::runtime_error(
+                 "fuzzy_filter: threshold must be a number");
+           }
+         }
+         b.FuzzyFilter(as_str(require_arg(args, 0, "query", name)), threshold,
+                       opt_str(args, 2, "algo", "jaro_winkler"),
+                       opt_bool(args, 3, "case_sensitive", false),
+                       opt_bool(args, 4, "sort_by_score", false));
+       }},
+      {"similarity",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.Similarity(as_str(require_arg(args, 0, "query", name)),
+                      opt_str(args, 1, "algo", "jaro_winkler"),
+                      opt_bool(args, 2, "case_sensitive", false),
+                      opt_str(args, 3, "key", ""));
+       }},
   };
   return registry;
 }

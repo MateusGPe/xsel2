@@ -222,7 +222,20 @@ flowchart LR
 | `from_bson` / `to_bson` | `(objname="", encoding="hex", strict=true)` / `(encoding="hex", source_key="")` | Decodes/encodes BSON (`hex`, `base64`, or `raw`) |
 | `from_ubjson` / `to_ubjson` | `(objname="", encoding="hex", strict=true)` / `(encoding="hex", source_key="")` | Decodes/encodes UBJSON (`hex`, `base64`, or `raw`) |
 
-### 7. Debugging
+### 7. Tier 2 Steps: XPath, Tables, Metadata, Dates, Unicode & Fuzzy Matching
+
+| Step | Parameters & Defaults | Description |
+| --- | --- | --- |
+| `xpath` | `(expr, attr="")` | Evaluates a `libxml2` XPath 1.0 expression against the current node (extracts `attr` if set, otherwise node text / scalar value) |
+| `table` | `(key="", header=true, normalize_headers=false, trim_cells=true)` | Extracts an HTML `<table>` (with `colspan` support) as row objects (`header=true`) or row arrays (`header=false`) into `dict[key]` or JSON in `values` |
+| `extract_meta` | `(key="meta", include_json_ld=true)` | Extracts `<title>`, `<meta name/property>`, `<link rel="canonical">`, and parsed `<script type="application/ld+json">` into `dict[key]` (or top-level `dict` if `key=""`) |
+| `parse_date` | `(fmt="", output="iso", key="", tz="UTC")` | Parses dates via `absl::time` (auto-detecting common web formats or using `fmt`) and formats as `"iso"`, `"date"`, `"unix"`, `"unix_ms"`, or custom `strftime` |
+| `unicode_normalize` | `(form="NFC")` | Normalizes UTF-8 strings to `NFC`, `NFD`, `NFKC`, or `NFKD` via `utf8proc` |
+| `strip_accents` | `()` | Decomposes and strips combining diacritical marks (`Mn`) via `utf8proc` |
+| `fuzzy_filter` | `(query, threshold=0.8, algo="jaro_winkler", case_sensitive=false, sort_by_score=false)` | Retains `values` whose `jaro_winkler` or `levenshtein` similarity to `query` meets `threshold` |
+| `similarity` | `(query, algo="jaro_winkler", case_sensitive=false, key="")` | Computes `[0.0, 1.0]` similarity scores against `query` (optionally writing native floats to `dict[key]`) |
+
+### 8. Debugging
 
 | Step | Parameters & Defaults | Description |
 | --- | --- | --- |

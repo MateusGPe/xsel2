@@ -98,6 +98,15 @@ CPMAddPackage(
     "RE2_BUILD_TESTING OFF"
     "RE2_INSTALL OFF")
 
+CPMAddPackage(
+  NAME utf8proc
+  GITHUB_REPOSITORY JuliaStrings/utf8proc
+  GIT_TAG v2.10.0
+  GIT_SHALLOW TRUE
+  OPTIONS
+    "BUILD_SHARED_LIBS OFF"
+    "UTF8PROC_ENABLE_TESTING OFF")
+
 if(BUILD_TESTING AND NOT DEFINED SCRAPERPY_VERSION_INFO)
   CPMAddPackage(
     NAME Catch2
@@ -169,7 +178,9 @@ target_link_libraries(scraper PUBLIC
   re2::re2
   absl::strings
   absl::flat_hash_map
-  absl::flat_hash_set)
+  absl::flat_hash_set
+  absl::time
+  utf8proc)
 
 # ── Python module target ─────────────────────────────────────────────────────
 pybind11_add_module(_scraperpy src/python/module.cpp)

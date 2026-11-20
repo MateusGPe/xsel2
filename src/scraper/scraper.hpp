@@ -631,6 +631,57 @@ public:
     return self();
   }
 
+  Derived &XPath(std::string_view expr, std::string_view attr = "") {
+    add_step(std::make_shared<XPathStep>(expr, attr));
+    return self();
+  }
+
+  Derived &Table(std::string_view key = "", bool header = true,
+                 bool normalize_headers = false, bool trim_cells = true,
+                 InsertOptions opts = {}) {
+    add_step(std::make_shared<TableStep>(key, header, normalize_headers,
+                                         trim_cells, opts));
+    return self();
+  }
+
+  Derived &ExtractMeta(std::string_view key = "meta",
+                       bool include_json_ld = true, InsertOptions opts = {}) {
+    add_step(std::make_shared<ExtractMetaStep>(key, include_json_ld, opts));
+    return self();
+  }
+
+  Derived &ParseDate(std::string_view fmt = "", std::string_view output = "iso",
+                     std::string_view key = "", std::string_view tz = "UTC",
+                     InsertOptions opts = {}) {
+    add_step(std::make_shared<ParseDateStep>(fmt, output, key, tz, opts));
+    return self();
+  }
+
+  Derived &UnicodeNormalize(std::string_view form = "NFC") {
+    add_step(std::make_shared<UnicodeNormalizeStep>(form));
+    return self();
+  }
+
+  Derived &StripAccents() {
+    add_step(std::make_shared<StripAccentsStep>());
+    return self();
+  }
+
+  Derived &FuzzyFilter(std::string_view query, double threshold = 0.8,
+                       std::string_view algo = "jaro_winkler",
+                       bool case_sensitive = false, bool sort_by_score = false) {
+    add_step(std::make_shared<FuzzyFilterStep>(query, threshold, algo,
+                                               case_sensitive, sort_by_score));
+    return self();
+  }
+
+  Derived &Similarity(std::string_view query,
+                      std::string_view algo = "jaro_winkler",
+                      bool case_sensitive = false, std::string_view key = "") {
+    add_step(std::make_shared<SimilarityStep>(query, algo, case_sensitive, key));
+    return self();
+  }
+
 private:
   Derived &self() { return static_cast<Derived &>(*this); }
 };

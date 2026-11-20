@@ -79,4 +79,22 @@ private:
                                          int depth) const;
 };
 
+class ParseDateStep final : public Step {
+public:
+  ParseDateStep(std::string_view fmt = "", std::string_view output = "iso",
+                std::string_view key = "", std::string_view tz = "UTC",
+                InsertOptions opts = {})
+      : fmt_(fmt), output_(output), key_(key), tz_(tz), opts_(opts) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string fmt_;
+  std::string output_;
+  std::string key_;
+  std::string tz_;
+  InsertOptions opts_;
+};
+
 } // namespace scraper

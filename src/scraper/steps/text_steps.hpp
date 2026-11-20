@@ -199,4 +199,55 @@ private:
   Algo algo_;
 };
 
+class UnicodeNormalizeStep final : public Step {
+public:
+  enum class Form { NFC, NFD, NFKC, NFKD };
+
+  explicit UnicodeNormalizeStep(std::string_view form = "NFC");
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  Form form_;
+};
+
+class StripAccentsStep final : public Step {
+public:
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+};
+
+class FuzzyFilterStep final : public Step {
+public:
+  FuzzyFilterStep(std::string_view query, double threshold = 0.8,
+                  std::string_view algo = "jaro_winkler",
+                  bool case_sensitive = false, bool sort_by_score = false);
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string query_;
+  double threshold_;
+  std::string algo_;
+  bool case_sensitive_;
+  bool sort_by_score_;
+};
+
+class SimilarityStep final : public Step {
+public:
+  SimilarityStep(std::string_view query, std::string_view algo = "jaro_winkler",
+                 bool case_sensitive = false, std::string_view key = "");
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string query_;
+  std::string algo_;
+  bool case_sensitive_;
+  std::string key_;
+};
+
 } // namespace scraper

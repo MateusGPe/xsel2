@@ -271,3 +271,41 @@ def test_tier1_steps_python():
     assert out["clean_text"] == "Hello World"
     assert out["data-sku"] == "A1"
     assert len(out["hash"]) == 16
+
+
+def test_tier2_steps_python():
+    html = """
+    <html>
+      <head>
+        <title>PyTest Page</title>
+        <meta property="og:type" content="website">
+        <link rel="canonical" href="https://example.org/">
+      </head>
+      <body>
+        <div id="box"><span data-code="X99">ok</span></div>
+        <table><tr><th>Item</th><th>Qty</th></tr><tr><td>Pen</td><td>5</td></tr></table>
+        <span class="dt">2026-11-19T12:30:00Z</span>
+        <span class="acc">Résumé</span>
+        <ul class="opts"><li>Laptop</li><li>Laptoop</li><li>Desk</li></ul>
+      </body>
+    </html>
+    """
+    s = sp.ScraperPy()
+    s.select("head").extract_meta("meta")
+    s.select("#box").xpath(".//span", attr="data-code").set("code")
+    s.select("table").table("tbl", header=True, normalize_headers=True)
+    s.select(".dt").text().parse_date(output="unix", key="ts")
+    s.select(".acc").text().unicode_normalize("NFKD").strip_accents().set("ascii")
+    s.select(".opts").find_all("li", sp.Value.Text).fuzzy_filter("Laptop", threshold=0.85, sort_by_score=True).set("best")
+    s.select(".opts").find_all("li", sp.Value.Text).similarity("Laptop", algo="jaro_winkler", key="scores")
+
+    out = s.from_string(html)
+    assert out["meta"]["title"] == "PyTest Page"
+    assert out["meta"]["og:type"] == "website"
+    assert out["meta"]["canonical"] == "https://example.org/"
+    assert out["code"] == "X99"
+    assert out["tbl"] == [{"item": "Pen", "qty": "5"}]
+    assert out["ts"] == 1795091400
+    assert out["ascii"] == "Resume"
+    assert out["best"] == ["Laptop", "Laptoop"]
+    assert out["scores"][0] == 1.0

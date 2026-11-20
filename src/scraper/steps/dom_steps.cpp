@@ -1,11 +1,15 @@
 #include "scraper/steps/dom_steps.hpp"
 #include <absl/container/flat_hash_set.h>
+#include <absl/strings/ascii.h>
+#include <absl/strings/match.h>
 #include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <cstdint>
 #include <iomanip>
 #include <libxml/HTMLtree.h>
+#include <libxml/xpath.h>
+#include <libxml/xpathInternals.h>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -390,6 +394,309 @@ void DebugPrintStep::apply(Node node, std::vector<std::string> &values,
          << std::quoted(node.OwnText().value_or("<no own text>")) << '\n';
   }
   out_ << "--- END " << prefix_ << " ---" << std::endl;
+}
+
+namespace {
+
+std::string xml_char_to_string(xmlChar *ptr) {
+  if (!ptr) {
+    return {};
+  }
+  std::string out(reinterpret_cast<const char *>(ptr));
+  xmlFree(ptr);
+  return out;
+}
+
+std::string trim_ws(std::string_view s) {
+  return std::string(absl::StripAsciiWhitespace(s));
+}
+
+std::string normalize_header_key(std::string_view raw) {
+  std::string out;
+  out.reserve(raw.size());
+  bool prev_underscore = true;
+  for (unsigned char c : raw) {
+    if (std::isalnum(c)) {
+      out.push_back(static_cast<char>(std::tolower(c)));
+      prev_underscore = false;
+    } else if (!prev_underscore) {
+      out.push_back('_');
+      prev_underscore = true;
+    }
+  }
+  while (!out.empty() && out.back() == '_') {
+    out.pop_back();
+  }
+  return out;
+}
+
+int parse_colspan(xmlNodePtr cell) {
+  xmlChar *attr = xmlGetProp(cell, reinterpret_cast<const xmlChar *>("colspan"));
+  if (!attr) {
+    return 1;
+  }
+  std::string s = xml_char_to_string(attr);
+  int val = 1;
+  auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), val);
+  if (ec != std::errc() || val < 1) {
+    return 1;
+  }
+  return std::min(val, 64);
+}
+
+bool tag_equals_ci(xmlNodePtr n, std::string_view target) {
+  if (!n || n->type != XML_ELEMENT_NODE || !n->name) {
+    return false;
+  }
+  return absl::EqualsIgnoreCase(reinterpret_cast<const char *>(n->name),
+                                target);
+}
+
+QueryResult select_css(Node node, const char *css) {
+  auto sel = SelectorParser::Create(css);
+  if (!sel) {
+    return {};
+  }
+  return sel->MatchAll(node);
+}
+
+void collect_table_rows(xmlNodePtr root,
+                        std::vector<std::vector<std::string>> &rows,
+                        bool trim_cells) {
+  for (xmlNodePtr cur = root->children; cur; cur = cur->next) {
+    if (cur->type != XML_ELEMENT_NODE) {
+      continue;
+    }
+    if (tag_equals_ci(cur, "thead") || tag_equals_ci(cur, "tbody") ||
+        tag_equals_ci(cur, "tfoot")) {
+      collect_table_rows(cur, rows, trim_cells);
+    } else if (tag_equals_ci(cur, "tr")) {
+      std::vector<std::string> row;
+      for (xmlNodePtr cell = cur->children; cell; cell = cell->next) {
+        if (tag_equals_ci(cell, "th") || tag_equals_ci(cell, "td")) {
+          std::string text = xml_char_to_string(xmlNodeGetContent(cell));
+          if (trim_cells) {
+            text = trim_ws(text);
+          }
+          const int span = parse_colspan(cell);
+          for (int s = 0; s < span; ++s) {
+            row.push_back(s == 0 ? text : "");
+          }
+        }
+      }
+      if (!row.empty()) {
+        rows.push_back(std::move(row));
+      }
+    }
+  }
+}
+
+} // namespace
+
+void XPathStep::apply(Node node, std::vector<std::string> &values,
+                      jsoncons::json &) {
+  if (!node.valid() || expr_.empty()) {
+    return;
+  }
+  xmlNodePtr raw = node.getRaw();
+  if (!raw || !raw->doc) {
+    return;
+  }
+
+  std::unique_ptr<xmlXPathContext, decltype(&xmlXPathFreeContext)> ctx(
+      xmlXPathNewContext(raw->doc), &xmlXPathFreeContext);
+  if (!ctx) {
+    throw std::runtime_error("xpath: failed to create XPath context");
+  }
+  ctx->node = raw;
+
+  std::unique_ptr<xmlXPathObject, decltype(&xmlXPathFreeObject)> obj(
+      xmlXPathEvalExpression(reinterpret_cast<const xmlChar *>(expr_.c_str()),
+                             ctx.get()),
+      &xmlXPathFreeObject);
+  if (!obj) {
+    throw std::runtime_error("xpath: invalid expression '" + expr_ + "'");
+  }
+
+  switch (obj->type) {
+  case XPATH_NODESET:
+    if (obj->nodesetval) {
+      for (int i = 0; i < obj->nodesetval->nodeNr; ++i) {
+        xmlNodePtr n = obj->nodesetval->nodeTab[i];
+        if (!n) {
+          continue;
+        }
+        if (!attr_name_.empty()) {
+          xmlChar *prop = xmlGetProp(
+              n, reinterpret_cast<const xmlChar *>(attr_name_.c_str()));
+          if (prop) {
+            values.push_back(xml_char_to_string(prop));
+          }
+        } else {
+          values.push_back(xml_char_to_string(xmlNodeGetContent(n)));
+        }
+      }
+    }
+    break;
+  case XPATH_STRING:
+    if (obj->stringval) {
+      values.emplace_back(reinterpret_cast<const char *>(obj->stringval));
+    }
+    break;
+  case XPATH_NUMBER: {
+    std::ostringstream oss;
+    oss << obj->floatval;
+    values.push_back(oss.str());
+    break;
+  }
+  case XPATH_BOOLEAN:
+    values.emplace_back(obj->boolval ? "true" : "false");
+    break;
+  default:
+    break;
+  }
+}
+
+void TableStep::apply(Node node, std::vector<std::string> &values,
+                      jsoncons::json &dict) {
+  if (!node.valid()) {
+    return;
+  }
+
+  xmlNodePtr table_raw = node.getRaw();
+  if (!tag_equals_ci(table_raw, "table")) {
+    auto found = select_css(node, "table");
+    if (found.empty() || !found.front()) {
+      return;
+    }
+    table_raw = found.front()->getRaw();
+  }
+  if (!table_raw) {
+    return;
+  }
+
+  std::vector<std::vector<std::string>> rows;
+  collect_table_rows(table_raw, rows, trim_cells_);
+
+  jsoncons::json result = jsoncons::json::array();
+  if (header_ && !rows.empty()) {
+    std::vector<std::string> headers = rows.front();
+    absl::flat_hash_set<std::string> seen;
+    for (size_t c = 0; c < headers.size(); ++c) {
+      std::string h =
+          normalize_headers_ ? normalize_header_key(headers[c]) : headers[c];
+      if (h.empty()) {
+        h = "col_" + std::to_string(c);
+      }
+      std::string unique_h = h;
+      int suffix = 1;
+      while (seen.contains(unique_h)) {
+        unique_h = h + "_" + std::to_string(++suffix);
+      }
+      seen.insert(unique_h);
+      headers[c] = std::move(unique_h);
+    }
+
+    for (size_t r = 1; r < rows.size(); ++r) {
+      jsoncons::json obj = jsoncons::json::object();
+      for (size_t c = 0; c < headers.size(); ++c) {
+        obj.insert_or_assign(headers[c],
+                             c < rows[r].size() ? rows[r][c] : std::string{});
+      }
+      result.push_back(std::move(obj));
+    }
+  } else {
+    for (const auto &row : rows) {
+      jsoncons::json arr = jsoncons::json::array();
+      for (const auto &cell : row) {
+        arr.push_back(cell);
+      }
+      result.push_back(std::move(arr));
+    }
+  }
+
+  if (!key_.empty()) {
+    insert_into_json(dict, key_, std::move(result), opts_);
+  } else {
+    values.push_back(result.to_string());
+  }
+}
+
+void ExtractMetaStep::apply(Node node, std::vector<std::string> &,
+                            jsoncons::json &dict) {
+  if (!node.valid()) {
+    return;
+  }
+
+  jsoncons::json meta = jsoncons::json::object();
+
+  auto titles = select_css(node, "title");
+  if (!titles.empty() && titles.front()) {
+    if (auto t = titles.front()->Text()) {
+      std::string trimmed = trim_ws(*t);
+      if (!trimmed.empty()) {
+        meta.insert_or_assign("title", std::move(trimmed));
+      }
+    }
+  }
+
+  for (const auto &link_node : select_css(node, "link[rel][href]")) {
+    auto rel = link_node.Attribute("rel");
+    auto href = link_node.Attribute("href");
+    if (rel && href && absl::EqualsIgnoreCase(trim_ws(*rel), "canonical")) {
+      meta.insert_or_assign("canonical", trim_ws(*href));
+      break;
+    }
+  }
+
+  for (const auto &m : select_css(node, "meta")) {
+    auto content = m.Attribute("content");
+    if (!content) {
+      continue;
+    }
+    std::optional<std::string> meta_key = m.Attribute("name");
+    if (!meta_key || meta_key->empty()) {
+      meta_key = m.Attribute("property");
+    }
+    if (!meta_key || meta_key->empty()) {
+      meta_key = m.Attribute("http-equiv");
+    }
+    if (!meta_key || meta_key->empty()) {
+      continue;
+    }
+    if (!meta.contains(*meta_key)) {
+      meta.insert_or_assign(*meta_key, trim_ws(*content));
+    }
+  }
+
+  if (include_json_ld_) {
+    jsoncons::json ld_array = jsoncons::json::array();
+    for (const auto &script :
+         select_css(node, "script[type=\"application/ld+json\"]")) {
+      if (auto text = script.Text()) {
+        std::string trimmed = trim_ws(*text);
+        if (trimmed.empty()) {
+          continue;
+        }
+        try {
+          ld_array.push_back(jsoncons::json::parse(trimmed));
+        } catch (const std::exception &) {
+          // Skip malformed JSON-LD blocks gracefully.
+        }
+      }
+    }
+    if (!ld_array.empty()) {
+      meta.insert_or_assign("json_ld", std::move(ld_array));
+    }
+  }
+
+  if (!key_.empty()) {
+    insert_into_json(dict, key_, std::move(meta), opts_);
+  } else {
+    for (const auto &kv : meta.object_range()) {
+      insert_into_json(dict, kv.key(), jsoncons::json(kv.value()), opts_);
+    }
+  }
 }
 
 } // namespace scraper

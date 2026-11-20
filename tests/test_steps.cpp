@@ -530,3 +530,96 @@ TEST_CASE("Tier 1 steps: typed parsing, URLs, DOM, Aho-Corasick, hash/base64, er
   CHECK(erg_res["specs"]["Weight"].as<std::string>() == "1.5kg");
   CHECK(erg_res["specs"]["Color"].as<std::string>() == "Black");
 }
+
+TEST_CASE("Tier 2 steps: xpath, table, extract_meta, parse_date, unicode, fuzzy",
+          "[steps][tier2]") {
+  const std::string html = R"(
+    <html>
+      <head>
+        <title>  Widget Pro  </title>
+        <meta name="description" content="Best widget">
+        <meta property="og:title" content="Widget Pro OG">
+        <link rel="canonical" href="https://example.com/widget">
+        <script type="application/ld+json">{"@type":"Product","name":"Widget Pro"}</script>
+      </head>
+      <body>
+        <div id="catalog">
+          <a href="/buy" data-id="99">Buy</a>
+          <span class="dt">Nov 19, 2026</span>
+          <span class="dt_iso">2026-11-19T12:30:00Z</span>
+          <ul class="names">
+            <li>Café Crème</li>
+            <li>Crème Brûlée</li>
+            <li>Espresso</li>
+          </ul>
+          <table id="specs">
+            <thead><tr><th>Spec Name</th><th colspan="2">Value &amp; Unit</th></tr></thead>
+            <tbody>
+              <tr><td>Weight</td><td>1.2</td><td>kg</td></tr>
+              <tr><td>Color</td><td>Matte</td><td>Black</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </body>
+    </html>
+  )";
+
+  scraper::ScraperBuilder sb;
+  sb.Select("head")
+      .ExtractMeta("meta")
+      .Select("#catalog")
+      .XPath(".//a/@data-id")
+      .Set("buy_id")
+      .Select("#specs")
+      .Table("specs_table", true, true)
+      .Select(".dt")
+      .Text()
+      .ParseDate("", "date", "release_date")
+      .Select(".dt_iso")
+      .Text()
+      .ParseDate("", "unix", "release_unix")
+      .Select(".names")
+      .FindAll("li", scraper::QueryAllStep::Type::Text)
+      .UnicodeNormalize("NFC")
+      .StripAccents()
+      .Set("ascii_names")
+      .Select(".names")
+      .FindAll("li", scraper::QueryAllStep::Type::Text)
+      .StripAccents()
+      .FuzzyFilter("Cafe Creme", 0.75, "jaro_winkler", false, true)
+      .Set("fuzzy_matches")
+      .Select(".names")
+      .FindAll("li", scraper::QueryAllStep::Type::Text)
+      .StripAccents()
+      .Similarity("Espresso", "levenshtein", false, "sim_scores");
+
+  const auto res = sb.scrape_from_string(html);
+
+  CHECK(res["meta"]["title"].as<std::string>() == "Widget Pro");
+  CHECK(res["meta"]["description"].as<std::string>() == "Best widget");
+  CHECK(res["meta"]["og:title"].as<std::string>() == "Widget Pro OG");
+  CHECK(res["meta"]["canonical"].as<std::string>() ==
+        "https://example.com/widget");
+  REQUIRE(res["meta"]["json_ld"].is_array());
+  CHECK(res["meta"]["json_ld"][0]["name"].as<std::string>() == "Widget Pro");
+
+  CHECK(res["buy_id"].as<std::string>() == "99");
+
+  REQUIRE(res["specs_table"].is_array());
+  REQUIRE(res["specs_table"].size() == 2);
+  CHECK(res["specs_table"][0]["spec_name"].as<std::string>() == "Weight");
+  CHECK(res["specs_table"][0]["value_unit"].as<std::string>() == "1.2");
+
+  CHECK(res["release_date"].as<std::string>() == "2026-11-19");
+  CHECK(res["release_unix"].is_int64());
+  CHECK(res["release_unix"].as<int64_t>() == 1795091400);
+
+  REQUIRE(res["ascii_names"].is_array());
+  CHECK(res["ascii_names"][0].as<std::string>() == "Cafe Creme");
+  CHECK(res["ascii_names"][1].as<std::string>() == "Creme Brulee");
+
+  CHECK(res["fuzzy_matches"].as<std::string>() == "Cafe Creme");
+
+  REQUIRE(res["sim_scores"].is_array());
+  CHECK(std::abs(res["sim_scores"][2].as<double>() - 1.0) < 1e-6);
+}

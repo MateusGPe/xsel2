@@ -1,4 +1,6 @@
 #include "scraper/steps/text_steps.hpp"
+#include "scraper/merge.hpp"
+#include "common/fuzzy.hpp"
 #include "common/hex_utils.hpp"
 #include "common/string_utils.hpp"
 #include "common/utf.hpp"
@@ -9,9 +11,13 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <lxml2-query.h>
+#include <memory>
+#include <sstream>
 #include <stdexcept>
+#include <utf8proc.h>
 
 namespace scraper {
 
@@ -465,6 +471,147 @@ void HashStep::apply(Node, std::vector<std::string> &values,
     } else {
       const auto digest = sha256_bytes(v);
       v = xsel::common::bytes_to_hex(digest);
+    }
+  }
+}
+
+namespace {
+
+std::string run_utf8proc(std::string_view input, utf8proc_option_t options) {
+  if (input.empty()) {
+    return {};
+  }
+  utf8proc_uint8_t *mapped = nullptr;
+  const utf8proc_ssize_t len = utf8proc_map(
+      reinterpret_cast<const utf8proc_uint8_t *>(input.data()),
+      static_cast<utf8proc_ssize_t>(input.size()), &mapped, options);
+  std::unique_ptr<utf8proc_uint8_t, decltype(&std::free)> guard(mapped,
+                                                                &std::free);
+  if (len < 0 || !mapped) {
+    throw std::runtime_error(std::string("unicode_normalize: ") +
+                             utf8proc_errmsg(len));
+  }
+  return std::string(reinterpret_cast<const char *>(mapped),
+                     static_cast<size_t>(len));
+}
+
+} // namespace
+
+UnicodeNormalizeStep::UnicodeNormalizeStep(std::string_view form) {
+  const std::string upper = absl::AsciiStrToUpper(form);
+  if (upper == "NFC") {
+    form_ = Form::NFC;
+  } else if (upper == "NFD") {
+    form_ = Form::NFD;
+  } else if (upper == "NFKC") {
+    form_ = Form::NFKC;
+  } else if (upper == "NFKD") {
+    form_ = Form::NFKD;
+  } else {
+    throw std::invalid_argument("unicode_normalize: unknown form '" +
+                                std::string(form) +
+                                "' (expected NFC, NFD, NFKC, or NFKD)");
+  }
+}
+
+void UnicodeNormalizeStep::apply(Node, std::vector<std::string> &values,
+                                 jsoncons::json &) {
+  utf8proc_option_t opts = UTF8PROC_STABLE;
+  switch (form_) {
+  case Form::NFC:
+    opts = static_cast<utf8proc_option_t>(UTF8PROC_STABLE | UTF8PROC_COMPOSE);
+    break;
+  case Form::NFD:
+    opts = static_cast<utf8proc_option_t>(UTF8PROC_STABLE | UTF8PROC_DECOMPOSE);
+    break;
+  case Form::NFKC:
+    opts = static_cast<utf8proc_option_t>(UTF8PROC_STABLE | UTF8PROC_COMPAT |
+                                          UTF8PROC_COMPOSE);
+    break;
+  case Form::NFKD:
+    opts = static_cast<utf8proc_option_t>(UTF8PROC_STABLE | UTF8PROC_COMPAT |
+                                          UTF8PROC_DECOMPOSE);
+    break;
+  }
+  for (auto &v : values) {
+    v = run_utf8proc(v, opts);
+  }
+}
+
+void StripAccentsStep::apply(Node, std::vector<std::string> &values,
+                             jsoncons::json &) {
+  const auto opts = static_cast<utf8proc_option_t>(
+      UTF8PROC_STABLE | UTF8PROC_DECOMPOSE | UTF8PROC_STRIPMARK);
+  for (auto &v : values) {
+    v = run_utf8proc(v, opts);
+  }
+}
+
+FuzzyFilterStep::FuzzyFilterStep(std::string_view query, double threshold,
+                                 std::string_view algo, bool case_sensitive,
+                                 bool sort_by_score)
+    : query_(query), threshold_(threshold), algo_(algo),
+      case_sensitive_(case_sensitive), sort_by_score_(sort_by_score) {
+  (void)xsel::common::parse_fuzzy_algo(algo_);
+}
+
+void FuzzyFilterStep::apply(Node, std::vector<std::string> &values,
+                            jsoncons::json &) {
+  const auto algo = xsel::common::parse_fuzzy_algo(algo_);
+  struct Scored {
+    std::string value;
+    double score;
+  };
+  std::vector<Scored> kept;
+  kept.reserve(values.size());
+  for (auto &v : values) {
+    const double score =
+        xsel::common::fuzzy_similarity(v, query_, algo, case_sensitive_);
+    if (score >= threshold_) {
+      kept.push_back({std::move(v), score});
+    }
+  }
+  if (sort_by_score_) {
+    std::stable_sort(kept.begin(), kept.end(),
+                     [](const Scored &a, const Scored &b) {
+                       return a.score > b.score;
+                     });
+  }
+  values.clear();
+  values.reserve(kept.size());
+  for (auto &item : kept) {
+    values.push_back(std::move(item.value));
+  }
+}
+
+SimilarityStep::SimilarityStep(std::string_view query, std::string_view algo,
+                               bool case_sensitive, std::string_view key)
+    : query_(query), algo_(algo), case_sensitive_(case_sensitive), key_(key) {
+  (void)xsel::common::parse_fuzzy_algo(algo_);
+}
+
+void SimilarityStep::apply(Node, std::vector<std::string> &values,
+                           jsoncons::json &dict) {
+  const auto algo = xsel::common::parse_fuzzy_algo(algo_);
+  std::vector<double> scores;
+  scores.reserve(values.size());
+  for (auto &v : values) {
+    const double score =
+        xsel::common::fuzzy_similarity(v, query_, algo, case_sensitive_);
+    scores.push_back(score);
+    std::ostringstream oss;
+    oss << score;
+    v = oss.str();
+  }
+  if (!key_.empty() && !scores.empty()) {
+    if (scores.size() == 1) {
+      insert_into_json(dict, key_, jsoncons::json(scores.front()));
+    } else {
+      jsoncons::json arr = jsoncons::json::array();
+      for (double s : scores) {
+        arr.push_back(s);
+      }
+      insert_into_json(dict, key_, std::move(arr));
     }
   }
 }
