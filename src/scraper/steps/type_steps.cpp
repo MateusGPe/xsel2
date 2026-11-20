@@ -179,7 +179,11 @@ jsoncons::json coerce_string_to_json(std::string_view s, ValueType type) {
       return jsoncons::json(*iv);
     }
     if (auto dv = parse_float_literal(trimmed)) {
-      return jsoncons::json(static_cast<int64_t>(*dv));
+      constexpr double kMinInt64 = -9223372036854775808.0;
+      constexpr double kMaxInt64Plus1 = 9223372036854775808.0;
+      if (*dv >= kMinInt64 && *dv < kMaxInt64Plus1) {
+        return jsoncons::json(static_cast<int64_t>(*dv));
+      }
     }
     return jsoncons::json::null();
   }

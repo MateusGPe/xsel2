@@ -2,6 +2,7 @@
 #include "scraper/scraper.hpp"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <sstream>
 
 TEST_CASE("Scraper extracts typed JSON, counts, and JMESPath transforms",
           "[scraper]") {
@@ -118,4 +119,44 @@ TEST_CASE("Scraper supports ErrorPolicy modes and multiple postponed steps",
   const auto post_out = multi_post.scrape_from_string(html);
   REQUIRE(post_out.contains("renamed"));
   CHECK(post_out["renamed"].as<std::string>() == "hello");
+}
+
+TEST_CASE("Scraper handles LogAndContinue, postponed step errors, empty and malformed HTML",
+          "[scraper][edge]") {
+  const std::string html = R"(<div><span class="x">hello</span></div>)";
+
+  // LogAndContinue writes formatted error to custom stream
+  scraper::ScraperBuilder log_sb;
+  log_sb.set_error_policy(scraper::ErrorPolicy::LogAndContinue);
+  log_sb.Select("div")
+      .Find(".missing", scraper::QueryAllStep::Type::Text)
+      .Set("val");
+  Document doc;
+  doc.parseMemory(html);
+  jsoncons::json out = jsoncons::json::object();
+  std::ostringstream err_stream;
+  log_sb.scrape_document(doc, out, "test_ctx", err_stream);
+  CHECK(err_stream.str().find("[test_ctx]") != std::string::npos);
+  CHECK(err_stream.str().find("Extractor error") != std::string::npos);
+
+  // Postponed step failure under CollectErrors vs ThrowOnError
+  scraper::ScraperBuilder post_err;
+  post_err.set_error_policy(scraper::ErrorPolicy::CollectErrors);
+  post_err.Select("div")
+      .Find(".x", scraper::QueryAllStep::Type::Text)
+      .Set("val")
+      .JmesPath("invalid[[[");
+  (void)post_err.scrape_from_string(html);
+  CHECK(post_err.errors().size() == 1);
+
+  post_err.set_error_policy(scraper::ErrorPolicy::ThrowOnError);
+  CHECK_THROWS_AS((void)post_err.scrape_from_string(html), std::runtime_error);
+
+  // Empty HTML and malformed unclosed tags
+  scraper::ScraperBuilder basic;
+  basic.Select("p").Text().Squish().Set("p");
+  CHECK(basic.scrape_from_string("").empty());
+  const auto malformed = basic.scrape_from_string("<div><p>unclosed <b>bold");
+  REQUIRE(malformed.contains("p"));
+  CHECK(malformed["p"].as<std::string>() == "unclosed bold");
 }

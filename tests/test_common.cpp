@@ -1,5 +1,7 @@
+#include "common/fuzzy.hpp"
 #include "common/hex_utils.hpp"
 #include "common/json_utils.hpp"
+#include "common/string_utils.hpp"
 #include "common/utf.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
@@ -174,4 +176,80 @@ TEST_CASE("append_utf8_codepoint replaces surrogates and out-of-range values",
   xsel::common::append_utf8_codepoint(out, 0x110000u);
   CHECK(out == "\xEF\xBF\xBD\xEF\xBF\xBD\xEF\xBF\xBD");
   CHECK(utf8_check_string(out.data(), out.size()) == 1);
+}
+
+TEST_CASE("utf8_check_string rejects 3-byte/4-byte overlong and >U+10FFFF",
+          "[common][utf][edge]") {
+  CHECK(utf8_check_string("", 0) == 1);
+  const char overlong3[] = {'\xE0', '\x80', '\xAF'};
+  CHECK(utf8_check_string(overlong3, 3) == 0);
+  const char overlong4[] = {'\xF0', '\x80', '\x80', '\xAF'};
+  CHECK(utf8_check_string(overlong4, 4) == 0);
+  const char too_high[] = {'\xF4', '\x90', '\x80', '\x80'}; // U+110000
+  CHECK(utf8_check_string(too_high, 4) == 0);
+}
+
+TEST_CASE("strip_c_comments handles strings, escapes, EOF, and preserve_newlines",
+          "[common][string_utils][edge]") {
+  CHECK(xsel::common::strip_c_comments(R"("http://x" // comment at eof)") ==
+        R"("http://x" )");
+  CHECK(xsel::common::strip_c_comments(R"('a/*b*/c' /* c1 */ 'd\"/*e*/')") ==
+        R"('a/*b*/c'  'd\"/*e*/')");
+  CHECK(xsel::common::strip_c_comments("a /* unterminated\nline2") == "a ");
+  CHECK(xsel::common::strip_c_comments("a /* l1\nl2 */ b", true, true, true) ==
+        "a \n b");
+  CHECK(xsel::common::strip_c_comments("a /* l1\nl2 */ b", true, true, false) ==
+        "a  b");
+}
+
+TEST_CASE("hex_nibble handles valid and boundary invalid characters",
+          "[common][hex][edge]") {
+  CHECK(xsel::common::hex_nibble('0') == 0);
+  CHECK(xsel::common::hex_nibble('9') == 9);
+  CHECK(xsel::common::hex_nibble('a') == 10);
+  CHECK(xsel::common::hex_nibble('f') == 15);
+  CHECK(xsel::common::hex_nibble('A') == 10);
+  CHECK(xsel::common::hex_nibble('F') == 15);
+  CHECK(xsel::common::hex_nibble('/') == -1);
+  CHECK(xsel::common::hex_nibble(':') == -1);
+  CHECK(xsel::common::hex_nibble('g') == -1);
+  CHECK(xsel::common::hex_nibble('G') == -1);
+  CHECK(xsel::common::hex_nibble('\0') == -1);
+}
+
+TEST_CASE("fuzzy matching handles empty, UTF-8, case sensitivity, and errors",
+          "[common][fuzzy][edge]") {
+  using namespace xsel::common;
+  CHECK(parse_fuzzy_algo("jw") == FuzzyAlgo::JaroWinkler);
+  CHECK(parse_fuzzy_algo("lev") == FuzzyAlgo::Levenshtein);
+  CHECK_THROWS_AS(parse_fuzzy_algo("soundex"), std::invalid_argument);
+
+  CHECK(levenshtein_distance("", "") == 0);
+  CHECK(levenshtein_distance("", "abc") == 3);
+  CHECK(levenshtein_similarity("", "") == 1.0);
+  CHECK(jaro_winkler_similarity("", "") == 1.0);
+  CHECK(jaro_winkler_similarity("abc", "") == 0.0);
+  CHECK(jaro_winkler_similarity("abc", "xyz") == 0.0);
+
+  CHECK(levenshtein_distance("AbC", "abc", false) == 0);
+  CHECK(levenshtein_distance("AbC", "abc", true) == 2);
+
+  // Multi-byte UTF-8 codepoints should be counted as 1 codepoint each, not bytes
+  CHECK(levenshtein_distance("caf\xC3\xA9", "cafe") == 1);
+}
+
+TEST_CASE("compare_json handles negative zero, fractions, and exact int64/double boundaries",
+          "[common][json_utils][edge]") {
+  CHECK(xsel::common::compare_json(jsoncons::json(-0.0), jsoncons::json(0.0)) == 0);
+  CHECK(xsel::common::compare_json(jsoncons::json(42), jsoncons::json(42.5)) < 0);
+  CHECK(xsel::common::compare_json(jsoncons::json(-42), jsoncons::json(-42.5)) > 0);
+
+  const jsoncons::json min_i(std::numeric_limits<int64_t>::min());
+  const jsoncons::json min_i_dbl(-9223372036854775808.0);
+  CHECK(xsel::common::compare_json(min_i, min_i_dbl) == 0);
+
+  const jsoncons::json max_i(std::numeric_limits<int64_t>::max());
+  const jsoncons::json pow2_63(9223372036854775808.0);
+  CHECK(xsel::common::compare_json(max_i, pow2_63) < 0);
+  CHECK(xsel::common::compare_json(pow2_63, max_i) > 0);
 }

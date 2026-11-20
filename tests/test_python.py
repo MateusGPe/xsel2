@@ -309,3 +309,50 @@ def test_tier2_steps_python():
     assert out["ascii"] == "Resume"
     assert out["best"] == ["Laptop", "Laptoop"]
     assert out["scores"][0] == 1.0
+
+
+def test_python_bridge_edge_cases():
+    # bool vs int distinction & 64-bit integer boundaries
+    payload = {
+        "b_true": True,
+        "b_false": False,
+        "i_zero": 0,
+        "i_one": 1,
+        "i64_min": -(2**63),
+        "i64_max": 2**63 - 1,
+        "u64_max": 2**64 - 1,
+    }
+    rt = sp.jmespath_eval(payload, "@")
+    assert rt["b_true"] is True
+    assert rt["b_false"] is False
+    assert type(rt["i_zero"]) is int and rt["i_zero"] == 0
+    assert type(rt["i_one"]) is int and rt["i_one"] == 1
+    assert rt["i64_min"] == -(2**63)
+    assert rt["i64_max"] == 2**63 - 1
+    assert rt["u64_max"] == 2**64 - 1
+
+    # Oversized int (> uint64_t max) & unsupported types must raise
+    with pytest.raises(Exception):
+        sp.jmespath_eval({"huge": 10**30}, "@")
+    with pytest.raises(RuntimeError):
+        sp.jmespath_eval({"bad": {1, 2, 3}}, "@")
+
+    # Depth limit in python_to_json (MAX_JSON_DEPTH = 512)
+    deep = 1
+    for _ in range(550):
+        deep = [deep]
+    with pytest.raises(RuntimeError):
+        sp.jmespath_eval(deep, "@")
+
+
+def test_python_scraper_edge_cases():
+    s_empty = sp.ScraperPy()
+    s_empty.select("h1").text().set("title")
+    assert s_empty.from_string("") == {}
+
+    s_missing = sp.ScraperPy()
+    s_missing.select("div").find(".missing", sp.Value.Text).set("v")
+    assert s_missing.from_string("<div><span>ok</span></div>") == {}
+
+    with pytest.raises(ValueError):
+        sp.ScraperPy().select("div").regex_replace("[unclosed", "x")

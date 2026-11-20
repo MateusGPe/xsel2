@@ -623,3 +623,57 @@ TEST_CASE("Tier 2 steps: xpath, table, extract_meta, parse_date, unicode, fuzzy"
   REQUIRE(res["sim_scores"].is_array());
   CHECK(std::abs(res["sim_scores"][2].as<double>() - 1.0) < 1e-6);
 }
+
+TEST_CASE("Steps edge cases: type coercion bounds, block comments, regex, URL, and dict depth",
+          "[steps][edge]") {
+  jsoncons::json dict = jsoncons::json::object();
+
+  // 1. Out-of-range float to Int coercion must return null, not UB
+  CHECK(scraper::coerce_string_to_json("1e30", scraper::ValueType::Int).is_null());
+  CHECK(scraper::coerce_string_to_json("-1e30", scraper::ValueType::Int).is_null());
+  CHECK(scraper::coerce_string_to_json("42.9", scraper::ValueType::Int).as<int64_t>() == 42);
+  CHECK_THROWS_AS(scraper::parse_value_type_name("unknown_type"), std::runtime_error);
+
+  // extract_number_string accounting parens, EU format, no digits
+  CHECK(scraper::extract_number_string("(1,234.50)", ".", ",", true) == "-1234.50");
+  CHECK(scraper::extract_number_string("1.234,56 EUR", ",", ".", true) == "1234.56");
+  CHECK_FALSE(scraper::extract_number_string("no digits here", ".", ",", true).has_value());
+
+  // 2. BlockSeekerStep skips braces inside comments/strings before the real block
+  std::vector<std::string> blk = {
+      R"(var cfg = /* {fake} */ " {also_fake} " + {real: 42};)"};
+  scraper::BlockSeekerStep("var cfg =").apply(dummy_node(), blk, dict);
+  REQUIRE(blk.size() == 1);
+  CHECK(blk[0] == "{real: 42}");
+
+  std::vector<std::string> unbal = {"var cfg = {unclosed: 1"};
+  scraper::BlockSeekerStep("var cfg =").apply(dummy_node(), unbal, dict);
+  CHECK(unbal.empty());
+
+  // 3. Regex invalid pattern & FilterStep empty list
+  CHECK_THROWS_AS(scraper::RegexReplaceStep("[unclosed", "x"), std::invalid_argument);
+  CHECK_THROWS_AS(scraper::RegexFilterStep("[unclosed", false), std::invalid_argument);
+  CHECK_THROWS_AS(scraper::RegexExtractStep("[unclosed", 1), std::invalid_argument);
+  CHECK_THROWS_AS(scraper::FilterStep({}), std::runtime_error);
+
+  // 4. URL edge cases
+  CHECK_THROWS_AS(scraper::UrlPartStep("invalid_part"), std::runtime_error);
+  std::vector<std::string> qp = {"https://example.com/search?q=hello+world%21&lang=en"};
+  scraper::QueryParamStep("q", "none").apply(dummy_node(), qp, dict);
+  CHECK(qp == std::vector<std::string>{"hello world!"});
+
+  std::vector<std::string> slug = {"---!!!"};
+  scraper::SlugifyStep("-").apply(dummy_node(), slug, dict);
+  CHECK(slug == std::vector<std::string>{""});
+
+  // 5. Dict depth guard on RemoveKeysStep / RenameKeysStep / FilterDictStep
+  jsoncons::json deep = 1;
+  for (int i = 0; i < xsel::common::MAX_JSON_DEPTH + 5; ++i) {
+    jsoncons::json wrap = jsoncons::json::array();
+    wrap.push_back(std::move(deep));
+    deep = std::move(wrap);
+  }
+  CHECK_THROWS_AS(scraper::RemoveKeysStep({"x"}).execute_postponed(deep), std::runtime_error);
+  CHECK_THROWS_AS(scraper::RenameKeysStep({{"a", "b"}}).execute_postponed(deep), std::runtime_error);
+  CHECK_THROWS_AS(scraper::FilterDictStep({"a"}).execute_postponed(deep), std::runtime_error);
+}

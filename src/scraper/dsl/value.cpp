@@ -1,6 +1,8 @@
 #include "scraper/dsl/value.hpp"
 #include "query/json_query.hpp"
 #include <charconv>
+#include <cmath>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
@@ -104,7 +106,13 @@ int as_int(const DslValue &v) {
     return v.get_int();
   }
   if (v.is_double()) {
-    return static_cast<int>(v.get_double());
+    const double d = v.get_double();
+    if (!std::isfinite(d) ||
+        d < static_cast<double>(std::numeric_limits<int>::min()) ||
+        d > static_cast<double>(std::numeric_limits<int>::max())) {
+      throw std::runtime_error("Double value out of integer range in DSL");
+    }
+    return static_cast<int>(d);
   }
   if (v.is_string()) {
     return parse_strict_int(v.get_string(), "DSL");

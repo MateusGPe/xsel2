@@ -1,5 +1,7 @@
 #include "scraper/dsl_parser.hpp"
+#include "scraper/dsl/value.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -296,4 +298,72 @@ TEST_CASE("DslParser executes Tier 2 steps", "[dsl][tier2]") {
   CHECK(res["plain"].as<std::string>() == "Sao Paulo");
   REQUIRE(res["matches"].is_array());
   CHECK(res["matches"].size() == 2);
+}
+
+TEST_CASE("DslValue guards against non-finite/out-of-range doubles and invalid coercions",
+          "[dsl][value][edge]") {
+  using scraper::dsl::DslValue;
+  CHECK_THROWS_AS(scraper::dsl::as_int(DslValue(std::numeric_limits<double>::quiet_NaN())),
+                  std::runtime_error);
+  CHECK_THROWS_AS(scraper::dsl::as_int(DslValue(std::numeric_limits<double>::infinity())),
+                  std::runtime_error);
+  CHECK_THROWS_AS(scraper::dsl::as_int(DslValue(1e20)), std::runtime_error);
+  CHECK_THROWS_AS(scraper::dsl::as_int(DslValue(-1e20)), std::runtime_error);
+  CHECK_THROWS_AS(scraper::dsl::as_int(DslValue(std::string("12x"))), std::runtime_error);
+  CHECK_THROWS_AS(scraper::dsl::as_int(DslValue(std::string(""))), std::runtime_error);
+  CHECK_THROWS_AS(scraper::dsl::as_int(DslValue(std::string("99999999999999999999"))),
+                  std::runtime_error);
+
+  CHECK_THROWS_AS(scraper::dsl::as_bool(DslValue(std::string("maybe"))), std::runtime_error);
+  CHECK_THROWS_AS(scraper::dsl::as_non_negative_size(DslValue(-1), "nth"),
+                  std::runtime_error);
+}
+
+TEST_CASE("DslParser rejects malformed syntax, interpolation errors, and excessive depth",
+          "[dsl][edge]") {
+  scraper::dsl::DslParser parser;
+
+  // Unterminated string & trailing backslash
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper() | $("h1") { text -> "unterminated };)"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(parser.parse("s = Scraper() | $(\"h1\\"), std::runtime_error);
+
+  // Unknown character
+  CHECK_THROWS_AS(parser.parse(R"(s = Scraper() | $("h1") ~ text;)"),
+                  std::runtime_error);
+
+  // Duplicate keyword arg & positional after keyword
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text | set(key="a", key="b") };)"),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text | replace(old="a", "b") };)"),
+      std::runtime_error);
+
+  // Interpolation errors & escaped \$
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text -> "${missing}" };)"),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text -> "${unterm" };)"),
+      std::runtime_error);
+  const auto escaped = parser.parse(
+      R"(s = Scraper() | $("h1") { text -> "\${literal}" };)");
+  REQUIRE(escaped.contains("s"));
+
+  // Non-finite float literal & unknown step
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text | fuzzy_filter("a", threshold=1e999) };)"),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text | nonexistent_step() };)"),
+      std::runtime_error);
+
+  // Excessive nesting depth
+  std::string deep = "s = Scraper() | $(\"h1\") { text | filter(";
+  for (int i = 0; i < 80; ++i) deep += "[";
+  deep += "\"a\"";
+  for (int i = 0; i < 80; ++i) deep += "]";
+  deep += ") };";
+  CHECK_THROWS_AS(parser.parse(deep), std::runtime_error);
 }

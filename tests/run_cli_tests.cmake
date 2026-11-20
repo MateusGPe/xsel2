@@ -153,3 +153,41 @@ execute_process(
 if(rc EQUAL 0)
   message(FATAL_ERROR "Expected non-zero exit code when -d is omitted in xmlsel-pipe")
 endif()
+
+# 9. Negative & edge-case CLI tests
+foreach(bad_cmd
+  "scraper;--selector;h1"
+  "scraper;--html;<p>hi</p>"
+  "scraper;--selector;h1;--html;<p>hi</p>;--bogus"
+  "scraper;--selector"
+  "scraper;--dsl;${SOURCE_DIR}/examples/does_not_exist.dsl;--html;<p>hi</p>"
+  "scraper;--dsl;${SOURCE_DIR}/examples/product.dsl;--name;nonexistent;--html;<p>hi</p>"
+  "jmespath;--expr;invalid[[;--json;{}"
+  "jmespath;--expr;@;--json;{not_json"
+  "jsonpath;--expr;$[bad;--json;{}"
+)
+  execute_process(
+    COMMAND "${CLI_BIN}" ${bad_cmd}
+    RESULT_VARIABLE rc
+    OUTPUT_QUIET
+    ERROR_QUIET
+  )
+  if(rc EQUAL 0)
+    message(FATAL_ERROR "Expected non-zero exit code for invalid CLI args: ${bad_cmd}")
+  endif()
+endforeach()
+
+# 10. xmlsel-cli scraper reading HTML from stdin ('-')
+execute_process(
+  COMMAND "${CLI_BIN}" scraper --selector "h1" --html - --compact
+  INPUT_FILE "${SOURCE_DIR}/examples/sample.html"
+  RESULT_VARIABLE rc
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err
+)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "xmlsel-cli scraper --html - failed: ${err}")
+endif()
+if(NOT out MATCHES "Mechanical Keyboard Pro")
+  message(FATAL_ERROR "Expected 'Mechanical Keyboard Pro' from stdin HTML, got: ${out}")
+endif()

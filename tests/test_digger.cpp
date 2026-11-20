@@ -149,3 +149,49 @@ TEST_CASE("digger handles malformed numbers, empty inputs, and unbalanced bracke
   CHECK(sur["a"].as<std::string>() == "\xEF\xBF\xBD");
   CHECK(sur["b"].as<std::string>() == "\xEF\xBF\xBD");
 }
+
+TEST_CASE("digger handles integer boundaries, overflows, and duplicate keys",
+          "[digger][edge]") {
+  const auto res = digger::parse_object(R"({
+    imin: -9223372036854775808,
+    umax: 18446744073709551615,
+    over_u64: 99999999999999999999999999999,
+    k: 1,
+    k: 2,
+    k_0: 3
+  })", true);
+  REQUIRE(res.is_object());
+  CHECK(res["imin"].is_int64());
+  CHECK(res["imin"].as<int64_t>() == INT64_MIN);
+  CHECK(res["umax"].is_uint64());
+  CHECK(res["umax"].as<uint64_t>() == UINT64_MAX);
+  CHECK(res["over_u64"].is_double());
+  CHECK(res["k"].as<int64_t>() == 1);
+  CHECK(res["k_0"].as<int64_t>() == 2);
+  CHECK(res["k_0_0"].as<int64_t>() == 3);
+}
+
+TEST_CASE("digger handles unterminated strings, comments, bad escapes, and top-level arrays",
+          "[digger][edge]") {
+  const auto unterm_str = digger::parse_object(R"({a: "unterminated)", true);
+  REQUIRE(unterm_str.is_object());
+  CHECK(unterm_str["a"].as<std::string>() == "unterminated");
+
+  const auto unterm_tmpl = digger::parse_object("{a: `unterminated", true);
+  REQUIRE(unterm_tmpl.is_object());
+  CHECK(unterm_tmpl["a"].as<std::string>() == "unterminated");
+
+  const auto unterm_cmt = digger::parse_object("{a: 1 /* unterminated", true);
+  REQUIRE(unterm_cmt.is_object());
+  CHECK(unterm_cmt["a"].as<int64_t>() == 1);
+
+  const auto bad_esc = digger::parse_object(
+      R"({x: "\xZZ", u: "\u123", b: "\u{ZZZZ}", hi: "\u{110000}"})", true);
+  REQUIRE(bad_esc.is_object());
+  CHECK(bad_esc["hi"].as<std::string>() == "\xEF\xBF\xBD");
+
+  const auto arr = digger::parse_object("[1, 2, {a: 3,},]", true);
+  REQUIRE(arr.is_array());
+  REQUIRE(arr.size() == 3);
+  CHECK(arr[2]["a"].as<int64_t>() == 3);
+}

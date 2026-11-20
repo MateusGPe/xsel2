@@ -160,3 +160,33 @@ TEST_CASE("AhoCorasick handles duplicate patterns, empty inputs, and Clear reuse
   CHECK(ac.HasAnyPattern("delta gamma"));
   CHECK_FALSE(ac.HasAnyPattern("delta alpha"));
 }
+
+TEST_CASE("AhoCorasick handles overlapping prefix/suffix chains and embedded NULs",
+          "[ahocorasick][edge]") {
+  AhoCorasick ac;
+  const uint32_t id_a = ac.AddPattern("a");
+  const uint32_t id_ab = ac.AddPattern("ab");
+  const uint32_t id_abc = ac.AddPattern("abc");
+  const uint32_t id_bc = ac.AddPattern("bc");
+  const uint32_t id_c = ac.AddPattern("c");
+  const std::string nul_pat("x\0y", 3);
+  const uint32_t id_nul = ac.AddPattern(nul_pat);
+  ac.Compile();
+
+  AhoCorasick::MatchList matches;
+  REQUIRE(ac.Find("abc", matches));
+  REQUIRE(matches.size() == 5u);
+  CHECK(matches[0].pattern_id == id_a);
+  CHECK(matches[1].pattern_id == id_ab);
+  CHECK(matches[2].pattern_id == id_abc);
+  CHECK(matches[3].pattern_id == id_bc);
+  CHECK(matches[4].pattern_id == id_c);
+
+  const std::string hay("zzx\0yzz", 7);
+  AhoCorasick::MatchList nul_matches;
+  REQUIRE(ac.Find(hay, nul_matches));
+  REQUIRE(nul_matches.size() == 1u);
+  CHECK(nul_matches[0].pattern_id == id_nul);
+  CHECK(nul_matches[0].start == 2u);
+  CHECK(nul_matches[0].length == 3u);
+}

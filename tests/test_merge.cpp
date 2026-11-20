@@ -84,3 +84,57 @@ TEST_CASE("merge_item_at_path handles nested object and array destinations",
   REQUIRE(arr.size() == 1);
   CHECK(arr[0]["item"]["name"].as<std::string>() == "Widget");
 }
+
+TEST_CASE("merge handles path edge cases, allow_empty, @key/@value variants, and depth limits",
+          "[merge][edge]") {
+  // nested_path=false keeps dots literal; trailing backslash preserved
+  const auto lit = scraper::split_dict_path("a.b.c", false);
+  REQUIRE(lit.size() == 1);
+  CHECK(lit[0] == "a.b.c");
+
+  const auto bs = scraper::split_dict_path(R"(a\)", true);
+  REQUIRE(bs.size() == 1);
+  CHECK(bs[0] == R"(a\)");
+
+  // allow_empty=false skips empty values; allow_empty=true inserts them
+  jsoncons::json dest = jsoncons::json::object();
+  scraper::insert_into_json(dest, "empty_skip", jsoncons::json(""),
+                            {scraper::InsertMode::Overwrite, false, true});
+  CHECK_FALSE(dest.contains("empty_skip"));
+  scraper::insert_into_json(dest, "empty_keep", jsoncons::json(""),
+                            {scraper::InsertMode::Overwrite, true, true});
+  REQUIRE(dest.contains("empty_keep"));
+  CHECK(dest["empty_keep"].as<std::string>().empty());
+
+  // Intermediate non-object segment is replaced by object
+  dest["a"] = 123;
+  scraper::insert_into_json(dest, "a.b", jsoncons::json("ok"),
+                            {scraper::InsertMode::Overwrite});
+  REQUIRE(dest["a"].is_object());
+  CHECK(dest["a"]["b"].as<std::string>() == "ok");
+
+  // @value without @key and empty @key are stripped
+  jsoncons::json kv_edge = jsoncons::json::parse(
+      R"({"@value": 10, "nested": {"@key": "", "@value": 5, "ok": 1}})");
+  scraper::preprocess_key_value(kv_edge);
+  CHECK_FALSE(kv_edge.contains("@value"));
+  CHECK_FALSE(kv_edge["nested"].contains("@key"));
+  CHECK(kv_edge["nested"]["ok"].as<int>() == 1);
+
+  // Scalar + scalar merge_into produces array
+  jsoncons::json s = jsoncons::json("first");
+  scraper::merge_into(s, jsoncons::json("second"));
+  REQUIRE(s.is_array());
+  CHECK(s.size() == 2);
+
+  // Depth limit guard
+  jsoncons::json deep = 1;
+  for (int i = 0; i < xsel::common::MAX_JSON_DEPTH + 5; ++i) {
+    jsoncons::json wrap = jsoncons::json::array();
+    wrap.push_back(std::move(deep));
+    deep = std::move(wrap);
+  }
+  jsoncons::json target = jsoncons::json::object();
+  CHECK_THROWS_AS(scraper::merge_into(target, std::move(deep)),
+                  std::runtime_error);
+}

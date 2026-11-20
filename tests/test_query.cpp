@@ -220,3 +220,47 @@ TEST_CASE("json_query rejects malformed hex, base64, and failing patches",
       xsel::query::parse_json(R"({"a": 1} /* unterminated)", opts);
   CHECK(parsed["a"].as<int>() == 1);
 }
+
+TEST_CASE("json_query handles nesting depth, trailing commas, escaped pointers, and base64 edge cases",
+          "[query][edge]") {
+  // Invalid base64 padding/characters
+  CHECK_THROWS_AS(
+      xsel::query::decode_binary(xsel::query::BinaryFormat::Cbor, "====",
+                                 xsel::query::BinaryEncoding::Base64),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      xsel::query::decode_binary(xsel::query::BinaryFormat::Cbor, "A===",
+                                 xsel::query::BinaryEncoding::Base64),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      xsel::query::decode_binary(xsel::query::BinaryFormat::Cbor, "A!AA",
+                                 xsel::query::BinaryEncoding::Base64),
+      std::runtime_error);
+
+  // Nesting depth enforcement
+  xsel::query::JsonParseOptions depth_opts;
+  depth_opts.max_nesting_depth = 2;
+  CHECK_THROWS_AS(xsel::query::parse_json("[[[1]]]", depth_opts),
+                  std::runtime_error);
+
+  // Trailing comma & Inf/NaN options
+  xsel::query::JsonParseOptions relaxed;
+  relaxed.allow_trailing_comma = true;
+  const auto tc = xsel::query::parse_json(R"({"a": [1, 2,],})", relaxed);
+  CHECK(tc["a"].size() == 2);
+
+  // dump_json indent clamping
+  const auto doc = jsoncons::json::parse(R"({"a": 1})");
+  CHECK_NOTHROW(xsel::query::dump_json(doc, true, -5));
+  CHECK_NOTHROW(xsel::query::dump_json(doc, true, 100));
+
+  // JSONPointer ~0 / ~1 escaping
+  const auto esc_doc = jsoncons::json::parse(R"({"a/b": {"c~d": 42}})");
+  CHECK(xsel::query::jsonpointer_get(esc_doc, "/a~1b/c~0d").as<int>() == 42);
+
+  // Flatten / unflatten on empty object
+  const auto empty_obj = jsoncons::json::object();
+  const auto flat_empty = xsel::query::json_flatten(empty_obj);
+  CHECK(flat_empty == jsoncons::json::parse(R"({"$":{}})"));
+  CHECK(xsel::query::json_unflatten(flat_empty) == empty_obj);
+}

@@ -19,8 +19,39 @@ std::string block_seeker_extract(std::string_view content,
   size_t open_pos = std::string_view::npos;
   char open_ch = '\0';
   char close_ch = '\0';
+  char pre_quote = '\0';
   for (size_t i = search_start; i < content.size(); ++i) {
     const char c = content[i];
+    if (pre_quote != '\0') {
+      if (c == '\\' && i + 1 < content.size()) {
+        ++i;
+      } else if (c == pre_quote) {
+        pre_quote = '\0';
+      }
+      continue;
+    }
+    if (c == '"' || c == '\'' || c == '`') {
+      pre_quote = c;
+      continue;
+    }
+    if (c == '/' && i + 1 < content.size()) {
+      if (content[i + 1] == '/') {
+        const size_t nl = content.find('\n', i + 2);
+        if (nl == std::string_view::npos) {
+          break;
+        }
+        i = nl;
+        continue;
+      }
+      if (content[i + 1] == '*') {
+        const size_t end = content.find("*/", i + 2);
+        if (end == std::string_view::npos) {
+          break;
+        }
+        i = end + 1;
+        continue;
+      }
+    }
     if (c == '{' || c == '[' || c == '(') {
       open_pos = i;
       open_ch = c;
