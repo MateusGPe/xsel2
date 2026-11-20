@@ -62,7 +62,7 @@ page = Scraper()
 - **Set shorthands (`->`, `>>`, `as`)**: `-> "key"`, `>> "key"`, or `as "key"` is shorthand for `.set("key")`.
 - **Group blocks (`select(...) { ... }` / `$(...) { ... }`)**: Scope steps under a selector using `{ ... }` (leading `.`, `|`, or `|>` on the first step inside `{ ... }` is optional).
 - **Keyword arguments**: Pass named arguments to any step, e.g. `json("cfg", allow_comments=true, allow_trailing_comma=true)`.
-- **Plain-English aliases**: `strip` (`trim`), `clean` (`squish`), `grep` (`regex_filter`), `extract` (`regex_extract`), `sub` (`regex_replace`), `limit` (`first`), `dedup` (`unique`), `json` (`json_parse`).
+- **Plain-English aliases**: `strip` (`trim`), `clean` (`squish`), `grep` (`regex_filter`), `extract` (`regex_extract`), `sub` (`regex_replace`), `limit` (`first`), `dedup` (`unique`), `json` (`json_parse`), `to_number` (`parse_number`), `url_join` (`resolve_url`), `inner_html` (`html`).
 
 ```text
 let tag_sel = ".tag"
@@ -111,6 +111,11 @@ flowchart LR
 | `attr` | `(attr_name)` | Extracts attribute `attr_name` from the current node into `values` |
 | `find_all` | `(sel, type, attr="")` | Runs sub-selector `sel` on the current node using `Value` enum `type` (and `attr` for `Attribute` / `AttributeExists`) |
 | `find` | `(sel, type, attr="", number=Number.All, nth_val=0)` | Like `find_all`, but selects `All`, `Last`, or `Nth` (`nth_val`) match |
+| `html` / `inner_html` | `(outer=false)` | Extracts inner HTML (or outer HTML when `outer=true`) of the current node |
+| `outer_html` | `()` | Shorthand for `html(outer=true)` |
+| `tag_name` | `()` | Extracts the tag name of the current node |
+| `classes` | `()` | Extracts CSS classes of the current node into `values` |
+| `attrs` | `(data_only=false)` | Writes all attributes (or only `data-*` attributes when `data_only=true`) into `dict` |
 
 ### 2. Text Normalization & Manipulation
 
@@ -130,6 +135,20 @@ flowchart LR
 | `drop_empty` | `(also_trim=true)` | Drops empty strings (trimming first if `also_trim=true`) |
 | `substring` | `(start_pos, length=null)` | Extracts a substring from `start_pos` (supports negative indices) of optional `length` |
 | `strip_comments` | `(multiline=true, single_line=true)` | Strips `/* ... */` and/or `// ...` comments from each value |
+| `strip_tags` | `()` | Strips HTML/XML tags from strings in `values` |
+| `base64_encode` | `(urlsafe=false)` | Base64-encodes each value (`urlsafe=true` uses URL-safe alphabet) |
+| `base64_decode` | `(urlsafe=false)` | Base64-decodes each value |
+| `hash` | `(algo="fnv1a64")` | Computes deterministic hex digest (`"fnv1a64"` or `"sha256"`) |
+| `slugify` | `(separator="-", max_len=null)` | Converts each value to a lowercase URL-friendly slug |
+
+### 2b. URL & Web Normalization
+
+| Step | Parameters & Defaults | Description |
+| --- | --- | --- |
+| `resolve_url` / `url_join` | `(base_url)` | Resolves relative URLs against `base_url` (RFC 3986 via `libxml2`) |
+| `url_part` | `(part)` | Extracts `"scheme"`, `"host"`, `"port"`, `"path"`, `"query"`, or `"fragment"` |
+| `query_param` | `(name, default_val="")` | Extracts and URL-decodes query parameter `name` |
+| `strip_query` | `(keep_params=[])` | Strips all query parameters (or keeps only `keep_params`) |
 
 ### 3. Regex & Filtering (RE2)
 
@@ -139,6 +158,8 @@ flowchart LR
 | `regex_filter` | `(pattern, negate=false, flags=null)` | Keeps values matching `pattern` (or non-matching if `negate=true`) |
 | `regex_extract` | `(pattern, group_index=0, flags=null)` | Extracts capture group `group_index` from `pattern` |
 | `filter` | `(patterns)` | Keeps values matching any literal pattern in `patterns` (list of strings) |
+| `replace_many` | `(mapping)` | Simultaneous single-pass Aho-Corasick replacement using `{old: new, ...}` |
+| `extract_many` | `(patterns, unique=true)` | Extracts all matched literal patterns in a single Aho-Corasick pass |
 
 ### 4. Slicing & Ordering
 
@@ -149,7 +170,10 @@ flowchart LR
 | `nth` | `(index)` | Keeps only the item at `index` |
 | `slice` | `(start_index, end_index_inclusive)` | Keeps items in `[start_index, end_index_inclusive]` |
 | `unique` | `(preserve_order=true)` | Removes duplicate items from `values` |
+| `sort` | `(ascending=true, numeric=false)` | Sorts `values` lexicographically (or numerically if `numeric=true`) |
+| `reverse` | `()` | Reverses the order of `values` |
 | `default` | `(default_value)` | Sets `values` to `[default_value]` if `values` is empty |
+| `coalesce` | `(fallback="")` | Drops whitespace-only items, then sets `[fallback]` if empty |
 
 ### 5. JS / JSON Block Digger
 
@@ -163,7 +187,12 @@ flowchart LR
 
 | Step | Parameters & Defaults | Description |
 | --- | --- | --- |
-| `set` | `(name)` | Writes `values` into `dict` under key `name` (supports dot-paths like `"meta.title"`) |
+| `set` | `(name, type="string")` | Writes `values` into `dict` under key `name` (supports dot-paths and `type`: `"string"`, `"int"`, `"float"`, `"number"`, `"bool"`, `"auto"`) |
+| `append_to` | `(key, allow_empty=false)` | Appends `values` into an array at `dict[key]` |
+| `parse_number` / `to_number` | `(decimal=".", thousands=",", allow_float=true, key="")` | Extracts/normalizes numeric strings (e.g. `"$1,299.90"` -> `"1299.90"`); writes native JSON number to `dict[key]` if `key` is set |
+| `to_int` / `to_float` / `to_bool` | `(key="", default_val=null)` | Coerces `values` (or writes native JSON int/float/bool to `dict[key]` if `key` is set) |
+| `cast_keys` | `(schema, postponable=true)` | Bulk-converts `dict` string fields according to `{key: "int"\|"float"\|"number"\|"bool"\|"auto"}` |
+| `zip_keys` | `(keys_key, values_key, target_key="", postponable=true)` | Combines two parallel arrays in `dict` into a JSON object |
 | `count` | `(dict_key)` | Writes `len(values)` into `dict` under `dict_key` |
 | `flatten` | `(postponable=true)` | Flattens nested objects into dot-separated keys |
 | `flatten_local` | `()` | Shorthand for `flatten(false)` |

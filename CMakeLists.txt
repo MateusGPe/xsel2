@@ -153,7 +153,9 @@ add_library(scraper STATIC
   src/scraper/steps/dom_steps.cpp
   src/scraper/steps/block_steps.cpp
   src/scraper/steps/dict_steps.cpp
-  src/scraper/steps/json_steps.cpp)
+  src/scraper/steps/json_steps.cpp
+  src/scraper/steps/type_steps.cpp
+  src/scraper/steps/url_steps.cpp)
 
 target_include_directories(scraper PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(scraper PUBLIC cxx_std_20)

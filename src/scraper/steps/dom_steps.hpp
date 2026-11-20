@@ -2,6 +2,7 @@
 
 #include "scraper/merge.hpp"
 #include "scraper/step.hpp"
+#include "scraper/steps/type_steps.hpp"
 #include <iostream>
 #include <lxml2-query.h>
 #include <optional>
@@ -79,8 +80,9 @@ private:
 
 class SetStep final : public Step {
 public:
-  explicit SetStep(std::string_view name, InsertOptions opts = {})
-      : key_name_(name), opts_(opts) {}
+  explicit SetStep(std::string_view name, InsertOptions opts = {},
+                   ValueType value_type = ValueType::String)
+      : key_name_(name), opts_(opts), value_type_(value_type) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -88,6 +90,87 @@ public:
 private:
   std::string key_name_;
   InsertOptions opts_;
+  ValueType value_type_;
+};
+
+class AppendToStep final : public Step {
+public:
+  explicit AppendToStep(std::string_view key, bool allow_empty = false)
+      : key_name_(key), allow_empty_(allow_empty) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string key_name_;
+  bool allow_empty_;
+};
+
+class HtmlStep final : public Step {
+public:
+  explicit HtmlStep(bool outer = false) : outer_(outer) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  bool outer_;
+};
+
+class TagNameStep final : public Step {
+public:
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+};
+
+class ClassesStep final : public Step {
+public:
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+};
+
+class AttrsStep final : public Step {
+public:
+  explicit AttrsStep(bool data_only = false, InsertOptions opts = {})
+      : data_only_(data_only), opts_(opts) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  bool data_only_;
+  InsertOptions opts_;
+};
+
+class SortValuesStep final : public Step {
+public:
+  SortValuesStep(bool ascending = true, bool numeric = false)
+      : ascending_(ascending), numeric_(numeric) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  bool ascending_;
+  bool numeric_;
+};
+
+class ReverseValuesStep final : public Step {
+public:
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+};
+
+class CoalesceStep final : public Step {
+public:
+  explicit CoalesceStep(std::string_view fallback = "")
+      : fallback_(fallback) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string fallback_;
 };
 
 class CountValuesStep final : public Step {

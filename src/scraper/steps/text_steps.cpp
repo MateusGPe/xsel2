@@ -2,9 +2,13 @@
 #include "common/hex_utils.hpp"
 #include "common/string_utils.hpp"
 #include "common/utf.hpp"
+#include <absl/strings/ascii.h>
+#include <absl/strings/escaping.h>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <lxml2-query.h>
 #include <stdexcept>
@@ -276,6 +280,192 @@ void StripCommentsStep::apply(Node, std::vector<std::string> &values,
                               jsoncons::json &) {
   for (auto &v : values) {
     v = xsel::common::strip_c_comments(v, multiline_, single_line_, false);
+  }
+}
+
+void StripTagsStep::apply(Node, std::vector<std::string> &values,
+                          jsoncons::json &) {
+  for (auto &v : values) {
+    std::string out;
+    out.reserve(v.size());
+    bool in_tag = false;
+    char quote = '\0';
+    for (size_t i = 0; i < v.size(); ++i) {
+      const char c = v[i];
+      if (in_tag) {
+        if (quote != '\0') {
+          if (c == quote) {
+            quote = '\0';
+          }
+        } else if (c == '"' || c == '\'') {
+          quote = c;
+        } else if (c == '>') {
+          in_tag = false;
+        }
+      } else {
+        if (c == '<') {
+          in_tag = true;
+          quote = '\0';
+        } else {
+          out.push_back(c);
+        }
+      }
+    }
+    v = std::move(out);
+  }
+}
+
+void Base64EncodeStep::apply(Node, std::vector<std::string> &values,
+                             jsoncons::json &) {
+  for (auto &v : values) {
+    std::string encoded;
+    if (urlsafe_) {
+      absl::WebSafeBase64Escape(v, &encoded);
+    } else {
+      absl::Base64Escape(v, &encoded);
+    }
+    v = std::move(encoded);
+  }
+}
+
+void Base64DecodeStep::apply(Node, std::vector<std::string> &values,
+                             jsoncons::json &) {
+  for (auto &v : values) {
+    std::string decoded;
+    const bool ok = urlsafe_ ? absl::WebSafeBase64Unescape(v, &decoded)
+                             : absl::Base64Unescape(v, &decoded);
+    if (!ok) {
+      throw std::runtime_error("base64_decode: invalid base64 input");
+    }
+    v = std::move(decoded);
+  }
+}
+
+namespace {
+
+uint64_t fnv1a_64(std::string_view data) noexcept {
+  uint64_t h = 14695981039346656037ULL;
+  for (unsigned char c : data) {
+    h ^= static_cast<uint64_t>(c);
+    h *= 1099511628211ULL;
+  }
+  return h;
+}
+
+std::array<uint8_t, 32> sha256_bytes(std::string_view data) {
+  static constexpr std::array<uint32_t, 64> K = {
+      0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu,
+      0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u, 0xd807aa98u, 0x12835b01u,
+      0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u,
+      0xc19bf174u, 0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+      0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau, 0x983e5152u,
+      0xa831c66du, 0xb00327c8u, 0xbf597fc7u, 0xc6e00bf3u, 0xd5a79147u,
+      0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu,
+      0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+      0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u, 0xd192e819u,
+      0xd6990624u, 0xf40e3585u, 0x106aa070u, 0x19a4c116u, 0x1e376c08u,
+      0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu,
+      0x682e6ff3u, 0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+      0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u};
+
+  auto rotr = [](uint32_t x, uint32_t n) noexcept {
+    return (x >> n) | (x << (32u - n));
+  };
+
+  std::array<uint32_t, 8> H = {0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u,
+                               0xa54ff53au, 0x510e527fu, 0x9b05688cu,
+                               0x1f83d9abu, 0x5be0cd19u};
+
+  const uint64_t bit_len = static_cast<uint64_t>(data.size()) * 8ULL;
+  std::vector<uint8_t> msg(data.begin(), data.end());
+  msg.push_back(0x80u);
+  while ((msg.size() % 64u) != 56u) {
+    msg.push_back(0x00u);
+  }
+  for (int i = 7; i >= 0; --i) {
+    msg.push_back(static_cast<uint8_t>((bit_len >> (i * 8)) & 0xFFu));
+  }
+
+  for (size_t offset = 0; offset < msg.size(); offset += 64u) {
+    std::array<uint32_t, 64> W{};
+    for (size_t t = 0; t < 16u; ++t) {
+      const size_t j = offset + t * 4u;
+      W[t] = (static_cast<uint32_t>(msg[j]) << 24) |
+             (static_cast<uint32_t>(msg[j + 1]) << 16) |
+             (static_cast<uint32_t>(msg[j + 2]) << 8) |
+             static_cast<uint32_t>(msg[j + 3]);
+    }
+    for (size_t t = 16u; t < 64u; ++t) {
+      const uint32_t s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >> 3);
+      const uint32_t s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >> 10);
+      W[t] = W[t - 16] + s0 + W[t - 7] + s1;
+    }
+    uint32_t a = H[0], b = H[1], c = H[2], d = H[3];
+    uint32_t e = H[4], f = H[5], g = H[6], h = H[7];
+    for (size_t t = 0; t < 64u; ++t) {
+      const uint32_t S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const uint32_t ch = (e & f) ^ ((~e) & g);
+      const uint32_t temp1 = h + S1 + ch + K[t] + W[t];
+      const uint32_t S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+      const uint32_t temp2 = S0 + maj;
+      h = g;
+      g = f;
+      f = e;
+      e = d + temp1;
+      d = c;
+      c = b;
+      b = a;
+      a = temp1 + temp2;
+    }
+    H[0] += a;
+    H[1] += b;
+    H[2] += c;
+    H[3] += d;
+    H[4] += e;
+    H[5] += f;
+    H[6] += g;
+    H[7] += h;
+  }
+
+  std::array<uint8_t, 32> digest{};
+  for (size_t i = 0; i < 8u; ++i) {
+    digest[i * 4 + 0] = static_cast<uint8_t>((H[i] >> 24) & 0xFFu);
+    digest[i * 4 + 1] = static_cast<uint8_t>((H[i] >> 16) & 0xFFu);
+    digest[i * 4 + 2] = static_cast<uint8_t>((H[i] >> 8) & 0xFFu);
+    digest[i * 4 + 3] = static_cast<uint8_t>(H[i] & 0xFFu);
+  }
+  return digest;
+}
+
+} // namespace
+
+HashStep::HashStep(std::string_view algo) {
+  const std::string lower = absl::AsciiStrToLower(algo);
+  if (lower == "fnv1a64" || lower == "fnv1a") {
+    algo_ = Algo::Fnv1a64;
+  } else if (lower == "sha256" || lower == "sha-256") {
+    algo_ = Algo::Sha256;
+  } else {
+    throw std::runtime_error("hash: unknown algorithm '" + std::string(algo) +
+                             "' (expected 'fnv1a64' or 'sha256')");
+  }
+}
+
+void HashStep::apply(Node, std::vector<std::string> &values,
+                     jsoncons::json &) {
+  for (auto &v : values) {
+    if (algo_ == Algo::Fnv1a64) {
+      const uint64_t h = fnv1a_64(v);
+      std::array<uint8_t, 8> bytes{};
+      for (int i = 0; i < 8; ++i) {
+        bytes[i] = static_cast<uint8_t>((h >> ((7 - i) * 8)) & 0xFFu);
+      }
+      v = xsel::common::bytes_to_hex(bytes);
+    } else {
+      const auto digest = sha256_bytes(v);
+      v = xsel::common::bytes_to_hex(digest);
+    }
   }
 }
 

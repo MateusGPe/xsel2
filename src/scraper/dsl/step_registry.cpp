@@ -109,6 +109,9 @@ get_alias_map() {
           {"extract_js_block", "js_block"},
           {"extract_js_blocks", "js_blocks"},
           {"json", "json_parse"},
+          {"to_number", "parse_number"},
+          {"url_join", "resolve_url"},
+          {"inner_html", "html"},
       };
   return aliases;
 }
@@ -233,7 +236,14 @@ get_method_registry() {
        }},
       {"set",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.Set(as_str(require_arg(args, 0, "name", name)));
+         const std::string key = as_str(require_arg(args, 0, "name", name));
+         const std::string type_str = opt_str(args, 1, "type", "string");
+         b.Set(key, InsertOptions{}, parse_value_type_name(type_str));
+       }},
+      {"append_to",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.AppendTo(as_str(require_arg(args, 0, "key", name)),
+                    opt_bool(args, 1, "allow_empty", false));
        }},
       {"count",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -468,6 +478,158 @@ get_method_registry() {
          b.Debug(opt_str(args, 0, "prefix", "DEBUG: "),
                  opt_bool(args, 1, "print_dict", false),
                  opt_bool(args, 2, "print_node", false));
+       }},
+      {"parse_number",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.ParseNumber(opt_str(args, 0, "decimal", "."),
+                       opt_str(args, 1, "thousands", ","),
+                       opt_bool(args, 2, "allow_float", true),
+                       opt_str(args, 3, "key", ""));
+       }},
+      {"to_int",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         std::optional<jsoncons::json> def;
+         if (const DslValue *dv = find_arg(args, 1, "default_val");
+             dv && !dv->is_null()) {
+           def = dsl_value_to_json(*dv);
+         }
+         b.ToInt(opt_str(args, 0, "key", ""), std::move(def));
+       }},
+      {"to_float",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         std::optional<jsoncons::json> def;
+         if (const DslValue *dv = find_arg(args, 1, "default_val");
+             dv && !dv->is_null()) {
+           def = dsl_value_to_json(*dv);
+         }
+         b.ToFloat(opt_str(args, 0, "key", ""), std::move(def));
+       }},
+      {"to_bool",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         std::optional<jsoncons::json> def;
+         if (const DslValue *dv = find_arg(args, 1, "default_val");
+             dv && !dv->is_null()) {
+           def = dsl_value_to_json(*dv);
+         }
+         b.ToBool(opt_str(args, 0, "key", ""), std::move(def));
+       }},
+      {"cast_keys",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &obj = require_arg(args, 0, "schema", name);
+         const jsoncons::json j = as_json_document(obj);
+         if (!j.is_object()) {
+           throw std::runtime_error("cast_keys: schema must be an object");
+         }
+         absl::flat_hash_map<std::string, ValueType> schema;
+         for (const auto &kv : j.object_range()) {
+           schema.emplace(kv.key(), parse_value_type_name(kv.value().as_string_view()));
+         }
+         b.CastKeys(std::move(schema), opt_bool(args, 1, "postponable", true));
+       }},
+      {"resolve_url",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.ResolveUrl(as_str(require_arg(args, 0, "base_url", name)));
+       }},
+      {"url_part",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.UrlPart(as_str(require_arg(args, 0, "part", name)));
+       }},
+      {"query_param",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.QueryParam(as_str(require_arg(args, 0, "name", name)),
+                      opt_str(args, 1, "default_val", ""));
+       }},
+      {"strip_query",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         if (const DslValue *kp = find_arg(args, 0, "keep_params");
+             kp && !kp->is_null()) {
+           b.StripQuery(as_str_list(*kp));
+         } else {
+           b.StripQuery();
+         }
+       }},
+      {"slugify",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         std::optional<size_t> max_len;
+         if (const DslValue *ml = find_arg(args, 1, "max_len");
+             ml && !ml->is_null()) {
+           max_len = opt_non_negative_size(args, 1, "max_len", name, 0);
+         }
+         b.Slugify(opt_str(args, 0, "separator", "-"), max_len);
+       }},
+      {"html",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Html(opt_bool(args, 0, "outer", false));
+       }},
+      {"outer_html",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.Html(true);
+       }},
+      {"tag_name",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.TagName();
+       }},
+      {"classes",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.Classes();
+       }},
+      {"attrs",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Attrs(opt_bool(args, 0, "data_only", false));
+       }},
+      {"strip_tags",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.StripTags();
+       }},
+      {"base64_encode",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Base64Encode(opt_bool(args, 0, "urlsafe", false));
+       }},
+      {"base64_decode",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Base64Decode(opt_bool(args, 0, "urlsafe", false));
+       }},
+      {"hash",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Hash(opt_str(args, 0, "algo", "fnv1a64"));
+       }},
+      {"replace_many",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const jsoncons::json j =
+             as_json_document(require_arg(args, 0, "mapping", name));
+         if (!j.is_object()) {
+           throw std::runtime_error("replace_many: mapping must be an object");
+         }
+         absl::flat_hash_map<std::string, std::string> mapping;
+         for (const auto &kv : j.object_range()) {
+           mapping.emplace(kv.key(), kv.value().as_string());
+         }
+         b.ReplaceMany(mapping);
+       }},
+      {"extract_many",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.ExtractMany(as_str_list(require_arg(args, 0, "patterns", name)),
+                       opt_bool(args, 1, "unique", true));
+       }},
+      {"sort",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Sort(opt_bool(args, 0, "ascending", true),
+                opt_bool(args, 1, "numeric", false));
+       }},
+      {"reverse",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.Reverse();
+       }},
+      {"coalesce",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.Coalesce(opt_str(args, 0, "fallback", ""));
+       }},
+      {"zip_keys",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.ZipKeys(as_str(require_arg(args, 0, "keys_key", name)),
+                   as_str(require_arg(args, 1, "values_key", name)),
+                   opt_str(args, 2, "target_key", ""),
+                   opt_bool(args, 3, "postponable", true));
        }},
   };
   return registry;

@@ -2,6 +2,7 @@
 
 #include "common/ahocorasick.hpp"
 #include "scraper/step.hpp"
+#include <absl/container/flat_hash_map.h>
 #include <optional>
 #include <re2/re2.h>
 #include <string>
@@ -68,6 +69,32 @@ private:
   AhoCorasick exclude_ac_;
   bool has_include_{false};
   bool has_exclude_{false};
+};
+
+class ReplaceManyStep final : public Step {
+public:
+  explicit ReplaceManyStep(
+      const absl::flat_hash_map<std::string, std::string> &mapping);
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  AhoCorasick ac_;
+  std::vector<std::string> replacements_;
+};
+
+class ExtractManyStep final : public Step {
+public:
+  ExtractManyStep(const std::vector<std::string> &patterns, bool unique = true);
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  AhoCorasick ac_;
+  std::vector<std::string> patterns_;
+  bool unique_;
 };
 
 } // namespace scraper

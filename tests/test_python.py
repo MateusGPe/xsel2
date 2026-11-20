@@ -245,3 +245,29 @@ def test_marketplace_example_synergy():
 
     assert sp.jsonpath_query(full, "$.products[?(@.category == 'audio')].name") == ["Studio Monitor Headphones"]
     assert sp.jmespath_eval(full, "window.__PROMO_CONFIG__.discountPct") == 20
+
+
+def test_tier1_steps_python():
+    html = """
+    <div id="item" class="card hot" data-sku="A1">
+      <span class="price">$1,050.25</span>
+      <span class="qty">4</span>
+      <a class="go" href="/p/9?id=9&utm_source=x">Link</a>
+      <p class="raw">Hello <b>World</b></p>
+    </div>
+    """
+    s = sp.ScraperPy()
+    s.select(".price").text().parse_number(key="price")
+    s.select(".qty").text().set("qty", type="int")
+    s.select("a.go").attr("href").resolve_url("https://shop.test/").strip_query(["id"]).set("url")
+    s.select("p.raw").html().strip_tags().set("clean_text")
+    s.select("#item").attrs(data_only=True)
+    s.select("p.raw").text().replace_many({"World": "Python"}).hash("fnv1a64").set("hash")
+
+    out = s.from_string(html)
+    assert out["price"] == 1050.25
+    assert isinstance(out["qty"], int) and out["qty"] == 4
+    assert out["url"] == "https://shop.test/p/9?id=9"
+    assert out["clean_text"] == "Hello World"
+    assert out["data-sku"] == "A1"
+    assert len(out["hash"]) == 16

@@ -7,6 +7,8 @@
 #include "scraper/steps/json_steps.hpp"
 #include "scraper/steps/regex_steps.hpp"
 #include "scraper/steps/text_steps.hpp"
+#include "scraper/steps/type_steps.hpp"
+#include "scraper/steps/url_steps.hpp"
 #include <absl/container/flat_hash_map.h>
 #include <iostream>
 #include <memory>
@@ -209,8 +211,14 @@ public:
     return self();
   }
 
-  Derived &Set(std::string_view name, InsertOptions opts = {}) {
-    add_step(std::make_shared<SetStep>(name, opts));
+  Derived &Set(std::string_view name, InsertOptions opts = {},
+               ValueType type = ValueType::String) {
+    add_step(std::make_shared<SetStep>(name, opts, type));
+    return self();
+  }
+
+  Derived &AppendTo(std::string_view key, bool allow_empty = false) {
+    add_step(std::make_shared<AppendToStep>(key, allow_empty));
     return self();
   }
 
@@ -478,6 +486,148 @@ public:
                       bool postponable = true) {
     add_step(std::make_shared<JsonSchemaStep>(std::move(schema), strict,
                                               error_key, postponable));
+    return self();
+  }
+
+  // ── Tier 1: Typed parsing, URLs, DOM gaps, Aho-Corasick, Hash/Base64 ──────
+
+  Derived &ParseNumber(std::string_view decimal = ".",
+                       std::string_view thousands = ",",
+                       bool allow_float = true, std::string_view key = "",
+                       InsertOptions opts = {}) {
+    add_step(std::make_shared<ParseNumberStep>(decimal, thousands, allow_float,
+                                               key, opts));
+    return self();
+  }
+
+  Derived &ToInt(std::string_view key = "",
+                 std::optional<jsoncons::json> default_val = std::nullopt,
+                 InsertOptions opts = {}) {
+    add_step(std::make_shared<CastValuesStep>(ValueType::Int, key,
+                                              std::move(default_val), opts));
+    return self();
+  }
+
+  Derived &ToFloat(std::string_view key = "",
+                   std::optional<jsoncons::json> default_val = std::nullopt,
+                   InsertOptions opts = {}) {
+    add_step(std::make_shared<CastValuesStep>(ValueType::Float, key,
+                                              std::move(default_val), opts));
+    return self();
+  }
+
+  Derived &ToBool(std::string_view key = "",
+                  std::optional<jsoncons::json> default_val = std::nullopt,
+                  InsertOptions opts = {}) {
+    add_step(std::make_shared<CastValuesStep>(ValueType::Bool, key,
+                                              std::move(default_val), opts));
+    return self();
+  }
+
+  Derived &CastKeys(absl::flat_hash_map<std::string, ValueType> schema,
+                    bool postponable = true) {
+    add_step(std::make_shared<CastKeysStep>(std::move(schema), postponable));
+    return self();
+  }
+
+  Derived &ResolveUrl(std::string_view base_url) {
+    add_step(std::make_shared<ResolveUrlStep>(base_url));
+    return self();
+  }
+
+  Derived &UrlPart(std::string_view part) {
+    add_step(std::make_shared<UrlPartStep>(part));
+    return self();
+  }
+
+  Derived &QueryParam(std::string_view name,
+                      std::string_view default_val = "") {
+    add_step(std::make_shared<QueryParamStep>(name, default_val));
+    return self();
+  }
+
+  Derived &StripQuery(const std::vector<std::string> &keep_params = {}) {
+    add_step(std::make_shared<StripQueryStep>(keep_params));
+    return self();
+  }
+
+  Derived &Slugify(std::string_view separator = "-",
+                   std::optional<size_t> max_len = std::nullopt) {
+    add_step(std::make_shared<SlugifyStep>(separator, max_len));
+    return self();
+  }
+
+  Derived &Html(bool outer = false) {
+    add_step(std::make_shared<HtmlStep>(outer));
+    return self();
+  }
+
+  Derived &TagName() {
+    add_step(std::make_shared<TagNameStep>());
+    return self();
+  }
+
+  Derived &Classes() {
+    add_step(std::make_shared<ClassesStep>());
+    return self();
+  }
+
+  Derived &Attrs(bool data_only = false, InsertOptions opts = {}) {
+    add_step(std::make_shared<AttrsStep>(data_only, opts));
+    return self();
+  }
+
+  Derived &StripTags() {
+    add_step(std::make_shared<StripTagsStep>());
+    return self();
+  }
+
+  Derived &Base64Encode(bool urlsafe = false) {
+    add_step(std::make_shared<Base64EncodeStep>(urlsafe));
+    return self();
+  }
+
+  Derived &Base64Decode(bool urlsafe = false) {
+    add_step(std::make_shared<Base64DecodeStep>(urlsafe));
+    return self();
+  }
+
+  Derived &Hash(std::string_view algo = "fnv1a64") {
+    add_step(std::make_shared<HashStep>(algo));
+    return self();
+  }
+
+  Derived &ReplaceMany(
+      const absl::flat_hash_map<std::string, std::string> &mapping) {
+    add_step(std::make_shared<ReplaceManyStep>(mapping));
+    return self();
+  }
+
+  Derived &ExtractMany(const std::vector<std::string> &patterns,
+                       bool unique = true) {
+    add_step(std::make_shared<ExtractManyStep>(patterns, unique));
+    return self();
+  }
+
+  Derived &Sort(bool ascending = true, bool numeric = false) {
+    add_step(std::make_shared<SortValuesStep>(ascending, numeric));
+    return self();
+  }
+
+  Derived &Reverse() {
+    add_step(std::make_shared<ReverseValuesStep>());
+    return self();
+  }
+
+  Derived &Coalesce(std::string_view fallback = "") {
+    add_step(std::make_shared<CoalesceStep>(fallback));
+    return self();
+  }
+
+  Derived &ZipKeys(std::string_view keys_key, std::string_view values_key,
+                   std::string_view target_key = "", bool postponable = true) {
+    add_step(std::make_shared<ZipKeysStep>(keys_key, values_key, target_key,
+                                           postponable));
     return self();
   }
 

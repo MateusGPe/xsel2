@@ -1,5 +1,6 @@
 #include "scraper/steps/regex_steps.hpp"
 #include "scraper/steps/text_steps.hpp"
+#include <absl/container/flat_hash_set.h>
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
@@ -164,6 +165,100 @@ void FilterStep::apply(Node, std::vector<std::string> &values,
                                 return false;
                               }),
                values.end());
+}
+
+ReplaceManyStep::ReplaceManyStep(
+    const absl::flat_hash_map<std::string, std::string> &mapping) {
+  replacements_.resize(mapping.size());
+  for (const auto &[from, to] : mapping) {
+    if (from.empty()) {
+      continue;
+    }
+    const uint32_t id = ac_.AddPattern(from);
+    if (id != AhoCorasick::kInvalidPattern) {
+      if (id >= replacements_.size()) {
+        replacements_.resize(id + 1);
+      }
+      replacements_[id] = to;
+    }
+  }
+  ac_.Compile();
+}
+
+void ReplaceManyStep::apply(Node, std::vector<std::string> &values,
+                            jsoncons::json &) {
+  if (replacements_.empty()) {
+    return;
+  }
+  AhoCorasick::MatchList matches;
+  for (auto &v : values) {
+    matches.clear();
+    if (!ac_.Find(v, matches)) {
+      continue;
+    }
+    std::sort(matches.begin(), matches.end(),
+              [](const AhoCorasick::Match &a, const AhoCorasick::Match &b) {
+                if (a.start != b.start) {
+                  return a.start < b.start;
+                }
+                return a.length > b.length;
+              });
+    std::string out;
+    out.reserve(v.size());
+    size_t cursor = 0;
+    for (const auto &m : matches) {
+      if (m.start < cursor) {
+        continue;
+      }
+      out.append(v, cursor, m.start - cursor);
+      out.append(replacements_[m.pattern_id]);
+      cursor = m.start + m.length;
+    }
+    out.append(v, cursor, v.size() - cursor);
+    v = std::move(out);
+  }
+}
+
+ExtractManyStep::ExtractManyStep(const std::vector<std::string> &patterns,
+                                 bool unique)
+    : unique_(unique) {
+  for (const auto &p : patterns) {
+    if (p.empty()) {
+      continue;
+    }
+    const uint32_t id = ac_.AddPattern(p);
+    if (id != AhoCorasick::kInvalidPattern) {
+      if (id >= patterns_.size()) {
+        patterns_.resize(id + 1);
+      }
+      patterns_[id] = p;
+    }
+  }
+  ac_.Compile();
+}
+
+void ExtractManyStep::apply(Node, std::vector<std::string> &values,
+                            jsoncons::json &) {
+  if (patterns_.empty()) {
+    values.clear();
+    return;
+  }
+  std::vector<std::string> extracted;
+  absl::flat_hash_set<uint32_t> seen;
+  AhoCorasick::MatchList matches;
+  for (const auto &v : values) {
+    matches.clear();
+    if (!ac_.FindAny(v, matches)) {
+      continue;
+    }
+    for (const auto &m : matches) {
+      if (unique_ && !seen.insert(m.pattern_id).second) {
+        continue;
+      }
+      extracted.push_back(patterns_[m.pattern_id]);
+    }
+  }
+  values = std::move(extracted);
 }
 
 } // namespace scraper

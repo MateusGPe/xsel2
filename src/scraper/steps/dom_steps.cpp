@@ -2,8 +2,11 @@
 #include <absl/container/flat_hash_set.h>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdint>
 #include <iomanip>
+#include <libxml/HTMLtree.h>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 
@@ -157,16 +160,135 @@ void SetStep::apply(Node, std::vector<std::string> &values,
   }
 
   if (cleaned.size() == 1) {
-    insert_into_json(dict, key_name_, jsoncons::json(std::move(cleaned[0])),
-                     opts_);
+    insert_into_json(dict, key_name_,
+                     coerce_string_to_json(cleaned[0], value_type_), opts_);
   } else if (cleaned.size() > 1) {
     jsoncons::json arr = jsoncons::json::array();
-    for (auto &v : cleaned) {
-      arr.push_back(std::move(v));
+    for (const auto &v : cleaned) {
+      arr.push_back(coerce_string_to_json(v, value_type_));
     }
     insert_into_json(dict, key_name_, std::move(arr), opts_);
   }
   values.clear();
+}
+
+void AppendToStep::apply(Node, std::vector<std::string> &values,
+                         jsoncons::json &dict) {
+  jsoncons::json arr = jsoncons::json::array();
+  for (auto &v : values) {
+    if (allow_empty_ || has_non_whitespace(v)) {
+      arr.push_back(std::move(v));
+    }
+  }
+  if (!arr.empty()) {
+    InsertOptions opts;
+    opts.mode = InsertMode::AppendToList;
+    opts.allow_empty = allow_empty_;
+    insert_into_json(dict, key_name_, std::move(arr), opts);
+  }
+  values.clear();
+}
+
+void HtmlStep::apply(Node node, std::vector<std::string> &values,
+                     jsoncons::json &) {
+  if (!node.valid()) {
+    return;
+  }
+  xmlNodePtr raw = node.getRaw();
+  std::unique_ptr<xmlBuffer, decltype(&xmlBufferFree)> buf(xmlBufferCreate(),
+                                                           xmlBufferFree);
+  if (!buf) {
+    return;
+  }
+  if (outer_) {
+    htmlNodeDump(buf.get(), raw->doc, raw);
+  } else {
+    for (xmlNodePtr child = raw->children; child != nullptr;
+         child = child->next) {
+      htmlNodeDump(buf.get(), raw->doc, child);
+    }
+  }
+  const xmlChar *content = xmlBufferContent(buf.get());
+  values.emplace_back(content ? reinterpret_cast<const char *>(content) : "");
+}
+
+void TagNameStep::apply(Node node, std::vector<std::string> &values,
+                        jsoncons::json &) {
+  if (node.valid()) {
+    if (auto tag = node.TagName()) {
+      values.push_back(std::move(*tag));
+    }
+  }
+}
+
+void ClassesStep::apply(Node node, std::vector<std::string> &values,
+                        jsoncons::json &) {
+  if (node.valid()) {
+    for (auto &cls : node.Classes()) {
+      values.push_back(std::move(cls));
+    }
+  }
+}
+
+void AttrsStep::apply(Node node, std::vector<std::string> &,
+                      jsoncons::json &dict) {
+  if (!node.valid()) {
+    return;
+  }
+  for (const auto &[k, v] : node.Attributes()) {
+    if (data_only_ && !k.starts_with("data-")) {
+      continue;
+    }
+    insert_into_json(dict, k, jsoncons::json(v), opts_);
+  }
+}
+
+void SortValuesStep::apply(Node, std::vector<std::string> &values,
+                           jsoncons::json &) {
+  if (values.size() < 2) {
+    return;
+  }
+  if (numeric_) {
+    auto parse_num = [](std::string_view s, double &out) -> bool {
+      const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), out);
+      return ec == std::errc{};
+    };
+    std::sort(values.begin(), values.end(),
+              [this, &parse_num](const std::string &a, const std::string &b) {
+                double da = 0.0, db = 0.0;
+                const bool ok_a = parse_num(a, da);
+                const bool ok_b = parse_num(b, db);
+                if (ok_a && ok_b) {
+                  return ascending_ ? (da < db) : (da > db);
+                }
+                if (ok_a != ok_b) {
+                  return ok_a;
+                }
+                return ascending_ ? (a < b) : (a > b);
+              });
+  } else {
+    std::sort(values.begin(), values.end(),
+              [this](const std::string &a, const std::string &b) {
+                return ascending_ ? (a < b) : (a > b);
+              });
+  }
+}
+
+void ReverseValuesStep::apply(Node, std::vector<std::string> &values,
+                              jsoncons::json &) {
+  std::reverse(values.begin(), values.end());
+}
+
+void CoalesceStep::apply(Node, std::vector<std::string> &values,
+                         jsoncons::json &) {
+  values.erase(std::remove_if(values.begin(), values.end(),
+                              [](const std::string &s) {
+                                return !has_non_whitespace(s);
+                              }),
+               values.end());
+  if (values.empty()) {
+    values.push_back(fallback_);
+  }
 }
 
 void CountValuesStep::apply(Node, std::vector<std::string> &values,

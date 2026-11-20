@@ -158,4 +158,45 @@ private:
   bool single_line_;
 };
 
+class StripTagsStep final : public Step {
+public:
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+};
+
+class Base64EncodeStep final : public Step {
+public:
+  explicit Base64EncodeStep(bool urlsafe = false) : urlsafe_(urlsafe) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  bool urlsafe_;
+};
+
+class Base64DecodeStep final : public Step {
+public:
+  explicit Base64DecodeStep(bool urlsafe = false) : urlsafe_(urlsafe) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  bool urlsafe_;
+};
+
+class HashStep final : public Step {
+public:
+  enum class Algo { Fnv1a64, Sha256 };
+
+  explicit HashStep(std::string_view algo = "fnv1a64");
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  Algo algo_;
+};
+
 } // namespace scraper

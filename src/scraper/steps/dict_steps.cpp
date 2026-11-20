@@ -283,4 +283,32 @@ JsonQueryStep::transform(const jsoncons::json &input) const {
   return xsel::query::evaluate(dialect_, input, expr_);
 }
 
+jsoncons::json ZipKeysStep::transform(const jsoncons::json &input) const {
+  if (!input.is_object() || !input.contains(keys_key_) ||
+      !input.contains(values_key_)) {
+    return input;
+  }
+  const auto &keys = input[keys_key_];
+  const auto &vals = input[values_key_];
+  if (!keys.is_array() || !vals.is_array()) {
+    return input;
+  }
+
+  jsoncons::json zipped = jsoncons::json::object();
+  const size_t n = std::min(keys.size(), vals.size());
+  for (size_t i = 0; i < n; ++i) {
+    zipped.insert_or_assign(xsel::common::json_to_string(keys[i]), vals[i]);
+  }
+
+  jsoncons::json out = input;
+  if (target_key_.empty()) {
+    for (const auto &kv : zipped.object_range()) {
+      out.insert_or_assign(kv.key(), kv.value());
+    }
+  } else {
+    out.insert_or_assign(target_key_, std::move(zipped));
+  }
+  return out;
+}
+
 } // namespace scraper

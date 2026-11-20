@@ -134,4 +134,21 @@ private:
   std::string expr_;
 };
 
+class ZipKeysStep final : public PostponableJsonStep {
+public:
+  ZipKeysStep(std::string_view keys_key, std::string_view values_key,
+              std::string_view target_key = "", bool postponable = true)
+      : PostponableJsonStep(postponable), keys_key_(keys_key),
+        values_key_(values_key), target_key_(target_key) {}
+
+protected:
+  [[nodiscard]] jsoncons::json
+  transform(const jsoncons::json &input) const override;
+
+private:
+  std::string keys_key_;
+  std::string values_key_;
+  std::string target_key_;
+};
+
 } // namespace scraper

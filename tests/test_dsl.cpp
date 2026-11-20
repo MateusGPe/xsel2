@@ -217,3 +217,44 @@ TEST_CASE("DslParser validates new sugar edge cases and errors", "[dsl][sugar]")
   CHECK_THROWS_AS(parser.parse(R"(s = Scraper() | $("li").slice(-1, 2);)"),
                   std::runtime_error);
 }
+
+TEST_CASE("DslParser executes Tier 1 steps and aliases", "[dsl][tier1]") {
+  const std::string dsl = R"(
+    product = Scraper()
+      | $(".price")  { text | parse_number(key="price") }
+      | $(".qty")    { text | set("qty", type="int") }
+      | $("a.buy")   { @href | resolve_url("https://example.com/shop/") | strip_query(["id"]) -> "url" }
+      | $(".title")  { text | replace_many({"Pro": "Professional", "Edition": "Ed."}) | slugify() -> "slug" }
+      | $(".tags")   { text | extract_many(["USB-C", "4K"], unique=true) | sort() -> "tags" }
+      | $(".badge")  { text | coalesce("Standard") -> "badge" }
+      | $(".id_src") { text | hash("sha256") -> "id_hash" }
+  )";
+
+  scraper::dsl::DslParser parser;
+  auto scrapers = parser.parse(dsl);
+  REQUIRE(scrapers.contains("product"));
+
+  const std::string html = R"(
+    <div class="p">
+      <span class="price">$49.50</span>
+      <span class="qty">3</span>
+      <a class="buy" href="../item?id=77&utm_medium=email">Go</a>
+      <h1 class="title">Pro Audio Edition</h1>
+      <p class="tags">4K HDR with USB-C</p>
+      <span class="badge">   </span>
+      <span class="id_src">abc</span>
+    </div>
+  )";
+
+  const auto res = scrapers["product"].scrape_from_string(html);
+  CHECK(std::abs(res["price"].as<double>() - 49.5) < 1e-6);
+  CHECK(res["qty"].as<int64_t>() == 3);
+  CHECK(res["url"].as<std::string>() == "https://example.com/item?id=77");
+  CHECK(res["slug"].as<std::string>() == "professional-audio-ed");
+  REQUIRE(res["tags"].is_array());
+  CHECK(res["tags"][0].as<std::string>() == "4K");
+  CHECK(res["tags"][1].as<std::string>() == "USB-C");
+  CHECK(res["badge"].as<std::string>() == "Standard");
+  CHECK(res["id_hash"].as<std::string>() ==
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}

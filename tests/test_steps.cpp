@@ -390,3 +390,143 @@ TEST_CASE("Edge cases: RegexExtractStep INT_MIN, SubstringStep, and FlattenDictS
   const auto parsed_block = digger::parse_object(commented[0], true);
   CHECK(parsed_block["ok"].as<int64_t>() == 42);
 }
+
+TEST_CASE("Tier 1 steps: typed parsing, URLs, DOM, Aho-Corasick, hash/base64, ergonomics",
+          "[steps][tier1]") {
+  const std::string html = R"(
+    <html><body>
+      <div id="card" class="item featured" data-sku="SKU-42" data-id="99">
+        <span class="price">$1,299.90</span>
+        <span class="qty">7</span>
+        <span class="stock">In Stock</span>
+        <a class="link" href="/p/widget?id=42&utm_source=ads&ref=home">Buy <b>Now</b></a>
+        <p class="desc">&lt;b&gt;Hello&lt;/b&gt; <i>World</i>!</p>
+      </div>
+      <table>
+        <th class="k">Weight</th><td class="v">1.5kg</td>
+        <th class="k">Color</th><td class="v">Black</td>
+      </table>
+    </body></html>
+  )";
+
+  // 1. Typed parsing + SetStep(type) + CastKeysStep
+  scraper::ScraperBuilder sb_typed;
+  sb_typed.Select(".price").Text().ParseNumber(".", ",", true, "price")
+      .Select(".qty").Text().ToInt("qty")
+      .Select(".stock").Text().ToBool("in_stock")
+      .Select("#card").Attr("data-id").Set("card_id", {}, scraper::ValueType::Int);
+  const auto typed_res = sb_typed.scrape_from_string(html);
+  CHECK(std::abs(typed_res["price"].as<double>() - 1299.90) < 1e-6);
+  CHECK(typed_res["qty"].as<int64_t>() == 7);
+  CHECK(typed_res["in_stock"].as<bool>() == true);
+  CHECK(typed_res["card_id"].as<int64_t>() == 99);
+
+  // CastKeysStep
+  jsoncons::json dict = jsoncons::json::parse(R"({"a": "12", "b": "3.5", "c": "no"})");
+  dict = scraper::CastKeysStep(
+             {{"a", scraper::ValueType::Int},
+              {"b", scraper::ValueType::Float},
+              {"c", scraper::ValueType::Bool}},
+             true)
+             .execute_postponed(dict);
+  CHECK(dict["a"].as<int64_t>() == 12);
+  CHECK(std::abs(dict["b"].as<double>() - 3.5) < 1e-6);
+  CHECK(dict["c"].as<bool>() == false);
+
+  // 2. URL steps + Slugify
+  std::vector<std::string> urls = {"/p/widget?id=42&utm_source=ads&ref=home"};
+  scraper::ResolveUrlStep("https://shop.example.com/cat/").apply(dummy_node(), urls, dict);
+  REQUIRE(urls.size() == 1);
+  CHECK(urls[0] == "https://shop.example.com/p/widget?id=42&utm_source=ads&ref=home");
+
+  std::vector<std::string> host = urls;
+  scraper::UrlPartStep("host").apply(dummy_node(), host, dict);
+  CHECK(host[0] == "shop.example.com");
+
+  std::vector<std::string> qid = urls;
+  scraper::QueryParamStep("id").apply(dummy_node(), qid, dict);
+  CHECK(qid[0] == "42");
+
+  std::vector<std::string> stripped = urls;
+  scraper::StripQueryStep({"id"}).apply(dummy_node(), stripped, dict);
+  CHECK(stripped[0] == "https://shop.example.com/p/widget?id=42");
+
+  std::vector<std::string> slugs = {"  Hello, World! 2026 -- Test "};
+  scraper::SlugifyStep("-", 15).apply(dummy_node(), slugs, dict);
+  CHECK(slugs[0] == "hello-world-202");
+
+  // 3. DOM gaps: HtmlStep, TagNameStep, ClassesStep, AttrsStep, StripTagsStep
+  scraper::ScraperBuilder sb_dom;
+  sb_dom.Select("a.link").Html(false).Set("inner")
+      .Select("a.link").Html(true).Set("outer")
+      .Select("#card").TagName().Set("tag")
+      .Select("#card").Classes().Set("classes")
+      .Select("#card").Attrs(true);
+  const auto dom_res = sb_dom.scrape_from_string(html);
+  CHECK(dom_res["inner"].as<std::string>() == "Buy <b>Now</b>");
+  CHECK(dom_res["outer"].as<std::string>().find("<a class=\"link\"") != std::string::npos);
+  CHECK(dom_res["tag"].as<std::string>() == "div");
+  REQUIRE(dom_res["classes"].is_array());
+  CHECK(dom_res["classes"].size() == 2);
+  CHECK(dom_res["data-sku"].as<std::string>() == "SKU-42");
+  CHECK_FALSE(dom_res.contains("class"));
+
+  std::vector<std::string> tagged = {"<p>Hello <b>World</b>!</p>"};
+  scraper::StripTagsStep().apply(dummy_node(), tagged, dict);
+  CHECK(tagged[0] == "Hello World!");
+
+  // 4. Aho-Corasick replace_many / extract_many, Base64, Hash
+  std::vector<std::string> rvals = {"foo bar baz foobar"};
+  scraper::ReplaceManyStep({{"foo", "X"}, {"foobar", "Y"}, {"baz", "Z"}})
+      .apply(dummy_node(), rvals, dict);
+  CHECK(rvals[0] == "X bar Z Y");
+
+  std::vector<std::string> evals = {"Supports USB-C, Bluetooth, and USB-C audio"};
+  scraper::ExtractManyStep({"USB-C", "Bluetooth", "NFC"}, true)
+      .apply(dummy_node(), evals, dict);
+  REQUIRE(evals.size() == 2);
+  CHECK(evals[0] == "USB-C");
+  CHECK(evals[1] == "Bluetooth");
+
+  std::vector<std::string> b64 = {"hello+world/?"};
+  scraper::Base64EncodeStep(true).apply(dummy_node(), b64, dict);
+  scraper::Base64DecodeStep(true).apply(dummy_node(), b64, dict);
+  CHECK(b64[0] == "hello+world/?");
+
+  std::vector<std::string> hashed = {"hello"};
+  scraper::HashStep("sha256").apply(dummy_node(), hashed, dict);
+  CHECK(hashed[0] == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+
+  std::vector<std::string> fnv = {"hello"};
+  scraper::HashStep("fnv1a64").apply(dummy_node(), fnv, dict);
+  CHECK(fnv[0].size() == 16);
+
+  // 5. Ergonomics: SortValues, ReverseValues, Coalesce, AppendTo, ZipKeys
+  std::vector<std::string> nums = {"10", "2", "30"};
+  scraper::SortValuesStep(true, true).apply(dummy_node(), nums, dict);
+  CHECK(nums == std::vector<std::string>{"2", "10", "30"});
+  scraper::ReverseValuesStep().apply(dummy_node(), nums, dict);
+  CHECK(nums == std::vector<std::string>{"30", "10", "2"});
+
+  std::vector<std::string> blanks = {"  ", "\t"};
+  scraper::CoalesceStep("N/A").apply(dummy_node(), blanks, dict);
+  CHECK(blanks == std::vector<std::string>{"N/A"});
+
+  scraper::ScraperBuilder sb_erg;
+  sb_erg.Select("#card")
+      .Find(".price", scraper::QueryAllStep::Type::Text)
+      .AppendTo("items")
+      .Find(".qty", scraper::QueryAllStep::Type::Text)
+      .AppendTo("items")
+      .Select("table")
+      .FindAll("th.k", scraper::QueryAllStep::Type::Text)
+      .Set("keys")
+      .FindAll("td.v", scraper::QueryAllStep::Type::Text)
+      .Set("vals")
+      .ZipKeys("keys", "vals", "specs");
+  const auto erg_res = sb_erg.scrape_from_string(html);
+  REQUIRE(erg_res["items"].is_array());
+  CHECK(erg_res["items"].size() == 2);
+  CHECK(erg_res["specs"]["Weight"].as<std::string>() == "1.5kg");
+  CHECK(erg_res["specs"]["Color"].as<std::string>() == "Black");
+}

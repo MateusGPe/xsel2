@@ -153,8 +153,18 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("filter", &ScraperPy::Filter, py::arg("patterns"),
            py::return_value_policy::reference_internal)
-      .def("set", &ScraperPy::Set, py::arg("name"),
-           py::arg("opts") = scraper::InsertOptions{},
+      .def(
+          "set",
+          [](ScraperPy &self, const std::string &name,
+             scraper::InsertOptions opts,
+             const std::string &type) -> ScraperPy & {
+            return self.Set(name, opts, scraper::parse_value_type_name(type));
+          },
+          py::arg("name"), py::arg("opts") = scraper::InsertOptions{},
+          py::arg("type") = "string",
+          py::return_value_policy::reference_internal)
+      .def("append_to", &ScraperPy::AppendTo, py::arg("key"),
+           py::arg("allow_empty") = false,
            py::return_value_policy::reference_internal)
       .def("count", &ScraperPy::Count, py::arg("dict_key"),
            py::arg("opts") = scraper::InsertOptions{},
@@ -413,7 +423,115 @@ PYBIND11_MODULE(_scraperpy, m) {
             return self.ToUbjson(enc, source_key);
           },
           py::arg("encoding") = "hex", py::arg("source_key") = "",
-          py::return_value_policy::reference_internal);
+          py::return_value_policy::reference_internal)
+      .def("parse_number", &ScraperPy::ParseNumber, py::arg("decimal") = ".",
+           py::arg("thousands") = ",", py::arg("allow_float") = true,
+           py::arg("key") = "", py::arg("opts") = scraper::InsertOptions{},
+           py::return_value_policy::reference_internal)
+      .def(
+          "to_int",
+          [](ScraperPy &self, const std::string &key,
+             py::object default_val) -> ScraperPy & {
+            std::optional<jsoncons::json> def;
+            if (!default_val.is_none()) {
+              def = xsel::python::python_to_json(default_val);
+            }
+            return self.ToInt(key, std::move(def));
+          },
+          py::arg("key") = "", py::arg("default_val") = py::none(),
+          py::return_value_policy::reference_internal)
+      .def(
+          "to_float",
+          [](ScraperPy &self, const std::string &key,
+             py::object default_val) -> ScraperPy & {
+            std::optional<jsoncons::json> def;
+            if (!default_val.is_none()) {
+              def = xsel::python::python_to_json(default_val);
+            }
+            return self.ToFloat(key, std::move(def));
+          },
+          py::arg("key") = "", py::arg("default_val") = py::none(),
+          py::return_value_policy::reference_internal)
+      .def(
+          "to_bool",
+          [](ScraperPy &self, const std::string &key,
+             py::object default_val) -> ScraperPy & {
+            std::optional<jsoncons::json> def;
+            if (!default_val.is_none()) {
+              def = xsel::python::python_to_json(default_val);
+            }
+            return self.ToBool(key, std::move(def));
+          },
+          py::arg("key") = "", py::arg("default_val") = py::none(),
+          py::return_value_policy::reference_internal)
+      .def(
+          "cast_keys",
+          [](ScraperPy &self, const std::unordered_map<std::string, std::string> &schema,
+             bool postponable) -> ScraperPy & {
+            absl::flat_hash_map<std::string, scraper::ValueType> typed;
+            for (const auto &[k, v] : schema) {
+              typed.emplace(k, scraper::parse_value_type_name(v));
+            }
+            return self.CastKeys(std::move(typed), postponable);
+          },
+          py::arg("schema"), py::arg("postponable") = true,
+          py::return_value_policy::reference_internal)
+      .def("resolve_url", &ScraperPy::ResolveUrl, py::arg("base_url"),
+           py::return_value_policy::reference_internal)
+      .def("url_part", &ScraperPy::UrlPart, py::arg("part"),
+           py::return_value_policy::reference_internal)
+      .def("query_param", &ScraperPy::QueryParam, py::arg("name"),
+           py::arg("default_val") = "",
+           py::return_value_policy::reference_internal)
+      .def("strip_query", &ScraperPy::StripQuery,
+           py::arg("keep_params") = std::vector<std::string>{},
+           py::return_value_policy::reference_internal)
+      .def("slugify", &ScraperPy::Slugify, py::arg("separator") = "-",
+           py::arg("max_len") = std::nullopt,
+           py::return_value_policy::reference_internal)
+      .def("html", &ScraperPy::Html, py::arg("outer") = false,
+           py::return_value_policy::reference_internal)
+      .def("tag_name", &ScraperPy::TagName,
+           py::return_value_policy::reference_internal)
+      .def("classes", &ScraperPy::Classes,
+           py::return_value_policy::reference_internal)
+      .def("attrs", &ScraperPy::Attrs, py::arg("data_only") = false,
+           py::arg("opts") = scraper::InsertOptions{},
+           py::return_value_policy::reference_internal)
+      .def("strip_tags", &ScraperPy::StripTags,
+           py::return_value_policy::reference_internal)
+      .def("base64_encode", &ScraperPy::Base64Encode,
+           py::arg("urlsafe") = false,
+           py::return_value_policy::reference_internal)
+      .def("base64_decode", &ScraperPy::Base64Decode,
+           py::arg("urlsafe") = false,
+           py::return_value_policy::reference_internal)
+      .def("hash", &ScraperPy::Hash, py::arg("algo") = "fnv1a64",
+           py::return_value_policy::reference_internal)
+      .def(
+          "replace_many",
+          [](ScraperPy &self,
+             const std::unordered_map<std::string, std::string> &mapping)
+              -> ScraperPy & {
+            absl::flat_hash_map<std::string, std::string> map(mapping.begin(),
+                                                              mapping.end());
+            return self.ReplaceMany(map);
+          },
+          py::arg("mapping"), py::return_value_policy::reference_internal)
+      .def("extract_many", &ScraperPy::ExtractMany, py::arg("patterns"),
+           py::arg("unique") = true,
+           py::return_value_policy::reference_internal)
+      .def("sort", &ScraperPy::Sort, py::arg("ascending") = true,
+           py::arg("numeric") = false,
+           py::return_value_policy::reference_internal)
+      .def("reverse", &ScraperPy::Reverse,
+           py::return_value_policy::reference_internal)
+      .def("coalesce", &ScraperPy::Coalesce, py::arg("fallback") = "",
+           py::return_value_policy::reference_internal)
+      .def("zip_keys", &ScraperPy::ZipKeys, py::arg("keys_key"),
+           py::arg("values_key"), py::arg("target_key") = "",
+           py::arg("postponable") = true,
+           py::return_value_policy::reference_internal);
 
   m.def("jmespath_eval", [](py::object data, const std::string &expr) {
     const jsoncons::json doc = xsel::python::python_to_json(data);
