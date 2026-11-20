@@ -17,7 +17,7 @@ High-performance HTML/XML scraping, multi-pattern text search, and JSON transfor
 | [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, building, testing, and 5-minute walkthrough |
 | [CLI Reference](docs/cli.md) | `xsel2` CLI (single input, `stdin` pipe, and multi-threaded `--batch`) |
 | [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `InsertMode`, `AhoCorasick`, `.dsl` loading, and JSON queries |
-| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` syntax, execution model, and all pipeline steps |
+| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` manual: syntax, sugar, execution/merge model, caveats, and all 100 steps + 15 aliases |
 | [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
 | [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), and complete all-steps/algorithms showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py) |
 
