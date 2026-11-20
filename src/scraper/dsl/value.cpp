@@ -193,13 +193,40 @@ const DslValue *find_arg(const DslArgList &args, size_t idx,
   if (!name.empty()) {
     auto it = args.named.find(name);
     if (it != args.named.end()) {
+      if (idx < args.positional.size()) {
+        throw std::runtime_error("Argument '" + std::string(name) +
+                                 "' passed both positionally and by keyword");
+      }
+      args.named_used.emplace(name);
       return &it->second;
     }
   }
   if (idx < args.positional.size()) {
+    if (idx + 1 > args.max_positional_used) {
+      args.max_positional_used = idx + 1;
+    }
     return &args.positional[idx];
   }
   return nullptr;
+}
+
+void validate_args_consumed(const DslArgList &args, std::string_view method) {
+  if (args.positional.size() > args.max_positional_used) {
+    throw std::runtime_error(
+        std::string(method) +
+        "() received too many positional arguments (expected at most " +
+        std::to_string(args.max_positional_used) + ", got " +
+        std::to_string(args.positional.size()) + ")");
+  }
+  if (args.named_used.size() < args.named.size()) {
+    for (const auto &[k, _] : args.named) {
+      if (!args.named_used.contains(k)) {
+        throw std::runtime_error(std::string(method) +
+                                 "() received unknown keyword argument '" + k +
+                                 "'");
+      }
+    }
+  }
 }
 
 const DslValue &require_arg(const DslArgList &args, size_t idx,

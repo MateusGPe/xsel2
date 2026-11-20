@@ -148,6 +148,65 @@ int compare_uint_double(uint64_t u, double d) noexcept {
   return (d - t > 0.0) ? -1 : 0;
 }
 
+int json_type_rank(const jsoncons::json &v) noexcept {
+  if (v.is_null())
+    return 0;
+  if (v.is_bool())
+    return 1;
+  if (v.is_number())
+    return 2;
+  if (v.is_string())
+    return 3;
+  if (v.is_array())
+    return 4;
+  if (v.is_object())
+    return 5;
+  return 6;
+}
+
+int compare_numbers(const jsoncons::json &a, const jsoncons::json &b) noexcept {
+  if (a.is_int64()) {
+    const int64_t ia = a.as<int64_t>();
+    if (b.is_int64()) {
+      const int64_t ib = b.as<int64_t>();
+      return (ia < ib) ? -1 : (ia > ib ? 1 : 0);
+    }
+    if (b.is_uint64()) {
+      return compare_int_uint(ia, b.as<uint64_t>());
+    }
+    return compare_int_double(ia, b.as<double>());
+  }
+  if (a.is_uint64()) {
+    const uint64_t ua = a.as<uint64_t>();
+    if (b.is_uint64()) {
+      const uint64_t ub = b.as<uint64_t>();
+      return (ua < ub) ? -1 : (ua > ub ? 1 : 0);
+    }
+    if (b.is_int64()) {
+      return -compare_int_uint(b.as<int64_t>(), ua);
+    }
+    return compare_uint_double(ua, b.as<double>());
+  }
+  if (b.is_int64()) {
+    return -compare_int_double(b.as<int64_t>(), a.as<double>());
+  }
+  if (b.is_uint64()) {
+    return -compare_uint_double(b.as<uint64_t>(), a.as<double>());
+  }
+  const double da = a.as<double>();
+  const double db = b.as<double>();
+  const bool na = std::isnan(da);
+  const bool nb = std::isnan(db);
+  if (na || nb) {
+    return na == nb ? 0 : (na ? 1 : -1);
+  }
+  if (da < db)
+    return -1;
+  if (da > db)
+    return 1;
+  return 0;
+}
+
 } // namespace
 
 void check_json_depth(int depth, std::string_view context) {
@@ -176,56 +235,77 @@ std::string canonical_json_key(const jsoncons::json &val, int depth) {
   return out;
 }
 
-int compare_json(const jsoncons::json &a, const jsoncons::json &b) {
-  if (a.is_number() && b.is_number()) {
-    if (a.is_int64()) {
-      const int64_t ia = a.as<int64_t>();
-      if (b.is_int64()) {
-        const int64_t ib = b.as<int64_t>();
-        return (ia < ib) ? -1 : (ia > ib ? 1 : 0);
-      }
-      if (b.is_uint64()) {
-        return compare_int_uint(ia, b.as<uint64_t>());
-      }
-      return compare_int_double(ia, b.as<double>());
-    }
-    if (a.is_uint64()) {
-      const uint64_t ua = a.as<uint64_t>();
-      if (b.is_uint64()) {
-        const uint64_t ub = b.as<uint64_t>();
-        return (ua < ub) ? -1 : (ua > ub ? 1 : 0);
-      }
-      if (b.is_int64()) {
-        return -compare_int_uint(b.as<int64_t>(), ua);
-      }
-      return compare_uint_double(ua, b.as<double>());
-    }
-    if (b.is_int64()) {
-      return -compare_int_double(b.as<int64_t>(), a.as<double>());
-    }
-    if (b.is_uint64()) {
-      return -compare_uint_double(b.as<uint64_t>(), a.as<double>());
-    }
-    const double da = a.as<double>();
-    const double db = b.as<double>();
-    const bool na = std::isnan(da);
-    const bool nb = std::isnan(db);
-    if (na || nb) {
-      return na == nb ? 0 : (na ? 1 : -1);
-    }
-    if (da < db)
-      return -1;
-    if (da > db)
-      return 1;
-    return 0;
+int compare_json(const jsoncons::json &a, const jsoncons::json &b, int depth) {
+  check_json_depth(depth, "compare_json");
+  const int rank_a = json_type_rank(a);
+  const int rank_b = json_type_rank(b);
+  if (rank_a != rank_b) {
+    return (rank_a < rank_b) ? -1 : 1;
   }
-  const std::string sa = json_to_string(a);
-  const std::string sb = json_to_string(b);
-  if (sa < sb)
-    return -1;
-  if (sa > sb)
-    return 1;
-  return 0;
+
+  switch (rank_a) {
+  case 0:
+    return 0;
+  case 1: {
+    const bool ba = a.as<bool>();
+    const bool bb = b.as<bool>();
+    return (ba == bb) ? 0 : (ba ? 1 : -1);
+  }
+  case 2:
+    return compare_numbers(a, b);
+  case 3: {
+    const std::string_view sa = a.as_string_view();
+    const std::string_view sb = b.as_string_view();
+    return (sa < sb) ? -1 : (sa > sb ? 1 : 0);
+  }
+  case 4: {
+    const size_t min_len = std::min(a.size(), b.size());
+    for (size_t i = 0; i < min_len; ++i) {
+      const int cmp = compare_json(a[i], b[i], depth + 1);
+      if (cmp != 0) {
+        return cmp;
+      }
+    }
+    return (a.size() < b.size()) ? -1 : (a.size() > b.size() ? 1 : 0);
+  }
+  case 5: {
+    std::vector<std::string_view> keys_a;
+    keys_a.reserve(a.size());
+    for (const auto &kv : a.object_range()) {
+      keys_a.push_back(kv.key());
+    }
+    std::vector<std::string_view> keys_b;
+    keys_b.reserve(b.size());
+    for (const auto &kv : b.object_range()) {
+      keys_b.push_back(kv.key());
+    }
+    std::sort(keys_a.begin(), keys_a.end());
+    std::sort(keys_b.begin(), keys_b.end());
+
+    const size_t min_keys = std::min(keys_a.size(), keys_b.size());
+    for (size_t i = 0; i < min_keys; ++i) {
+      if (keys_a[i] < keys_b[i]) {
+        return -1;
+      }
+      if (keys_a[i] > keys_b[i]) {
+        return 1;
+      }
+      const int val_cmp =
+          compare_json(a.at(keys_a[i]), b.at(keys_b[i]), depth + 1);
+      if (val_cmp != 0) {
+        return val_cmp;
+      }
+    }
+    return (keys_a.size() < keys_b.size())
+               ? -1
+               : (keys_a.size() > keys_b.size() ? 1 : 0);
+  }
+  default: {
+    const std::string sa = json_to_string(a);
+    const std::string sb = json_to_string(b);
+    return (sa < sb) ? -1 : (sa > sb ? 1 : 0);
+  }
+  }
 }
 
 std::string next_unique_key(const jsoncons::json &obj, std::string_view base) {

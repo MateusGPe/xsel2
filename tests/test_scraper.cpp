@@ -160,3 +160,19 @@ TEST_CASE("Scraper handles LogAndContinue, postponed step errors, empty and malf
   REQUIRE(malformed.contains("p"));
   CHECK(malformed["p"].as<std::string>() == "unclosed bold");
 }
+
+TEST_CASE("Hardening: copied ScraperBuilder does not share mutable Extractor state",
+          "[scraper][hardening]") {
+  scraper::ScraperBuilder s1;
+  s1.Select("h1").Text();
+
+  scraper::ScraperBuilder s2 = s1;
+  s1.Lower().Set("title");
+  s2.Upper().Set("title");
+
+  const std::string html = "<h1>Hello</h1>";
+  const auto r1 = s1.scrape_from_string(html);
+  const auto r2 = s2.scrape_from_string(html);
+  CHECK(r1["title"].as<std::string>() == "hello");
+  CHECK(r2["title"].as<std::string>() == "HELLO");
+}

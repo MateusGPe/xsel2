@@ -3,8 +3,11 @@
 #include "query/json_query.hpp"
 #include "scraper/dsl_parser.hpp"
 #include "scraper/scraper.hpp"
+#include <absl/strings/match.h>
+#include <iostream>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <string_view>
 
 namespace py = pybind11;
 
@@ -32,6 +35,22 @@ py::dict scrapers_to_py_dict(
     out[py::str(name)] = py::cast(std::move(py_scraper));
   }
   return out;
+}
+
+xsel::query::BinaryEncoding
+parse_py_binary_encoding(std::string_view encoding) {
+  if (absl::EqualsIgnoreCase(encoding, "hex")) {
+    return xsel::query::BinaryEncoding::Hex;
+  }
+  if (absl::EqualsIgnoreCase(encoding, "base64")) {
+    return xsel::query::BinaryEncoding::Base64;
+  }
+  if (absl::EqualsIgnoreCase(encoding, "raw")) {
+    return xsel::query::BinaryEncoding::Raw;
+  }
+  std::cerr << "[xsel2] Warning: Unknown binary encoding '" << encoding
+            << "', defaulting to 'hex'\n";
+  return xsel::query::BinaryEncoding::Hex;
 }
 
 } // namespace
@@ -340,10 +359,8 @@ PYBIND11_MODULE(_scraperpy, m) {
           "from_cbor",
           [](ScraperPy &self, const std::string &objname,
              const std::string &encoding, bool strict) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.FromCbor(objname, enc, strict);
+            return self.FromCbor(objname, parse_py_binary_encoding(encoding),
+                                 strict);
           },
           py::arg("objname") = "", py::arg("encoding") = "hex",
           py::arg("strict") = true, py::return_value_policy::reference_internal)
@@ -351,10 +368,7 @@ PYBIND11_MODULE(_scraperpy, m) {
           "to_cbor",
           [](ScraperPy &self, const std::string &encoding,
              const std::string &source_key) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.ToCbor(enc, source_key);
+            return self.ToCbor(parse_py_binary_encoding(encoding), source_key);
           },
           py::arg("encoding") = "hex", py::arg("source_key") = "",
           py::return_value_policy::reference_internal)
@@ -362,10 +376,8 @@ PYBIND11_MODULE(_scraperpy, m) {
           "from_msgpack",
           [](ScraperPy &self, const std::string &objname,
              const std::string &encoding, bool strict) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.FromMsgPack(objname, enc, strict);
+            return self.FromMsgPack(objname, parse_py_binary_encoding(encoding),
+                                    strict);
           },
           py::arg("objname") = "", py::arg("encoding") = "hex",
           py::arg("strict") = true, py::return_value_policy::reference_internal)
@@ -373,10 +385,8 @@ PYBIND11_MODULE(_scraperpy, m) {
           "to_msgpack",
           [](ScraperPy &self, const std::string &encoding,
              const std::string &source_key) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.ToMsgPack(enc, source_key);
+            return self.ToMsgPack(parse_py_binary_encoding(encoding),
+                                  source_key);
           },
           py::arg("encoding") = "hex", py::arg("source_key") = "",
           py::return_value_policy::reference_internal)
@@ -384,10 +394,8 @@ PYBIND11_MODULE(_scraperpy, m) {
           "from_bson",
           [](ScraperPy &self, const std::string &objname,
              const std::string &encoding, bool strict) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.FromBson(objname, enc, strict);
+            return self.FromBson(objname, parse_py_binary_encoding(encoding),
+                                 strict);
           },
           py::arg("objname") = "", py::arg("encoding") = "hex",
           py::arg("strict") = true, py::return_value_policy::reference_internal)
@@ -395,10 +403,7 @@ PYBIND11_MODULE(_scraperpy, m) {
           "to_bson",
           [](ScraperPy &self, const std::string &encoding,
              const std::string &source_key) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.ToBson(enc, source_key);
+            return self.ToBson(parse_py_binary_encoding(encoding), source_key);
           },
           py::arg("encoding") = "hex", py::arg("source_key") = "",
           py::return_value_policy::reference_internal)
@@ -406,10 +411,8 @@ PYBIND11_MODULE(_scraperpy, m) {
           "from_ubjson",
           [](ScraperPy &self, const std::string &objname,
              const std::string &encoding, bool strict) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.FromUbjson(objname, enc, strict);
+            return self.FromUbjson(objname, parse_py_binary_encoding(encoding),
+                                   strict);
           },
           py::arg("objname") = "", py::arg("encoding") = "hex",
           py::arg("strict") = true, py::return_value_policy::reference_internal)
@@ -417,10 +420,8 @@ PYBIND11_MODULE(_scraperpy, m) {
           "to_ubjson",
           [](ScraperPy &self, const std::string &encoding,
              const std::string &source_key) -> ScraperPy & {
-            auto enc = encoding == "base64" ? xsel::query::BinaryEncoding::Base64
-                       : encoding == "raw"  ? xsel::query::BinaryEncoding::Raw
-                                            : xsel::query::BinaryEncoding::Hex;
-            return self.ToUbjson(enc, source_key);
+            return self.ToUbjson(parse_py_binary_encoding(encoding),
+                                 source_key);
           },
           py::arg("encoding") = "hex", py::arg("source_key") = "",
           py::return_value_policy::reference_internal)

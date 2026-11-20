@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 import pytest
 
 import scraperpy as sp
@@ -356,3 +358,32 @@ def test_python_scraper_edge_cases():
 
     with pytest.raises(ValueError):
         sp.ScraperPy().select("div").regex_replace("[unclosed", "x")
+
+
+def test_python_binary_encoding_hardening():
+    s = sp.ScraperPy()
+    s.select("h1").text().set("title")
+    s.to_cbor(encoding="BASE64")
+    s.from_cbor("decoded", encoding="BASE64")
+    out = s.from_string("<h1>Hello</h1>")
+    assert out["decoded"] == {"title": "Hello"}
+
+    # Unknown encoding logs warning and falls back to hex
+    s_bad = sp.ScraperPy()
+    s_bad.select("h1").text().set("title")
+    s_bad.to_cbor(encoding="unknown_enc")
+    s_bad.from_cbor("decoded", encoding="HEX")
+    out_bad = s_bad.from_string("<h1>Hello</h1>")
+    assert out_bad["decoded"] == {"title": "Hello"}
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import scraperpy as sp; sp.ScraperPy().to_cbor(encoding='unknown_enc')",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Unknown binary encoding" in proc.stderr

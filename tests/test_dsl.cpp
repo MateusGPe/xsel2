@@ -367,3 +367,33 @@ TEST_CASE("DslParser rejects malformed syntax, interpolation errors, and excessi
   deep += ") };";
   CHECK_THROWS_AS(parser.parse(deep), std::runtime_error);
 }
+
+TEST_CASE("Hardening: DSL scientific notation and strict argument validation",
+          "[dsl][hardening]") {
+  scraper::dsl::DslParser parser;
+
+  // Scientific notation floats work and overflowing exponents throw
+  auto sci = parser.parse(
+      R"(s = Scraper() | $("li") { find_all("span", text) | fuzzy_filter("Apple", threshold=1.5e-1) -> "m" };)");
+  REQUIRE(sci.contains("s"));
+  const auto sci_res = sci.at("s").scrape_from_string("<li><span>Apple</span></li>");
+  CHECK(sci_res["m"].as<std::string>() == "Apple");
+
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text | fuzzy_filter("a", threshold=1e999) };)"),
+      std::runtime_error);
+
+  // Reject unknown keyword args, extra positional args, duplicate positional+kwarg, and bad cast_keys types
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text | fuzzy_filter("a", bogus=1) };)"),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text | trim("extra") };)"),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | select("h1", selector="h2") { text -> "t" };)"),
+      std::runtime_error);
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("h1") { text -> "a" } | cast_keys({a: 123});)"),
+      std::runtime_error);
+}

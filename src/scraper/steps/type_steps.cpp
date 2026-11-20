@@ -117,17 +117,28 @@ std::optional<std::string> extract_number_string(std::string_view input,
     if (is_digit_char(trimmed[i])) {
       break;
     }
+    if (allow_float && !decimal.empty() &&
+        trimmed.substr(i).starts_with(decimal) &&
+        i + decimal.size() < trimmed.size() &&
+        is_digit_char(trimmed[i + decimal.size()])) {
+      break;
+    }
     if (trimmed[i] == '-' && i + 1 < trimmed.size() &&
         (is_digit_char(trimmed[i + 1]) ||
-         (!decimal.empty() && trimmed.substr(i + 1).starts_with(decimal)))) {
+         (allow_float && !decimal.empty() &&
+          trimmed.substr(i + 1).starts_with(decimal)))) {
       negative = true;
       ++i;
       break;
     }
     if (trimmed[i] == '(' && i + 1 < trimmed.size() &&
         (is_digit_char(trimmed[i + 1]) || trimmed[i + 1] == '$' ||
-         trimmed[i + 1] == ' ')) {
+         trimmed[i + 1] == ' ' ||
+         (allow_float && !decimal.empty() &&
+          trimmed.substr(i + 1).starts_with(decimal)))) {
       accounting_parens = true;
+    } else if (trimmed[i] == ')') {
+      accounting_parens = false;
     }
     ++i;
   }
@@ -136,23 +147,22 @@ std::optional<std::string> extract_number_string(std::string_view input,
     return std::nullopt;
   }
 
-  std::string out;
-  if (negative || accounting_parens) {
-    out.push_back('-');
-  }
-
+  std::string digits_out;
   bool seen_digit = false;
   bool seen_decimal = false;
   while (i < trimmed.size()) {
     if (is_digit_char(trimmed[i])) {
-      out.push_back(trimmed[i]);
+      digits_out.push_back(trimmed[i]);
       seen_digit = true;
       ++i;
     } else if (!thousands.empty() && trimmed.substr(i).starts_with(thousands)) {
       i += thousands.size();
     } else if (allow_float && !seen_decimal && !decimal.empty() &&
                trimmed.substr(i).starts_with(decimal)) {
-      out.push_back('.');
+      if (!seen_digit) {
+        digits_out.push_back('0');
+      }
+      digits_out.push_back('.');
       seen_decimal = true;
       i += decimal.size();
     } else {
@@ -163,10 +173,16 @@ std::optional<std::string> extract_number_string(std::string_view input,
   if (!seen_digit) {
     return std::nullopt;
   }
-  if (out.back() == '.') {
-    out.pop_back();
+  if (digits_out.back() == '.') {
+    digits_out.pop_back();
   }
-  return out;
+  const bool is_neg =
+      negative ||
+      (accounting_parens && trimmed.find(')', i) != std::string_view::npos);
+  if (is_neg) {
+    return "-" + digits_out;
+  }
+  return digits_out;
 }
 
 jsoncons::json coerce_string_to_json(std::string_view s, ValueType type) {

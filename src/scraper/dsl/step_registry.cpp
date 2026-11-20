@@ -522,6 +522,10 @@ get_method_registry() {
          }
          absl::flat_hash_map<std::string, ValueType> schema;
          for (const auto &kv : j.object_range()) {
+           if (!kv.value().is_string()) {
+             throw std::runtime_error(
+                 "cast_keys: schema values must be type name strings");
+           }
            schema.emplace(kv.key(), parse_value_type_name(kv.value().as_string_view()));
          }
          b.CastKeys(std::move(schema), opt_bool(args, 1, "postponable", true));
@@ -602,6 +606,10 @@ get_method_registry() {
          }
          absl::flat_hash_map<std::string, std::string> mapping;
          for (const auto &kv : j.object_range()) {
+           if (!kv.value().is_string()) {
+             throw std::runtime_error(
+                 "replace_many: mapping values must be strings");
+           }
            mapping.emplace(kv.key(), kv.value().as_string());
          }
          b.ReplaceMany(mapping);
@@ -706,6 +714,7 @@ void apply_dsl_method(ScraperBuilder &builder, std::string_view name,
     throw std::runtime_error("Unknown DSL method: " + std::string(name));
   }
   it->second(builder, args, name);
+  validate_args_consumed(args, name);
 }
 
 } // namespace scraper::dsl

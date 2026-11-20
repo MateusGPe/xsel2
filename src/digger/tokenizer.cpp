@@ -205,12 +205,12 @@ void TokenParser::decode_escape_sequence(std::string &out) {
       size_t hex_pos = pos_ + 2;
       uint32_t cp = 0;
       size_t digits = 0;
-      while (hex_pos < source_.size() && source_[hex_pos] != '}' &&
-             digits < 6) {
+      while (hex_pos < source_.size() && source_[hex_pos] != '}') {
         const int d = xsel::common::hex_nibble(source_[hex_pos]);
         if (d < 0)
           break;
-        cp = (cp << 4) | static_cast<uint32_t>(d);
+        cp = (cp > 0x10FFFFu) ? 0x110000u
+                              : ((cp << 4) | static_cast<uint32_t>(d));
         ++hex_pos;
         ++digits;
       }
@@ -404,8 +404,7 @@ void tokenize_and_simplify(std::string_view source,
 
       // Rule 4: Inline JSON.parse("...") evaluation
       if (st[n - 2].text == "JSON.parse" &&
-          (st[n - 2].type == TokenType::Identifier ||
-           st[n - 2].type == TokenType::String) &&
+          st[n - 2].type == TokenType::Identifier &&
           st[n - 1].type == TokenType::String) {
         std::string json_str = std::move(st[n - 1].text);
         st.pop_back();

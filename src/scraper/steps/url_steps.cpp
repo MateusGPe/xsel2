@@ -4,6 +4,7 @@
 #include <absl/strings/str_split.h>
 #include <libxml/uri.h>
 #include <libxml/xmlmemory.h>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 
@@ -19,6 +20,14 @@ struct XmlCharDeleter {
   }
 };
 
+struct CharDeleter {
+  void operator()(char *p) const noexcept {
+    if (p) {
+      xmlFree(p);
+    }
+  }
+};
+
 struct XmlUriDeleter {
   void operator()(xmlURI *p) const noexcept {
     if (p) {
@@ -28,11 +37,15 @@ struct XmlUriDeleter {
 };
 
 using XmlStringPtr = std::unique_ptr<xmlChar, XmlCharDeleter>;
+using XmlCharBufPtr = std::unique_ptr<char, CharDeleter>;
 using XmlUriPtr = std::unique_ptr<xmlURI, XmlUriDeleter>;
 
 std::string decode_uri_component(std::string_view encoded) {
   if (encoded.empty()) {
     return "";
+  }
+  if (encoded.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::overflow_error("decode_uri_component: input exceeds INT_MAX");
   }
   // Replace '+' with ' ' for application/x-www-form-urlencoded query params.
   std::string tmp(encoded);
@@ -41,13 +54,12 @@ std::string decode_uri_component(std::string_view encoded) {
       c = ' ';
     }
   }
-  char *unescaped = xmlURIUnescapeString(tmp.c_str(), static_cast<int>(tmp.size()), nullptr);
+  XmlCharBufPtr unescaped(
+      xmlURIUnescapeString(tmp.c_str(), static_cast<int>(tmp.size()), nullptr));
   if (!unescaped) {
     return tmp;
   }
-  std::string result(unescaped);
-  xmlFree(unescaped);
-  return result;
+  return std::string(unescaped.get());
 }
 
 } // namespace
@@ -175,6 +187,8 @@ void StripQueryStep::apply(Node, std::vector<std::string> &values,
             kept.push_back(pair);
           }
         }
+        const std::string joined =
+            kept.empty() ? std::string{} : absl::StrJoin(kept, "&");
         if (uri->query) {
           xmlFree(uri->query);
           uri->query = nullptr;
@@ -183,8 +197,7 @@ void StripQueryStep::apply(Node, std::vector<std::string> &values,
           xmlFree(uri->query_raw);
           uri->query_raw = nullptr;
         }
-        if (!kept.empty()) {
-          const std::string joined = absl::StrJoin(kept, "&");
+        if (!joined.empty()) {
           uri->query_raw =
               reinterpret_cast<char *>(xmlCharStrdup(joined.c_str()));
         }

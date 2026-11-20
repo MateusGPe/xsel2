@@ -677,3 +677,55 @@ TEST_CASE("Steps edge cases: type coercion bounds, block comments, regex, URL, a
   CHECK_THROWS_AS(scraper::RenameKeysStep({{"a", "b"}}).execute_postponed(deep), std::runtime_error);
   CHECK_THROWS_AS(scraper::FilterDictStep({"a"}).execute_postponed(deep), std::runtime_error);
 }
+
+TEST_CASE("Hardening: SortValuesStep NaN/prefix, StripQuery UAF, XPath namespace, Unescape, extract_number, and path depth",
+          "[steps][hardening]") {
+  jsoncons::json dict = jsoncons::json::object();
+
+  // 1. SortValuesStep(numeric=true) handles NaN, Inf, partial prefixes, whitespace, and ties safely
+  std::vector<std::string> sort_vals = {"10", "NaN", "-nan", "inf", "10abc", " 2 ", "1.0", "1"};
+  scraper::SortValuesStep(true, true).apply(dummy_node(), sort_vals, dict);
+  REQUIRE(sort_vals.size() == 8);
+  CHECK(sort_vals[0] == "1.0");
+  CHECK(sort_vals[1] == "1");
+  CHECK(sort_vals[2] == " 2 ");
+  CHECK(sort_vals[3] == "10");
+
+  // 2. StripQueryStep with keep_params must not read freed query memory
+  std::vector<std::string> urls = {"https://example.com/search?a=1&b=2&c=3"};
+  scraper::StripQueryStep({"b"}).apply(dummy_node(), urls, dict);
+  CHECK(urls == std::vector<std::string>{"https://example.com/search?b=2"});
+
+  // 3. XPathStep with XML_NAMESPACE_DECL nodes must not crash or trigger type confusion
+  Document ns_doc;
+  ns_doc.parseXmlMemory(R"(<root xmlns:ns="https://example.com/ns"><ns:item x="1">hi</ns:item></root>)");
+  QueryResult ns_root(ns_doc.getRoot());
+  REQUIRE(ns_root[0].has_value());
+  std::vector<std::string> ns_vals;
+  scraper::XPathStep("//namespace::*").apply(*ns_root[0], ns_vals, dict);
+  CHECK_FALSE(ns_vals.empty());
+  std::vector<std::string> ns_attr_vals;
+  scraper::XPathStep("//namespace::*", "x").apply(*ns_root[0], ns_attr_vals, dict);
+  CHECK(ns_attr_vals.empty());
+
+  // 4. UnescapeStep handles \b and \f
+  std::vector<std::string> esc_vals = {R"(a\bb\fc)"};
+  scraper::UnescapeStep(false).apply(dummy_node(), esc_vals, dict);
+  CHECK(esc_vals == std::vector<std::string>{"a\bb\fc"});
+
+  // 5. extract_number_string handles unrelated parens and leading decimals
+  CHECK(scraper::extract_number_string("(see note) $25.00") == "25.00");
+  CHECK(scraper::extract_number_string("($25.00)") == "-25.00");
+  CHECK(scraper::extract_number_string(".5") == "0.5");
+  CHECK(scraper::extract_number_string("-.5") == "-0.5");
+
+  // 6. Dotted path depth exceeding MAX_JSON_DEPTH throws
+  std::string deep_key = "k";
+  for (int i = 0; i < xsel::common::MAX_JSON_DEPTH + 5; ++i) {
+    deep_key += ".k";
+  }
+  jsoncons::json deep_dest = jsoncons::json::object();
+  CHECK_THROWS_AS(
+      scraper::insert_into_json(deep_dest, deep_key, jsoncons::json(1)),
+      std::runtime_error);
+}

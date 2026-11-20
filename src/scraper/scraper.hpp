@@ -24,8 +24,8 @@ namespace scraper {
 class Scraper {
 public:
   Scraper() = default;
-  Scraper(const Scraper &) = default;
-  Scraper &operator=(const Scraper &) = default;
+  Scraper(const Scraper &other);
+  Scraper &operator=(const Scraper &other);
   Scraper(Scraper &&) noexcept = default;
   Scraper &operator=(Scraper &&) noexcept = default;
   virtual ~Scraper() = default;

@@ -195,3 +195,20 @@ TEST_CASE("digger handles unterminated strings, comments, bad escapes, and top-l
   REQUIRE(arr.size() == 3);
   CHECK(arr[2]["a"].as<int64_t>() == 3);
 }
+
+TEST_CASE("Hardening: digger does not execute quoted 'JSON.parse' and allows leading zeros in \\u{...}",
+          "[digger][hardening]") {
+  const auto quoted = digger::parse_object(R"(["JSON.parse", "{\"a\": 1}"])", true);
+  REQUIRE(quoted.is_array());
+  REQUIRE(quoted.size() == 2);
+  CHECK(quoted[0].is_string());
+  CHECK(quoted[0].as<std::string>() == "JSON.parse");
+  CHECK(quoted[1].is_string());
+  CHECK(quoted[1].as<std::string>() == R"({"a": 1})");
+
+  const auto leading_zeros =
+      digger::parse_object(R"({a: "\u{00000041}", huge: "\u{999999999}"})", true);
+  REQUIRE(leading_zeros.is_object());
+  CHECK(leading_zeros["a"].as<std::string>() == "A");
+  CHECK(leading_zeros["huge"].as<std::string>() == "\xEF\xBF\xBD");
+}

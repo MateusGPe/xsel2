@@ -19,10 +19,11 @@ void check_json_depth(int depth, std::string_view context);
 [[nodiscard]] std::string canonical_json_key(const jsoncons::json &val,
                                              int depth = 0);
 
-/// Lexicographically compares two `jsoncons::json` values.
+/// Lexicographically compares two `jsoncons::json` values using strict total
+/// ordering by type rank (null < bool < number < string < array < object).
 /// Returns < 0 if a < b, 0 if a == b, > 0 if a > b.
 [[nodiscard]] int compare_json(const jsoncons::json &a,
-                               const jsoncons::json &b);
+                               const jsoncons::json &b, int depth = 0);
 
 /// Returns `base` if `obj` is not an object or does not contain `base`;
 /// otherwise returns `base_0`, `base_1`, ... for the first unused key.

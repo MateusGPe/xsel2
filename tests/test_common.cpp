@@ -3,11 +3,13 @@
 #include "common/json_utils.hpp"
 #include "common/string_utils.hpp"
 #include "common/utf.hpp"
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <vector>
 
 TEST_CASE("utf8_encode and utf8_iterate round-trip codepoints", "[common][utf]") {
   const int32_t codepoints[] = {0x00, 0x41, 0x7F, 0x80, 0x00E9, 0x07FF,
@@ -252,4 +254,55 @@ TEST_CASE("compare_json handles negative zero, fractions, and exact int64/double
   const jsoncons::json pow2_63(9223372036854775808.0);
   CHECK(xsel::common::compare_json(max_i, pow2_63) < 0);
   CHECK(xsel::common::compare_json(pow2_63, max_i) > 0);
+}
+
+TEST_CASE("Hardening: parse_hex_4 overflow, utf8_encode surrogates, dump_string recovery, and compare_json total order",
+          "[common][hardening]") {
+  // parse_hex_4 must not wrap around when pos is near SIZE_MAX
+  CHECK(xsel::common::parse_hex_4("1234", std::string_view::npos) == -1);
+  CHECK(xsel::common::parse_hex_4("1234", std::numeric_limits<size_t>::max() - 1) == -1);
+
+  // utf8_encode must reject UTF-16 surrogates
+  char buf[4]{};
+  size_t len = 0;
+  CHECK(utf8_encode(0xD800, buf, &len) == -1);
+  CHECK(utf8_encode(0xDFFF, buf, &len) == -1);
+
+  // dump_string replaces invalid UTF-8 bytes with \uFFFD and continues
+  const std::string bad_utf8 = "a\xFFz";
+  std::ostringstream oss;
+  dump_string(bad_utf8.data(), bad_utf8.size(), oss);
+  CHECK(oss.str() == R"(a\uFFFDz)");
+
+  // compare_json provides strict weak ordering across heterogeneous types
+  std::vector<jsoncons::json> mixed = {
+      jsoncons::json::parse(R"({"b": 1})"),
+      jsoncons::json("2"),
+      jsoncons::json(10),
+      jsoncons::json::parse("[2]"),
+      jsoncons::json(true),
+      jsoncons::json::null(),
+      jsoncons::json("10"),
+      jsoncons::json(2),
+      jsoncons::json(false),
+      jsoncons::json::parse("[1]"),
+      jsoncons::json::parse(R"({"a": 1})"),
+  };
+  std::sort(mixed.begin(), mixed.end(),
+            [](const jsoncons::json &a, const jsoncons::json &b) {
+              return xsel::common::compare_json(a, b) < 0;
+            });
+
+  REQUIRE(mixed.size() == 11);
+  CHECK(mixed[0].is_null());
+  CHECK(mixed[1] == jsoncons::json(false));
+  CHECK(mixed[2] == jsoncons::json(true));
+  CHECK(mixed[3] == jsoncons::json(2));
+  CHECK(mixed[4] == jsoncons::json(10));
+  CHECK(mixed[5] == jsoncons::json("10"));
+  CHECK(mixed[6] == jsoncons::json("2"));
+  CHECK(mixed[7] == jsoncons::json::parse("[1]"));
+  CHECK(mixed[8] == jsoncons::json::parse("[2]"));
+  CHECK(mixed[9] == jsoncons::json::parse(R"({"a": 1})"));
+  CHECK(mixed[10] == jsoncons::json::parse(R"({"b": 1})"));
 }

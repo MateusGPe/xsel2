@@ -1,6 +1,7 @@
 #pragma once
 
 #include <absl/container/flat_hash_map.h>
+#include <absl/container/flat_hash_set.h>
 #include <cstddef>
 #include <jsoncons/json.hpp>
 #include <string>
@@ -80,6 +81,8 @@ struct DslValue {
 struct DslArgList {
   std::vector<DslValue> positional;
   absl::flat_hash_map<std::string, DslValue> named;
+  mutable size_t max_positional_used{0};
+  mutable absl::flat_hash_set<std::string> named_used;
 };
 
 [[nodiscard]] int parse_strict_int(std::string_view s,
@@ -95,6 +98,7 @@ struct DslArgList {
 
 [[nodiscard]] const DslValue *find_arg(const DslArgList &args, size_t idx,
                                        std::string_view name);
+void validate_args_consumed(const DslArgList &args, std::string_view method);
 [[nodiscard]] const DslValue &require_arg(const DslArgList &args, size_t idx,
                                           std::string_view name,
                                           std::string_view method);

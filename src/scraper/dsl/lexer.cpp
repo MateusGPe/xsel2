@@ -170,6 +170,7 @@ Token Lexer::next_token() {
       (c == '-' && pos_ + 1 < src_.size() &&
        std::isdigit(static_cast<unsigned char>(src_[pos_ + 1])))) {
     std::string num;
+    bool is_float = false;
     if (c == '-') {
       num += advance();
     }
@@ -179,14 +180,34 @@ Token Lexer::next_token() {
     }
     if (peek() == '.' && pos_ + 1 < src_.size() &&
         std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
+      is_float = true;
       num += advance();
       while (pos_ < src_.size() &&
              std::isdigit(static_cast<unsigned char>(peek()))) {
         num += advance();
       }
-      return {Token::Type::FLOAT, std::move(num), tok_line, tok_col};
     }
-    return {Token::Type::NUMBER, std::move(num), tok_line, tok_col};
+    if (peek() == 'e' || peek() == 'E') {
+      size_t exp_pos = pos_ + 1;
+      if (exp_pos < src_.size() &&
+          (src_[exp_pos] == '+' || src_[exp_pos] == '-')) {
+        ++exp_pos;
+      }
+      if (exp_pos < src_.size() &&
+          std::isdigit(static_cast<unsigned char>(src_[exp_pos]))) {
+        is_float = true;
+        num += advance(); // 'e' or 'E'
+        if (peek() == '+' || peek() == '-') {
+          num += advance();
+        }
+        while (pos_ < src_.size() &&
+               std::isdigit(static_cast<unsigned char>(peek()))) {
+          num += advance();
+        }
+      }
+    }
+    return {is_float ? Token::Type::FLOAT : Token::Type::NUMBER,
+            std::move(num), tok_line, tok_col};
   }
 
   if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {

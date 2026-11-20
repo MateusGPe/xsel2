@@ -26,7 +26,7 @@ static inline const char *utf8_iterate(const char *buffer, size_t size,
 static inline int utf8_check_string(const char *string, size_t length);
 
 static inline int utf8_encode(int32_t codepoint, char *buffer, size_t *size) {
-  if (codepoint < 0)
+  if (codepoint < 0 || (codepoint >= 0xD800 && codepoint <= 0xDFFF))
     return -1;
   else if (codepoint < 0x80) {
     buffer[0] = (char)codepoint;
@@ -195,7 +195,9 @@ static inline void dump_string(const char *str, size_t len, std::ostream &out) {
     int32_t codepoint = 0;
     const char *next = utf8_iterate(pos, (size_t)(lim - pos), &codepoint);
     if (!next) {
-      return;
+      out.write("\\uFFFD", 6);
+      ++pos;
+      continue;
     }
 
     if (codepoint == '\\' || codepoint == '"' || codepoint < 0x20) {

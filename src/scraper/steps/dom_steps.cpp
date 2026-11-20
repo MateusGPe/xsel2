@@ -5,9 +5,11 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <libxml/HTMLtree.h>
+#include <libxml/xmlversion.h>
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 #include <memory>
@@ -213,7 +215,12 @@ void HtmlStep::apply(Node node, std::vector<std::string> &values,
     }
   }
   const xmlChar *content = xmlBufferContent(buf.get());
-  values.emplace_back(content ? reinterpret_cast<const char *>(content) : "");
+  const int len = xmlBufferLength(buf.get());
+  values.emplace_back(
+      (content && len > 0)
+          ? std::string(reinterpret_cast<const char *>(content),
+                        static_cast<size_t>(len))
+          : std::string{});
 }
 
 void TagNameStep::apply(Node node, std::vector<std::string> &values,
@@ -254,22 +261,29 @@ void SortValuesStep::apply(Node, std::vector<std::string> &values,
   }
   if (numeric_) {
     auto parse_num = [](std::string_view s, double &out) -> bool {
-      const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), out);
-      return ec == std::errc{};
+      const std::string_view trimmed = absl::StripAsciiWhitespace(s);
+      if (trimmed.empty()) {
+        return false;
+      }
+      const auto [ptr, ec] =
+          std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), out);
+      return ec == std::errc{} && ptr == trimmed.data() + trimmed.size() &&
+             std::isfinite(out);
     };
-    std::sort(values.begin(), values.end(),
-              [this, &parse_num](const std::string &a, const std::string &b) {
-                double da = 0.0, db = 0.0;
-                const bool ok_a = parse_num(a, da);
-                const bool ok_b = parse_num(b, db);
-                if (ok_a && ok_b) {
-                  return ascending_ ? (da < db) : (da > db);
-                }
-                if (ok_a != ok_b) {
-                  return ok_a;
-                }
-                return ascending_ ? (a < b) : (a > b);
-              });
+    std::stable_sort(
+        values.begin(), values.end(),
+        [this, &parse_num](const std::string &a, const std::string &b) {
+          double da = 0.0, db = 0.0;
+          const bool ok_a = parse_num(a, da);
+          const bool ok_b = parse_num(b, db);
+          if (ok_a && ok_b) {
+            return ascending_ ? (da < db) : (da > db);
+          }
+          if (ok_a != ok_b) {
+            return ok_a;
+          }
+          return ascending_ ? (a < b) : (a > b);
+        });
   } else {
     std::sort(values.begin(), values.end(),
               [this](const std::string &a, const std::string &b) {
@@ -398,13 +412,26 @@ void DebugPrintStep::apply(Node node, std::vector<std::string> &values,
 
 namespace {
 
+struct XmlCharDeleter {
+  void operator()(xmlChar *p) const noexcept {
+    if (p) {
+      xmlFree(p);
+    }
+  }
+};
+
+#if LIBXML_VERSION >= 21200
+void silent_xpath_error(void *, const xmlError *) noexcept {}
+#else
+void silent_xpath_error(void *, xmlErrorPtr) noexcept {}
+#endif
+
 std::string xml_char_to_string(xmlChar *ptr) {
   if (!ptr) {
     return {};
   }
-  std::string out(reinterpret_cast<const char *>(ptr));
-  xmlFree(ptr);
-  return out;
+  std::unique_ptr<xmlChar, XmlCharDeleter> guard(ptr);
+  return std::string(reinterpret_cast<const char *>(guard.get()));
 }
 
 std::string trim_ws(std::string_view s) {
@@ -460,16 +487,21 @@ QueryResult select_css(Node node, const char *css) {
   return sel->MatchAll(node);
 }
 
+constexpr int kMaxTableDepth = 64;
+
 void collect_table_rows(xmlNodePtr root,
                         std::vector<std::vector<std::string>> &rows,
-                        bool trim_cells) {
+                        bool trim_cells, int depth = 0) {
+  if (!root || depth > kMaxTableDepth) {
+    return;
+  }
   for (xmlNodePtr cur = root->children; cur; cur = cur->next) {
     if (cur->type != XML_ELEMENT_NODE) {
       continue;
     }
     if (tag_equals_ci(cur, "thead") || tag_equals_ci(cur, "tbody") ||
         tag_equals_ci(cur, "tfoot")) {
-      collect_table_rows(cur, rows, trim_cells);
+      collect_table_rows(cur, rows, trim_cells, depth + 1);
     } else if (tag_equals_ci(cur, "tr")) {
       std::vector<std::string> row;
       for (xmlNodePtr cell = cur->children; cell; cell = cell->next) {
@@ -509,6 +541,7 @@ void XPathStep::apply(Node node, std::vector<std::string> &values,
     throw std::runtime_error("xpath: failed to create XPath context");
   }
   ctx->node = raw;
+  ctx->error = &silent_xpath_error;
 
   std::unique_ptr<xmlXPathObject, decltype(&xmlXPathFreeObject)> obj(
       xmlXPathEvalExpression(reinterpret_cast<const xmlChar *>(expr_.c_str()),
@@ -526,11 +559,21 @@ void XPathStep::apply(Node node, std::vector<std::string> &values,
         if (!n) {
           continue;
         }
+        if (n->type == XML_NAMESPACE_DECL) {
+          if (attr_name_.empty()) {
+            auto *ns = reinterpret_cast<xmlNsPtr>(n);
+            values.emplace_back(
+                ns->href ? reinterpret_cast<const char *>(ns->href) : "");
+          }
+          continue;
+        }
         if (!attr_name_.empty()) {
-          xmlChar *prop = xmlGetProp(
-              n, reinterpret_cast<const xmlChar *>(attr_name_.c_str()));
-          if (prop) {
-            values.push_back(xml_char_to_string(prop));
+          if (n->type == XML_ELEMENT_NODE) {
+            xmlChar *prop = xmlGetProp(
+                n, reinterpret_cast<const xmlChar *>(attr_name_.c_str()));
+            if (prop) {
+              values.push_back(xml_char_to_string(prop));
+            }
           }
         } else {
           values.push_back(xml_char_to_string(xmlNodeGetContent(n)));

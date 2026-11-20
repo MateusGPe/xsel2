@@ -43,6 +43,9 @@ void handle_step_error(const std::exception &e, std::string_view err_prefix,
 } // namespace
 
 void Extractor::append_step(std::shared_ptr<Step> step) {
+  if (!step) {
+    return;
+  }
   steps_.push_back(std::move(step));
 }
 

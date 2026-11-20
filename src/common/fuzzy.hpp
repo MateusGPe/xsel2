@@ -53,11 +53,10 @@ decode_codepoints(std::string_view s, bool case_sensitive = true) {
   return cps;
 }
 
+namespace detail {
+
 [[nodiscard]] inline size_t
-levenshtein_distance(std::string_view a, std::string_view b,
-                     bool case_sensitive = false) {
-  auto ca = decode_codepoints(a, case_sensitive);
-  auto cb = decode_codepoints(b, case_sensitive);
+levenshtein_distance_cps(std::vector<int32_t> ca, std::vector<int32_t> cb) {
   if (ca.size() < cb.size()) {
     std::swap(ca, cb);
   }
@@ -84,6 +83,16 @@ levenshtein_distance(std::string_view a, std::string_view b,
   return prev[m];
 }
 
+} // namespace detail
+
+[[nodiscard]] inline size_t
+levenshtein_distance(std::string_view a, std::string_view b,
+                     bool case_sensitive = false) {
+  return detail::levenshtein_distance_cps(
+      decode_codepoints(a, case_sensitive),
+      decode_codepoints(b, case_sensitive));
+}
+
 [[nodiscard]] inline double
 levenshtein_similarity(std::string_view a, std::string_view b,
                        bool case_sensitive = false) {
@@ -93,7 +102,8 @@ levenshtein_similarity(std::string_view a, std::string_view b,
   if (max_len == 0) {
     return 1.0;
   }
-  const size_t dist = levenshtein_distance(a, b, case_sensitive);
+  const size_t dist =
+      detail::levenshtein_distance_cps(std::move(ca), std::move(cb));
   return 1.0 - static_cast<double>(dist) / static_cast<double>(max_len);
 }
 

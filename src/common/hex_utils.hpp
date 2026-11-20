@@ -24,7 +24,7 @@ namespace xsel::common {
 
 /// Parses 4 hex digits starting at `pos` in `s`. Returns -1 if out of bounds or invalid.
 [[nodiscard]] constexpr int parse_hex_4(std::string_view s, size_t pos) noexcept {
-  if (pos + 4 > s.size()) {
+  if (pos > s.size() || s.size() - pos < 4) {
     return -1;
   }
   int val = 0;

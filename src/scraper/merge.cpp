@@ -122,6 +122,7 @@ void insert_into_json(jsoncons::json &dest, std::string_view key,
   if (segments.empty()) {
     return;
   }
+  check_depth(static_cast<int>(segments.size()), "insert_into_json");
 
   jsoncons::json *cursor = &dest;
   for (size_t i = 0; i + 1 < segments.size(); ++i) {
@@ -133,7 +134,7 @@ void insert_into_json(jsoncons::json &dest, std::string_view key,
   }
 
   assign_key_with_mode(*cursor, segments.back(), std::move(value), opts.mode,
-                       0);
+                       static_cast<int>(segments.size()));
 }
 
 bool has_no_common_key(const jsoncons::json &obj1, const jsoncons::json &obj2) {
@@ -253,6 +254,7 @@ void merge_item_at_path(jsoncons::json &dest,
   if (xsel::common::is_empty_json(item)) {
     return;
   }
+  check_depth(static_cast<int>(path_segments.size()), "merge_item_at_path");
 
   if (dest.is_object() || dest.is_null()) {
     if (path_segments.empty()) {
@@ -273,7 +275,8 @@ void merge_item_at_path(jsoncons::json &dest,
     if (!target->contains(path_segments.back())) {
       target->insert_or_assign(path_segments.back(), jsoncons::json::null());
     }
-    merge_into(target->at(path_segments.back()), std::move(item));
+    merge_into(target->at(path_segments.back()), std::move(item),
+               static_cast<int>(path_segments.size()));
     return;
   }
 

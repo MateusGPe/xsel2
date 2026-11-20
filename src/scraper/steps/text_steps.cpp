@@ -251,6 +251,16 @@ void UnescapeStep::apply(Node, std::vector<std::string> &values,
           ++i;
           continue;
         }
+        if (next == 'b') {
+          decoded += '\b';
+          ++i;
+          continue;
+        }
+        if (next == 'f') {
+          decoded += '\f';
+          ++i;
+          continue;
+        }
         if (next == '\\' || next == '"' || next == '\'' || next == '/') {
           decoded += next;
           ++i;
