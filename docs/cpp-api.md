@@ -6,9 +6,9 @@
 
 | Target | Headers | Purpose |
 | --- | --- | --- |
-| `xsel_common` | `common/ahocorasick.hpp`, `common/json_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, UTF-8 & JSON helpers |
+| `xsel_common` | `common/ahocorasick.hpp`, `common/fuzzy.hpp`, `common/json_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, Jaro-Winkler & Levenshtein fuzzy matching, UTF-8 & JSON helpers |
 | `digger` | `digger/digger.hpp`, `digger/tokenizer.hpp`, `digger/scalar_parser.hpp` | Heuristic JS/JSON object extractor |
-| `xsel_query` | `query/json_query.hpp` | JMESPath and JSONPath evaluation over `jsoncons::json` |
+| `xsel_query` | `query/json_query.hpp` | JMESPath, JSONPath, JSON Pointer, Patch, Merge Patch, Flatten & Schema over `jsoncons::json` |
 | `scraper` | `scraper/scraper.hpp`, `scraper/dsl_parser.hpp`, `scraper/merge.hpp` | Full scraping pipeline, steps, and `.dsl` parser |
 
 Linking `scraper` transitively links `xsel_common`, `digger`, `xsel_query`, `jsoncons`, `mgp::lxml2-query`, `re2::re2`, and Abseil.
@@ -37,6 +37,15 @@ int main() {
 ```
 
 Use `builder.scrape_from_file("page.html")` to parse directly from disk.
+
+### Error Policies & `InsertOptions`
+
+`Scraper` supports three error policies via `set_error_policy(scraper::ErrorPolicy)`:
+- `ErrorPolicy::LogAndContinue` (default): logs extractor errors to `error_stream` and continues.
+- `ErrorPolicy::Throw`: throws `std::runtime_error` on the first extractor error.
+- `ErrorPolicy::Collect`: appends errors to `scraper.errors()` without printing.
+
+`Set`, `Count`, and `ParseJs` accept `scraper::InsertOptions` (`mode`: `Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`; `allow_empty`; `nested_path`).
 
 ---
 
@@ -79,7 +88,7 @@ int main() {
 
 ---
 
-## `xsel::query` (JMESPath & JSONPath)
+## `xsel::query` (JMESPath, JSONPath, Patch, Pointer & Schema)
 
 ```cpp
 #include "query/json_query.hpp"
@@ -89,16 +98,22 @@ int main() {
   auto doc = jsoncons::json::parse(R"({"items":[{"name":"A","price":5},{"name":"B","price":20}]})");
   auto jmes = xsel::query::evaluate_jmespath(doc, "items[?price > `10`].name");
   auto jpath = xsel::query::evaluate_jsonpath(doc, "$.items[*].name");
-  std::cout << jmes << '\n' << jpath << '\n';
+  auto ptr = xsel::query::jsonpointer_get(doc, "/items/1/name");
+  auto flat = xsel::query::json_flatten(doc);
+  auto roundtrip = xsel::query::json_unflatten(flat);
+  std::cout << jmes << '\n' << jpath << '\n' << ptr << '\n';
 }
 ```
 
+Also available in `query/json_query.hpp`: `apply_json_patch`, `apply_merge_patch`, `validate_json_schema`, `jsonpointer_set`, `jsonpointer_remove`, and `jsonpath_replace`.
+
 ---
 
-## `AhoCorasick`
+## `AhoCorasick` & Fuzzy Matching (`xsel_common`)
 
 ```cpp
 #include "common/ahocorasick.hpp"
+#include "common/fuzzy.hpp"
 #include <iostream>
 
 int main() {
@@ -112,5 +127,9 @@ int main() {
   for (const auto &m : matches) {
     std::cout << "pattern=" << m.pattern_id << " start=" << m.start << " len=" << m.length << '\n';
   }
+
+  double jw = xsel::common::jaro_winkler_similarity("Mechanical Keyboard", "Mechnical Keybord");
+  double lev = xsel::common::levenshtein_similarity("Mechanical Keyboard", "Mechnical Keybord");
+  std::cout << "jw=" << jw << " lev=" << lev << '\n';
 }
 ```

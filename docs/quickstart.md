@@ -38,7 +38,7 @@ ctest --test-dir build-release --output-on-failure
 
 ### Installing Binaries (Optional)
 
-Each preset sets `CMAKE_INSTALL_PREFIX` to `install/` in the repository root. To install `xmlsel-cli`, `xmlsel-pipe`, and `_scraperpy`:
+Each preset sets `CMAKE_INSTALL_PREFIX` to `install/` in the repository root. To install `xsel2` and `_scraperpy`:
 
 ```bash
 cmake --install build-release
@@ -51,17 +51,17 @@ The `examples/` directory includes a sample HTML page ([`examples/sample.html`](
 ### 1. Run a quick CSS selector from the CLI
 
 ```bash
-./build/xmlsel-cli scraper --selector "h1.product-title" --html examples/sample.html
+./build/xsel2 -s "h1.product-title" --html examples/sample.html
 ```
 
-### 2. Run a `.dsl` scraper with `xmlsel-cli` or `xmlsel-pipe`
+### 2. Run a `.dsl` scraper with `xsel2`
 
 ```bash
 # Run the "summary" scraper from examples/product.dsl
-./build/xmlsel-cli scraper --dsl examples/product.dsl --name summary --html examples/sample.html
+./build/xsel2 -d examples/product.dsl -n summary --html examples/sample.html
 
-# Or stream HTML through xmlsel-pipe
-cat examples/sample.html | ./build/xmlsel-pipe -d examples/product.dsl -n summary -c
+# Or stream HTML through stdin (pipe mode)
+cat examples/sample.html | ./build/xsel2 -d examples/product.dsl -n summary -c
 ```
 
 ### 3. Run the Python example (`scraperpy`)
@@ -70,11 +70,12 @@ Add both the build directory (which contains `_scraperpy*.so`) and the repositor
 
 ```bash
 PYTHONPATH=build:. python3 examples/scrape_example.py
+PYTHONPATH=build:. python3 examples/all_steps_showcase.py
 ```
 
 ## Next Steps
 
-- [CLI Reference](cli.md) — All `xmlsel-cli` subcommands and `xmlsel-pipe` options
+- [CLI Reference](cli.md) — `xsel2` options, pipe mode, and multi-threaded batch processing
 - [Python Bindings (`scraperpy`)](python.md) — Fluent pipelines, `InsertMode`, `AhoCorasick`, and JSON queries
 - [DSL & Pipeline Steps Reference](dsl-and-steps.md) — Complete `.dsl` syntax and step-by-step reference
 - [C++ API Guide](cpp-api.md) — Linking `scraper`, `digger`, `xsel_query`, and `xsel_common`

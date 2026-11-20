@@ -1,6 +1,6 @@
 # DSL & Pipeline Steps Reference
 
-The `xsel2` DSL lets you define reusable scraping pipelines in `.dsl` files and run them from `xmlsel-cli`, `xmlsel-pipe`, Python (`scraperpy`), or C++ (`scraper::dsl::DslParser`).
+The `xsel2` DSL lets you define reusable scraping pipelines in `.dsl` files and run them from `xsel2`, Python (`scraperpy`), or C++ (`scraper::dsl::DslParser`).
 
 ## DSL Syntax
 
@@ -95,6 +95,24 @@ flowchart LR
 - **Per-node pipeline**: Within a group, steps operate on `values` (`std::vector<std::string>`) and a local `dict` (`jsoncons::json`).
 - **Immediate vs. Postponed steps**: Dictionary and query steps (`flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `sort_keys`, `deduplicate`, `jmespath`, `jsonpath`) default to `postponable = true`, meaning they run once on the merged output document. Pass `false` (or use `flatten_local()`) to run them immediately on each node's local `dict`.
 - **Single vs. Multiple matches**: When an extractor matches one node, its object is merged into the root JSON object; when it matches multiple nodes, results are combined into a JSON array.
+
+---
+
+## Algorithms & Engines
+
+| Engine / Algorithm | Used By | Notes |
+| --- | --- | --- |
+| **Compressed-DFA Aho-Corasick** | `filter`, `replace_many`, `extract_many`, `AhoCorasick` | Single-pass $O(n + m)$ multi-pattern literal matching & simultaneous replacement |
+| **Jaro-Winkler & Levenshtein** | `fuzzy_filter`, `similarity` | UTF-8 codepoint-aware normalized similarity in $[0.0, 1.0]$ with optional case folding and score sorting |
+| **RE2** | `regex_replace`, `regex_filter`, `regex_extract` | Linear-time regular expressions (no catastrophic backtracking) |
+| **Heuristic JS/JSON Digger** | `js_block`, `js_blocks`, `parse_js` | Extracts JS/JSON object literals, strips comments, folds `+`-joined strings, and expands `JSON.parse("...")` without executing JS |
+| **`jsoncons`** | `jmespath`, `jsonpath`, `jsonpath_replace`, `jsonpointer_*`, `json_patch`, `merge_patch`, `json_schema`, `json_flatten`/`json_unflatten`, `csv_*`, `from_*/to_*` | JMESPath, JSONPath, RFC 6901/6902/7396, JSON Schema, CSV, and binary CBOR / MessagePack / BSON / UBJSON |
+| **`libxml2` & `lxml2-query`** | `select`, `find`, `find_all`, `xpath`, `resolve_url`, `url_part`, `query_param`, `strip_query` | CSS selectors, XPath 1.0 evaluation, and RFC 3986 URI resolution |
+| **`utf8proc`** | `unicode_normalize`, `strip_accents` | Unicode `NFC`, `NFD`, `NFKC`, `NFKD` normalization and combining mark (`Mn`) removal |
+| **`absl::Time`** | `parse_date` | Auto-detecting or `strftime`-based date parsing with timezone support (`iso`, `date`, `unix`, `unix_ms`) |
+| **Hashing & Encoding** | `hash`, `base64_encode`, `base64_decode` | `fnv1a64` and `sha256` hex digests; standard and URL-safe Base64 |
+
+> **See all 99 steps in action**: [`examples/all_steps_showcase.dsl`](../examples/all_steps_showcase.dsl) and [`examples/all_steps_showcase.html`](../examples/all_steps_showcase.html).
 
 ---
 
@@ -198,7 +216,7 @@ flowchart LR
 | `flatten_local` | `()` | Shorthand for `flatten(false)` |
 | `pick_keys` | `(keys_to_keep, postponable=true)` | Keeps only keys listed in `keys_to_keep` |
 | `omit_keys` | `(keys_to_remove, postponable=true)` | Removes keys listed in `keys_to_remove` |
-| `rename_keys` | `(pairs, postponable=true)` | Renames keys using an even-length list `[old1, new1, old2, new2, ...]` in DSL (or a dict in C++) |
+| `rename_keys` | `(pairs, postponable=true)` | Renames keys using an object `{old: new}` or even-length list `[old1, new1, ...]` in DSL (or a map in C++) |
 | `merge_keys` | `(source_keys, target_key, postponable=true)` | Combines `source_keys` into `target_key` |
 | `sort_keys` | `(ascending=true, postponable=true)` | Sorts object keys alphabetically |
 | `deduplicate` | `(postponable=true)` | Removes duplicate elements from JSON arrays |

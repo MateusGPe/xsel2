@@ -196,15 +196,12 @@ endif()
 
 # ── Executables & Tests ──────────────────────────────────────────────────────
 if(NOT DEFINED SCRAPERPY_VERSION_INFO)
-  add_executable(xmlsel-cli src/cli/main.cpp)
-  target_compile_features(xmlsel-cli PRIVATE cxx_std_20)
-  target_compile_options(xmlsel-cli PRIVATE ${XSEL_WARN_FLAGS})
-  target_link_libraries(xmlsel-cli PRIVATE scraper)
+  find_package(Threads REQUIRED)
 
-  add_executable(xmlsel-pipe src/cli/main_pipe.cpp)
-  target_compile_features(xmlsel-pipe PRIVATE cxx_std_20)
-  target_compile_options(xmlsel-pipe PRIVATE ${XSEL_WARN_FLAGS})
-  target_link_libraries(xmlsel-pipe PRIVATE scraper)
+  add_executable(xsel2 src/cli/main.cpp)
+  target_compile_features(xsel2 PRIVATE cxx_std_20)
+  target_compile_options(xsel2 PRIVATE ${XSEL_WARN_FLAGS})
+  target_link_libraries(xsel2 PRIVATE scraper Threads::Threads)
 
   if(BUILD_TESTING)
     add_executable(xsel_tests
@@ -227,8 +224,7 @@ if(NOT DEFINED SCRAPERPY_VERSION_INFO)
     add_test(
       NAME cli_integration_tests
       COMMAND ${CMAKE_COMMAND}
-        -DCLI_BIN=$<TARGET_FILE:xmlsel-cli>
-        -DPIPE_BIN=$<TARGET_FILE:xmlsel-pipe>
+        -DXSEL_BIN=$<TARGET_FILE:xsel2>
         -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_cli_tests.cmake)
 
@@ -245,9 +241,16 @@ if(NOT DEFINED SCRAPERPY_VERSION_INFO)
                 pytest ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_python.py -v)
       set_tests_properties(python_pytest PROPERTIES
         ENVIRONMENT "PYTHONPATH=${_xsel_py_path}")
+
+      add_test(
+        NAME cli_pytest
+        COMMAND ${UV_EXECUTABLE} run --with pytest --python ${Python_EXECUTABLE}
+                pytest ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py -v)
+      set_tests_properties(cli_pytest PROPERTIES
+        ENVIRONMENT "XSEL_BIN=$<TARGET_FILE:xsel2>;XSEL_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
   endif()
 
   install(TARGETS _scraperpy LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
-  install(TARGETS xmlsel-cli xmlsel-pipe RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(TARGETS xsel2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

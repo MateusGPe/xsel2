@@ -1,25 +1,25 @@
 # xsel2
 
-High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine written in C++20, with CLI tools (`xmlsel-cli`, `xmlsel-pipe`), Python bindings (`scraperpy`), and a fluent `.dsl` pipeline language.
+High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine written in C++20, with the `xsel2` CLI, Python bindings (`scraperpy`), and a fluent `.dsl` pipeline language.
 
 ## Features
 
-- **HTML/XML Scraping & DSL**: CSS selector extraction (`lxml2-query`) with fluent C++/Python pipelines and a `.dsl` parser (`parse_dsl_string`, `load_scrapers`).
+- **HTML/XML Scraping & DSL**: CSS selector & XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table & metadata extraction, fluent C++/Python pipelines, and a `.dsl` parser (`parse_dsl_string`, `load_scrapers`).
 - **JS/JSON Digger**: Heuristically extracts and parses embedded JavaScript/JSON objects, comments, string concatenations, and typed scalars without executing JS.
-- **Multi-Pattern Search**: Compressed-DFA Aho-Corasick matcher (`AhoCorasick`) for scanning text against many literal patterns in a single pass.
-- **JSON Queries**: JMESPath and JSONPath evaluation (`jmespath_eval`, `jsonpath_query`) powered by `jsoncons`.
-- **Regex & Text Steps**: RE2-backed regex filtering/replacement/extraction, string normalization, block parsing, and dictionary transformations.
+- **Multi-Pattern & Fuzzy Algorithms**: Compressed-DFA Aho-Corasick matcher (`AhoCorasick`, `filter`, `replace_many`, `extract_many`) and UTF-8 Jaro-Winkler / Levenshtein fuzzy matching (`fuzzy_filter`, `similarity`).
+- **JSON, CSV & Binary Queries**: JMESPath, JSONPath, JSON Pointer, RFC 6902/7396 Patch, JSON Schema, CSV, and binary CBOR/MessagePack/BSON/UBJSON powered by `jsoncons`.
+- **Regex, Text, URL, Date & Unicode Steps**: RE2 regex filtering/replacement/extraction, RFC 3986 URL normalization, `absl::Time` date parsing, `utf8proc` Unicode normalization, and `FNV-1a 64`/`SHA-256`/Base64.
 
 ## Documentation
 
 | Guide | Description |
 | --- | --- |
 | [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, building, testing, and 5-minute walkthrough |
-| [CLI Reference](docs/cli.md) | `xmlsel-cli` (`scraper`, `ahocorasick`, `jmespath`, `jsonpath`) and `xmlsel-pipe` |
+| [CLI Reference](docs/cli.md) | `xsel2` CLI (single input, `stdin` pipe, and multi-threaded `--batch`) |
 | [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `InsertMode`, `AhoCorasick`, `.dsl` loading, and JSON queries |
 | [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` syntax, execution model, and all pipeline steps |
 | [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
-| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), and comprehensive [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py) |
+| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), and complete all-steps/algorithms showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py) |
 
 ## Quick Build & Test
 
@@ -35,21 +35,20 @@ Use `--preset release` (`build-release/`) for an optimized `-O3` build. See [Qui
 
 ## Quick Examples
 
-### CLI (`xmlsel-cli` & `xmlsel-pipe`)
+### CLI (`xsel2`)
 
 ```bash
 # Quick CSS selector extraction
-./build/xmlsel-cli scraper --selector "h1.product-title" --html examples/sample.html
+./build/xsel2 -s "h1.product-title" --html examples/sample.html
 
 # Run a .dsl scraper
-./build/xmlsel-cli scraper --dsl examples/product.dsl --name summary --html examples/sample.html
+./build/xsel2 -d examples/product.dsl -n summary --html examples/sample.html
 
-# Stream HTML through stdin with xmlsel-pipe
-cat examples/sample.html | ./build/xmlsel-pipe -d examples/product.dsl -n summary -c
+# Stream HTML through stdin (pipe mode)
+cat examples/sample.html | ./build/xsel2 -d examples/product.dsl -n summary -c
 
-# Multi-pattern search & JSON queries
-./build/xmlsel-cli ahocorasick --patterns "Mechanical,USB-C,Bluetooth" --text examples/sample.html
-./build/xmlsel-cli jmespath --expr "items[*].name" --json '{"items":[{"name":"A"},{"name":"B"}]}' --compact
+# Multi-threaded batch scraping (NDJSON output)
+./build/xsel2 -d examples/product.dsl -n summary --batch examples/*.html -j 0
 ```
 
 ### Python (`scraperpy`)
@@ -57,6 +56,7 @@ cat examples/sample.html | ./build/xmlsel-pipe -d examples/product.dsl -n summar
 ```bash
 PYTHONPATH=build:. python3 examples/scrape_example.py
 PYTHONPATH=build:. python3 examples/marketplace_example.py
+PYTHONPATH=build:. python3 examples/all_steps_showcase.py
 ```
 
 ```python
@@ -75,7 +75,7 @@ Type stubs are provided in [`scraperpy-stubs/_scraperpy.pyi`](scraperpy-stubs/_s
 - `src/digger/` — Tokenizer, scalar parser, and JS/JSON object digger
 - `src/query/` — JMESPath and JSONPath query engine
 - `src/scraper/` — Extraction pipeline, merge logic, DSL parser, and pipeline steps
-- `src/cli/` — `xmlsel-cli` and `xmlsel-pipe` executables
+- `src/cli/` — `xsel2` executable
 - `src/python/` — `pybind11` bindings (`_scraperpy`)
 - `scraperpy/` & `scraperpy-stubs/` — Python wrapper and `.pyi` type stubs
 - `docs/` & `examples/` — User guides, API references, and runnable examples

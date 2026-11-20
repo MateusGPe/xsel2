@@ -106,14 +106,19 @@ p0 = ac.add_pattern("Mechanical")
 p1 = ac.add_pattern("USB-C")
 ac.build()  # Compile the automaton before searching
 
-if ac.contains_any("Mechanical Keyboard with USB-C"):
+text = "Mechanical Keyboard with USB-C"
+if ac.contains_any(text) and ac.has_all(text):
     # Returns List[Tuple[start, end, matched_text, pattern_id]]
-    print(ac.search("Mechanical Keyboard with USB-C"))
+    print(f"patterns={ac.pattern_count()}, matches={ac.search(text)}")
+
+ac.clear()  # Reset to add a new pattern set
 ```
 
 ---
 
-## JSON Queries (`jmespath_eval` & `jsonpath_query`)
+## JSON Queries, Patching, Pointers & Schema Validation
+
+`scraperpy` exposes standalone `jsoncons`-backed helpers for Python dicts and lists:
 
 ```python
 import scraperpy
@@ -121,4 +126,19 @@ import scraperpy
 doc = {"items": [{"name": "A", "price": 5}, {"name": "B", "price": 20}]}
 print(scraperpy.jmespath_eval(doc, "items[?price > `10`].name"))  # ['B']
 print(scraperpy.jsonpath_query(doc, "$.items[*].name"))           # ['A', 'B']
+print(scraperpy.jsonpointer_get(doc, "/items/1/name"))            # 'B'
+
+patched = scraperpy.json_patch_apply(doc, [{"op": "replace", "path": "/items/0/price", "value": 12}])
+merged = scraperpy.merge_patch_apply(patched, {"currency": "USD"})
+
+flat = scraperpy.json_flatten(merged)
+assert scraperpy.json_unflatten(flat) == merged
+
+valid, errors = scraperpy.json_schema_validate(merged, {
+    "type": "object",
+    "required": ["items", "currency"],
+    "properties": {"currency": {"type": "string"}},
+})
 ```
+
+For a full runnable demonstration of all `ScraperPy` steps, `InsertMode`s, `AhoCorasick`, and JSON utilities, see [`examples/all_steps_showcase.py`](../examples/all_steps_showcase.py).
