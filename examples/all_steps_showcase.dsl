@@ -32,14 +32,18 @@ dom_and_text = Scraper()
   | $("article.item", "items") {
       @"data-sku" -> "sku"
       | find("h2.title", Value.Text) | replace("Pro 75", "Pro-75") | replace_exact("Wireless Ergonomic Mouse", "Ergo Mouse") -> "name"
-      | find_all("span.label", Value.Adjacent) | squish ?? "In Stock" -> "adjacent_status"
+      | find("h2.title", Value.Attribute, "data-status") ?? "In Stock" -> "status"
       | find_all("ul.tags li", Value.Text) | drop_empty(true) | unique(true) | sort(ascending=true, numeric=false) | reverse() -> "tags_sorted_desc"
       | find_all("ul.tags li", Value.Text) | unique(true) | first(2) -> "first_two_tags"
       | find_all("ul.tags li", Value.Text) | unique(true) | last(1) -> "last_tag"
       | find_all("ul.tags li", Value.Text) | nth(0) -> "first_tag"
       | find_all("ul.tags li", Value.Text) | slice(0, 1) | join(" | ") | prepend("[") | append("]") -> "tag_summary"
-      | find_all("span.nonexistent", Value.Text) | coalesce("fallback-badge") -> "coalesced"
-      | find_all("span.nonexistent", Value.Text) | default("default-badge") -> "defaulted"
+      | find_all("h2.title", Value.Attribute, "data-badge") | coalesce("fallback-badge") -> "coalesced"
+      | find_all("h2.title", Value.Attribute, "data-default") | default("default-badge") -> "defaulted"
+    }
+  | $("span.label", "adjacent_labels") {
+      text | squish -> "label"
+      | find_all("span.next-label", Value.Adjacent) | squish -> "next_label"
     }
   | $("head title", "title_parts") {
       text | squish | split("—") | trim | nth(1) | substring(0, 15) -> "subtitle_prefix"
