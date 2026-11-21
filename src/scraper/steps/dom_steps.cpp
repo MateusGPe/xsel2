@@ -99,13 +99,15 @@ xmlNodePtr find_first_match(xmlNodePtr root, const Selector &sel) {
 } // namespace detail
 
 QueryAllStep::QueryAllStep(std::string_view sel, Type type,
-                           std::string_view attr, bool optional)
+                           std::vector<std::string> attrs, bool squish,
+                           bool required)
     : selector_(SelectorParser::Create(std::string(sel))),
       query_type_(type),
-      attr_name_(attr),
-      optional_(optional) {
+      attrs_(std::move(attrs)),
+      squish_(squish),
+      required_(required) {
   if (!selector_) {
-    throw std::runtime_error("FindAll: failed to parse CSS selector: " +
+    throw std::runtime_error("find_all: failed to parse CSS selector: " +
                              std::string(sel));
   }
 }
@@ -119,103 +121,64 @@ QueryResult QueryAllStep::select_nodes(Node node) const {
              : QueryResult(node).Find(selector_);
 }
 
-std::string
-QueryAllStep::extract_value_from_node(const std::optional<Node> &node_opt,
-                                      Type type, std::string_view attr) const {
-  const Node &current_node = node_opt.value_or(Node(nullptr));
-  switch (type) {
-  case Type::Text:
-  case Type::AdjacentText:
-    return current_node.Text().value_or("");
-  case Type::OwnText:
-    return current_node.OwnText().value_or("");
-  case Type::Attribute:
-    return current_node.Attribute(std::string(attr)).value_or("");
-  case Type::ElementExists:
-    return node_opt.has_value() ? "true" : "false";
-  case Type::AttributeExists:
-    return (node_opt.has_value() &&
-            current_node.Attribute(std::string(attr)).has_value())
-               ? "true"
-               : "false";
-  }
-  return "";
-}
-
-bool QueryAllStep::handle_empty_selection(const QueryResult &selected,
-                                          std::vector<std::string> &values,
-                                          std::string_view step_name) const {
-  if (selected.size() > 0) {
-    return false;
-  }
-  if (query_type_ == Type::ElementExists ||
-      query_type_ == Type::AttributeExists) {
-    values.push_back(
-        extract_value_from_node(std::nullopt, query_type_, attr_name_));
-    return true;
-  }
-  if (optional_) {
-    return true;
-  }
-  std::ostringstream err;
-  err << step_name << "(" << std::quoted(selector_->toString())
-      << "): no match for non-existence query type.";
-  throw std::runtime_error(err.str());
-}
-
 void QueryAllStep::apply(Node node, std::vector<std::string> &values,
                          jsoncons::json &) {
+  if (!node.valid()) {
+    if (query_type_ == Type::ElementExists ||
+        query_type_ == Type::AttributeExists) {
+      values.emplace_back("false");
+    } else if (required_) {
+      throw std::runtime_error("find_all(" + selector_->toString() +
+                               "): invalid node.");
+    }
+    return;
+  }
+
   if (query_type_ == Type::ElementExists) {
     const bool found =
-        node.valid() &&
         detail::find_first_match(node.getRaw(), *selector_) != nullptr;
     values.emplace_back(found ? "true" : "false");
     return;
   }
 
   QueryResult selected = select_nodes(node);
-  if (handle_empty_selection(selected, values, "queryAll")) {
-    return;
+  if (selected.size() == 0) {
+    if (query_type_ == Type::AttributeExists) {
+      values.emplace_back("false");
+      return;
+    }
+    if (!required_) {
+      return;
+    }
+    throw std::runtime_error("find_all(" + selector_->toString() +
+                             "): no match.");
   }
 
+  bool extracted_any = false;
   for (const auto &n : selected) {
-    if (!n.valid() && query_type_ != Type::ElementExists &&
-        query_type_ != Type::AttributeExists) {
+    if (!n.valid()) {
       continue;
     }
-    std::string val = extract_value_from_node(n, query_type_, attr_name_);
-    if (!val.empty() || query_type_ == Type::ElementExists ||
-        query_type_ == Type::AttributeExists) {
+    if (query_type_ == Type::AttributeExists) {
+      const bool has_attr = std::any_of(
+          attrs_.begin(), attrs_.end(),
+          [&](const std::string &attr) { return n.HasAttribute(attr); });
+      values.emplace_back(has_attr ? "true" : "false");
+      extracted_any = true;
+      continue;
+    }
+    std::string val =
+        extract_node_value_opts(n, query_type_, attrs_, squish_, false);
+    if (!val.empty()) {
       values.push_back(std::move(val));
+      extracted_any = true;
     }
   }
-}
 
-QueryStep::QueryStep(std::string_view sel, Type type, std::string_view attr,
-                     Number number, size_t nth_val, bool optional)
-    : QueryAllStep(sel, type, attr, optional),
-      number_(number),
-      nth_element_(number == Number::Last ? static_cast<size_t>(-1) : nth_val) {
-}
-
-void QueryStep::apply(Node node, std::vector<std::string> &values,
-                      jsoncons::json &dict) {
-  if (number_ == Number::All) {
-    QueryAllStep::apply(node, values, dict);
-    return;
+  if (required_ && !extracted_any && query_type_ != Type::AttributeExists) {
+    throw std::runtime_error("find_all(" + selector_->toString() +
+                             "): no match.");
   }
-
-  QueryResult selected = select_nodes(node);
-  if (handle_empty_selection(selected, values, "query")) {
-    return;
-  }
-
-  size_t idx = nth_element_;
-  if (idx >= selected.size()) {
-    idx = selected.size() - 1;
-  }
-  values.push_back(
-      extract_value_from_node(selected[idx], query_type_, attr_name_));
 }
 
 FindFirstStep::FindFirstStep(std::string_view sel, QueryAllStep::Type type,
@@ -227,7 +190,7 @@ FindFirstStep::FindFirstStep(std::string_view sel, QueryAllStep::Type type,
       squish_(squish),
       required_(required) {
   if (!selector_) {
-    throw std::runtime_error("find_first: failed to parse CSS selector: " +
+    throw std::runtime_error("find: failed to parse CSS selector: " +
                              std::string(sel));
   }
 }
@@ -239,7 +202,7 @@ void FindFirstStep::apply(Node node, std::vector<std::string> &values,
         query_type_ == QueryAllStep::Type::AttributeExists) {
       values.emplace_back("false");
     } else if (required_) {
-      throw std::runtime_error("find_first(" + selector_->toString() +
+      throw std::runtime_error("find(" + selector_->toString() +
                                "): invalid node.");
     }
     return;
@@ -266,7 +229,7 @@ void FindFirstStep::apply(Node node, std::vector<std::string> &values,
       }
     }
     if (required_) {
-      throw std::runtime_error("find_first(" + selector_->toString() +
+      throw std::runtime_error("find(" + selector_->toString() +
                                "): no match.");
     }
     return;
@@ -311,7 +274,7 @@ void FindFirstStep::apply(Node node, std::vector<std::string> &values,
   if (query_type_ == QueryAllStep::Type::AttributeExists) {
     values.emplace_back("false");
   } else if (required_) {
-    throw std::runtime_error("find_first(" + selector_->toString() +
+    throw std::runtime_error("find(" + selector_->toString() +
                              "): no match.");
   }
 }
@@ -631,23 +594,12 @@ void ReverseValuesStep::apply(Node, std::vector<std::string> &values,
   std::reverse(values.begin(), values.end());
 }
 
-void CoalesceStep::apply(Node, std::vector<std::string> &values,
-                         jsoncons::json &) {
-  values.erase(std::remove_if(values.begin(), values.end(),
-                              [](const std::string &s) {
-                                return !has_non_whitespace(s);
-                              }),
-               values.end());
-  if (values.empty()) {
-    values.push_back(fallback_);
-  }
-}
-
 void CountValuesStep::apply(Node, std::vector<std::string> &values,
                             jsoncons::json &dict) {
   insert_into_json(
       dict, dict_key_,
       jsoncons::json(static_cast<int64_t>(values.size())), opts_);
+  values.clear();
 }
 
 SliceSelectionStep::SliceSelectionStep(Mode mode, size_t n, size_t m)
@@ -720,6 +672,11 @@ void UniqueStep::apply(Node, std::vector<std::string> &values,
 
 void DefaultIfEmptyStep::apply(Node, std::vector<std::string> &values,
                                jsoncons::json &) {
+  values.erase(std::remove_if(values.begin(), values.end(),
+                              [](const std::string &s) {
+                                return !has_non_whitespace(s);
+                              }),
+               values.end());
   if (values.empty()) {
     values.push_back(default_value_);
   }
@@ -937,6 +894,9 @@ void XPathStep::apply(Node node, std::vector<std::string> &values,
 void TableStep::apply(Node node, std::vector<std::string> &values,
                       jsoncons::json &dict) {
   if (!node.valid()) {
+    if (!key_.empty()) {
+      values.clear();
+    }
     return;
   }
 
@@ -944,11 +904,17 @@ void TableStep::apply(Node node, std::vector<std::string> &values,
   if (!tag_equals_ci(table_raw, "table")) {
     auto found = select_css(node, "table");
     if (found.empty() || !found.front()) {
+      if (!key_.empty()) {
+        values.clear();
+      }
       return;
     }
     table_raw = found.front()->getRaw();
   }
   if (!table_raw) {
+    if (!key_.empty()) {
+      values.clear();
+    }
     return;
   }
 
@@ -994,6 +960,7 @@ void TableStep::apply(Node node, std::vector<std::string> &values,
 
   if (!key_.empty()) {
     insert_into_json(dict, key_, std::move(result), opts_);
+    values.clear();
   } else {
     values.push_back(result.to_string());
   }
@@ -1209,11 +1176,7 @@ void ConditionalStep::apply(Node node, std::vector<std::string> &values,
     if (!step) {
       continue;
     }
-    if (step->is_postponable()) {
-      dict = step->execute_postponed(dict);
-    } else {
-      step->apply(node, values, dict, ctx);
-    }
+    step->apply(node, values, dict, ctx);
     if (ctx.skip_item || ctx.abort_scraper) {
       break;
     }

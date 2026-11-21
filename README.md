@@ -6,8 +6,8 @@ High-performance HTML/XML scraping, multi-pattern text search, and JSON transfor
 
 - **HTML/XML Scraping & DSL**: CSS selector & XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table & metadata extraction, fluent C++/Python pipelines, and a `.dsl` parser (`parse_dsl_string`, `load_scrapers`).
 - **JS/JSON Digger**: Heuristically extracts and parses embedded JavaScript/JSON objects, comments, string concatenations, and typed scalars without executing JS.
-- **Multi-Pattern & Fuzzy Algorithms**: Compressed-DFA Aho-Corasick matcher (`AhoCorasick`, `filter`, `replace_many`, `extract_many`) and UTF-8 Jaro-Winkler / Levenshtein fuzzy matching (`fuzzy_filter`, `similarity`).
-- **JSON, CSV & Binary Queries**: JMESPath, JSONPath, JSON Pointer, RFC 6902/7396 Patch, JSON Schema, CSV, and binary CBOR/MessagePack/BSON/UBJSON powered by `jsoncons`.
+- **Multi-Pattern & Fuzzy Algorithms**: Compressed-DFA Aho-Corasick matcher (`AhoCorasick`, `filter`, `replace`, `extract_many`) and UTF-8 Jaro-Winkler / Levenshtein fuzzy matching (`fuzzy_filter`, `similarity`).
+- **JSON & CSV Queries**: JMESPath, JSONPath, JSON Schema, and CSV parsing/serialization powered by `jsoncons`.
 - **Regex, Text, URL, Date & Unicode Steps**: RE2 regex filtering/replacement/extraction, RFC 3986 URL normalization, `absl::Time` date parsing, `utf8proc` Unicode normalization, and `FNV-1a 64`/`SHA-256`/Base64.
 
 ## Documentation
@@ -17,7 +17,7 @@ High-performance HTML/XML scraping, multi-pattern text search, and JSON transfor
 | [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, helper scripts, building, testing, and 5-minute walkthrough |
 | [CLI Reference](docs/cli.md) | `xsel2` CLI (single input, `stdin` pipe, and multi-threaded `--batch`) |
 | [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `Document`, `scrape_many`, `InsertMode`, `AhoCorasick`, `.dsl` loading, JSON queries, and `pip`/`uv` packaging |
-| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and all 126 steps/constructs + 17 aliases |
+| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and pipeline steps reference |
 | [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
 | [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`metadata.dsl`](examples/metadata.dsl) / [`metadata_sample.html`](examples/metadata_sample.html), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), complete all-steps showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py), and real-world scraper suite [`scrapers.dsl`](scrapers.dsl) |
 

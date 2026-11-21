@@ -200,7 +200,8 @@ void DslParser::apply_method(ScraperBuilder &builder, std::string_view name,
   apply_dsl_method(builder, name, args);
 }
 
-void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
+void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block,
+                            bool in_brace_block) {
   if (depth > MAX_DSL_DEPTH) {
     throw std::runtime_error("Maximum DSL chain depth exceeded");
   }
@@ -248,12 +249,35 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
 
     if (has_sep && current_.type == Token::Type::LPAREN) {
       advance_token();
-      parse_chain(builder, depth + 1, false);
+      const bool prev_block = builder.in_block();
+      builder.set_in_block(true);
+      parse_chain(builder, depth + 1, false, in_brace_block);
+      builder.set_in_block(prev_block);
       expect(Token::Type::RPAREN, "Expected ')' after group");
       continue;
     }
     if (current_.type == Token::Type::DOLLAR) {
       advance_token();
+      if (in_brace_block) {
+        std::string sel;
+        std::string key;
+        if (current_.type == Token::Type::LPAREN) {
+          DslArgList args = parse_arg_list(depth + 1);
+          sel = as_str(require_arg(args, 0, "selector", "select"));
+          key = opt_str(args, 1, "key", "");
+          validate_args_consumed(args, "select");
+        } else {
+          sel = as_str(parse_arg(depth + 1));
+        }
+        expect(Token::Type::LBRACE, "Expected '{' after nested select");
+        ScraperBuilder sub;
+        sub.Select("");
+        sub.set_in_block(true);
+        parse_chain(sub, depth + 1, true, true);
+        expect(Token::Type::RBRACE, "Expected '}' after nested select block");
+        builder.Each(sel, key, sub.get_extractors().front()->steps());
+        continue;
+      }
       if (current_.type == Token::Type::LPAREN) {
         apply_method(builder, "select", parse_arg_list(depth + 1));
       } else {
@@ -262,7 +286,10 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       }
       if (current_.type == Token::Type::LBRACE) {
         advance_token();
-        parse_chain(builder, depth + 1, true);
+        const bool prev_block = builder.in_block();
+        builder.set_in_block(true);
+        parse_chain(builder, depth + 1, true, true);
+        builder.set_in_block(prev_block);
         expect(Token::Type::RBRACE, "Expected '}' after select block");
       }
       continue;
@@ -311,7 +338,8 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       expect(Token::Type::LBRACE, "Expected '{' after tee/branch");
       ScraperBuilder sub;
       sub.Select("");
-      parse_chain(sub, depth + 1, true);
+      sub.set_in_block(true);
+      parse_chain(sub, depth + 1, true, true);
       expect(Token::Type::RBRACE, "Expected '}' after tee/branch block");
       builder.Tee(sub.get_extractors().front()->steps());
       continue;
@@ -325,7 +353,8 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       expect(Token::Type::LBRACE, "Expected '{' after each(...)");
       ScraperBuilder sub;
       sub.Select("");
-      parse_chain(sub, depth + 1, true);
+      sub.set_in_block(true);
+      parse_chain(sub, depth + 1, true, true);
       expect(Token::Type::RBRACE, "Expected '}' after each block");
       builder.Each(sel, key, sub.get_extractors().front()->steps());
       continue;
@@ -338,7 +367,8 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       expect(Token::Type::LBRACE, "Expected '{' after " + method);
       ScraperBuilder sub;
       sub.Select("");
-      parse_chain(sub, depth + 1, true);
+      sub.set_in_block(true);
+      parse_chain(sub, depth + 1, true, true);
       expect(Token::Type::RBRACE, "Expected '}' after " + method + " block");
       builder.WhenExists(sel, sub.get_extractors().front()->steps(),
                          method == "unless_exists");
@@ -358,7 +388,8 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       expect(Token::Type::LBRACE, "Expected '{' after when_match");
       ScraperBuilder sub;
       sub.Select("");
-      parse_chain(sub, depth + 1, true);
+      sub.set_in_block(true);
+      parse_chain(sub, depth + 1, true, true);
       expect(Token::Type::RBRACE, "Expected '}' after when_match block");
       builder.WhenMatch(pat, sub.get_extractors().front()->steps(), negate,
                         flags);
@@ -370,9 +401,25 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
       expect(Token::Type::LBRACE, "Expected '{' after finalize");
       ScraperBuilder sub;
       sub.Select("");
-      parse_chain(sub, depth + 1, true);
+      sub.set_in_block(true);
+      parse_chain(sub, depth + 1, true, true);
       expect(Token::Type::RBRACE, "Expected '}' after finalize block");
       builder.Finalize(sub.get_extractors().front()->steps());
+      continue;
+    }
+
+    if (method == "select" && in_brace_block) {
+      const std::string sel =
+          as_str(require_arg(args, 0, "selector", method));
+      const std::string key = opt_str(args, 1, "key", "");
+      validate_args_consumed(args, method);
+      expect(Token::Type::LBRACE, "Expected '{' after nested select");
+      ScraperBuilder sub;
+      sub.Select("");
+      sub.set_in_block(true);
+      parse_chain(sub, depth + 1, true, true);
+      expect(Token::Type::RBRACE, "Expected '}' after nested select block");
+      builder.Each(sel, key, sub.get_extractors().front()->steps());
       continue;
     }
 
@@ -407,7 +454,10 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
 
     if (method == "select" && current_.type == Token::Type::LBRACE) {
       advance_token();
-      parse_chain(builder, depth + 1, true);
+      const bool prev_block = builder.in_block();
+      builder.set_in_block(true);
+      parse_chain(builder, depth + 1, true, true);
+      builder.set_in_block(prev_block);
       expect(Token::Type::RBRACE, "Expected '}' after select block");
     }
   }
@@ -457,7 +507,8 @@ DslParser::parse(const std::string &dsl_source) {
         expect(Token::Type::LBRACE, "Expected '{' after pipe name");
         ScraperBuilder temp;
         temp.Select("");
-        parse_chain(temp, 0, true);
+        temp.set_in_block(true);
+        parse_chain(temp, 0, true, true);
         expect(Token::Type::RBRACE, "Expected '}' after pipe block");
         pipes_.insert_or_assign(pipe_name,
                                 temp.get_extractors().front()->steps());

@@ -4,6 +4,7 @@
 #include "scraper/merge.hpp"
 #include "scraper/step.hpp"
 #include "scraper/steps/type_steps.hpp"
+#include <concepts>
 #include <iostream>
 #include <lxml2-query.h>
 #include <memory>
@@ -11,6 +12,7 @@
 #include <re2/re2.h>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace scraper {
@@ -19,7 +21,7 @@ namespace detail {
 [[nodiscard]] xmlNodePtr find_first_match(xmlNodePtr root, const Selector &sel);
 } // namespace detail
 
-class QueryAllStep : public Step {
+class QueryAllStep final : public Step {
 public:
   enum class Type {
     Text,
@@ -30,41 +32,36 @@ public:
     AdjacentText
   };
 
-  QueryAllStep(std::string_view sel, Type type, std::string_view attr = "",
-               bool optional = false);
+  QueryAllStep(std::string_view sel, Type type = Type::Text,
+               std::vector<std::string> attrs = {}, bool squish = false,
+               bool required = false);
 
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
-
-protected:
-  SelectorPtr selector_;
-  Type query_type_;
-  std::string attr_name_;
-  bool optional_;
-
-  [[nodiscard]] QueryResult select_nodes(Node node) const;
-  [[nodiscard]] bool handle_empty_selection(const QueryResult &selected,
-                                            std::vector<std::string> &values,
-                                            std::string_view step_name) const;
-  [[nodiscard]] std::string
-  extract_value_from_node(const std::optional<Node> &node_opt, Type type,
-                          std::string_view attr) const;
-};
-
-class QueryStep final : public QueryAllStep {
-public:
-  enum class Number { All, Last, Nth };
-
-  QueryStep(std::string_view sel, Type type, std::string_view attr = "",
-            Number number = Number::All, size_t nth_val = 0,
-            bool optional = false);
+  template <std::convertible_to<std::string_view> AttrStr>
+  QueryAllStep(std::string_view sel, Type type, AttrStr &&attr,
+               bool squish = false, bool required = false)
+      : QueryAllStep(
+            sel, type,
+            make_attr_vec(std::string_view(std::forward<AttrStr>(attr))),
+            squish, required) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
 
 private:
-  Number number_;
-  size_t nth_element_;
+  static std::vector<std::string> make_attr_vec(std::string_view attr) {
+    if (attr.empty()) {
+      return {};
+    }
+    return {std::string(attr)};
+  }
+
+  SelectorPtr selector_;
+  Type query_type_;
+  std::vector<std::string> attrs_;
+  bool squish_;
+  bool required_;
+
+  [[nodiscard]] QueryResult select_nodes(Node node) const;
 };
 
 class FindFirstStep final : public Step {
@@ -74,10 +71,25 @@ public:
                 std::vector<std::string> attrs = {}, bool squish = true,
                 bool required = false);
 
+  template <std::convertible_to<std::string_view> AttrStr>
+  FindFirstStep(std::string_view sel, QueryAllStep::Type type, AttrStr &&attr,
+                bool squish = true, bool required = false)
+      : FindFirstStep(
+            sel, type,
+            make_attr_vec(std::string_view(std::forward<AttrStr>(attr))),
+            squish, required) {}
+
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
 
 private:
+  static std::vector<std::string> make_attr_vec(std::string_view attr) {
+    if (attr.empty()) {
+      return {};
+    }
+    return {std::string(attr)};
+  }
+
   SelectorPtr selector_;
   QueryAllStep::Type query_type_;
   std::vector<std::string> attrs_;
@@ -220,18 +232,6 @@ class ReverseValuesStep final : public Step {
 public:
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
-};
-
-class CoalesceStep final : public Step {
-public:
-  explicit CoalesceStep(std::string_view fallback = "")
-      : fallback_(fallback) {}
-
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
-
-private:
-  std::string fallback_;
 };
 
 class CountValuesStep final : public Step {

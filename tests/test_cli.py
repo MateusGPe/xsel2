@@ -116,8 +116,8 @@ def test_dsl_multi_scraper_all_and_named():
         ("urls_dates_unicode", lambda d: "link" in d and d["text_norm"]["slug"] == "cafe-resume-mechanical-gear"),
         ("algorithms_and_matching", lambda d: "regex_and_ac" in d and "fuzzy" in d),
         ("types_tables_and_dict", lambda d: "products" in d and "page_meta" in d),
-        ("serialization_and_binary", lambda d: "binary_roundtrip" in d and "csv" in d),
-        ("json_transforms_and_patch", lambda d: isinstance(d, list) and "xsel2 Showcase" in d),
+        ("serialization", lambda d: "zipped" in d and "csv" in d),
+        ("json_transforms", lambda d: isinstance(d, list) and "xsel2 Showcase" in d),
     ],
 )
 def test_all_steps_showcase_individual_scrapers(scraper_name, check):

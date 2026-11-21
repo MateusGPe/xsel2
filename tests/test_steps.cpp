@@ -46,13 +46,17 @@ TEST_CASE("text_steps cover trim, strip, case, replace, split, join, affixes",
   REQUIRE(vals == std::vector<std::string>{"pre_hello_post, pre_world_post"});
 
   scraper::ReplaceStep("_", "-").apply(dummy_node(), vals, dict);
-  REQUIRE(vals == std::vector<std::string>{"pre-hello_post, pre_world_post"});
-
-  scraper::SubstituteStep("_", "-").apply(dummy_node(), vals, dict);
   REQUIRE(vals == std::vector<std::string>{"pre-hello-post, pre-world-post"});
 
+  scraper::ReplaceStep("-", "_", /*first_only=*/true)
+      .apply(dummy_node(), vals, dict);
+  REQUIRE(vals == std::vector<std::string>{"pre_hello-post, pre-world-post"});
+
+  scraper::ReplaceStep("-", "_").apply(dummy_node(), vals, dict);
+  REQUIRE(vals == std::vector<std::string>{"pre_hello_post, pre_world_post"});
+
   scraper::SplitStep(", ").apply(dummy_node(), vals, dict);
-  REQUIRE(vals == std::vector<std::string>{"pre-hello-post", "pre-world-post"});
+  REQUIRE(vals == std::vector<std::string>{"pre_hello_post", "pre_world_post"});
 
   CHECK_THROWS_AS(scraper::SplitStep(""), std::runtime_error);
 }
@@ -99,16 +103,29 @@ TEST_CASE("StripStep, SubstringStep, UnescapeStep, and StripCommentsStep",
   CHECK(code[0] == "const a = \"//keep\"; \n const b = '/*keep*/';");
 }
 
-TEST_CASE("regex_steps cover replace, filter, extract, and AhoCorasick filter",
+TEST_CASE("regex_steps cover replace, filter, extract, flags, and AhoCorasick filter",
           "[steps][regex]") {
   jsoncons::json dict = jsoncons::json::object();
 
-  std::vector<std::string> vals = {"Item-12", "ITEM-34", "Other"};
+  // Case-sensitive by default
+  std::vector<std::string> cs_vals = {"item-12", "ITEM-34", "Other"};
   scraper::RegexFilterStep("^item-(\\d+)$", false, std::nullopt)
+      .apply(dummy_node(), cs_vals, dict);
+  REQUIRE(cs_vals == std::vector<std::string>{"item-12"});
+
+  // Passing "multiline" must NOT turn on case-insensitivity (contains 'i')
+  std::vector<std::string> ml_vals = {"Item-12", "item-34"};
+  scraper::RegexFilterStep("^item-(\\d+)$", false, "multiline")
+      .apply(dummy_node(), ml_vals, dict);
+  REQUIRE(ml_vals == std::vector<std::string>{"item-34"});
+
+  // Opt into case-insensitivity via "icase" or "i"
+  std::vector<std::string> vals = {"Item-12", "ITEM-34", "Other"};
+  scraper::RegexFilterStep("^item-(\\d+)$", false, "icase")
       .apply(dummy_node(), vals, dict);
   REQUIRE(vals == std::vector<std::string>{"Item-12", "ITEM-34"});
 
-  scraper::RegexReplaceStep("item-", "ID:", std::nullopt)
+  scraper::RegexReplaceStep("item-", "ID:", "i")
       .apply(dummy_node(), vals, dict);
   REQUIRE(vals == std::vector<std::string>{"ID:12", "ID:34"});
 
@@ -151,33 +168,39 @@ TEST_CASE("dom_steps cover Query, QueryAll, Slice, Unique, Default, Set, Count",
   std::vector<std::string> vals;
 
   // OwnText vs Text vs Attribute vs Exists
-  scraper::QueryStep("#box", scraper::QueryAllStep::Type::OwnText)
+  scraper::FindFirstStep("#box", scraper::QueryAllStep::Type::OwnText, {},
+                         false, false)
       .apply(root_node, vals, dict);
   REQUIRE(vals.size() == 1);
   scraper::TrimStep().apply(root_node, vals, dict);
   CHECK(vals[0] == "Hello");
 
   vals.clear();
-  scraper::QueryStep("#box", scraper::QueryAllStep::Type::Attribute,
-                     "data-kind")
+  scraper::FindFirstStep("#box", scraper::QueryAllStep::Type::Attribute,
+                         "data-kind")
       .apply(root_node, vals, dict);
   CHECK(vals == std::vector<std::string>{"main"});
 
   vals.clear();
-  scraper::QueryStep("#missing", scraper::QueryAllStep::Type::ElementExists,
-                     "", scraper::QueryStep::Number::Nth, 0)
+  scraper::FindFirstStep("#missing", scraper::QueryAllStep::Type::ElementExists)
       .apply(root_node, vals, dict);
   CHECK(vals == std::vector<std::string>{"false"});
 
   vals.clear();
-  scraper::QueryStep("#box", scraper::QueryAllStep::Type::AttributeExists,
-                     "data-kind")
+  scraper::FindFirstStep("#box", scraper::QueryAllStep::Type::AttributeExists,
+                         "data-kind")
       .apply(root_node, vals, dict);
   CHECK(vals == std::vector<std::string>{"true"});
 
-  // Non-existence query with no match throws
-  CHECK_THROWS_AS(
+  // Optional by default; throws only when required=true
+  vals.clear();
+  CHECK_NOTHROW(
       scraper::QueryAllStep("#missing", scraper::QueryAllStep::Type::Text)
+          .apply(root_node, vals, dict));
+  CHECK(vals.empty());
+  CHECK_THROWS_AS(
+      scraper::QueryAllStep("#missing", scraper::QueryAllStep::Type::Text, {},
+                            false, true)
           .apply(root_node, vals, dict),
       std::runtime_error);
 
@@ -205,13 +228,16 @@ TEST_CASE("dom_steps cover Query, QueryAll, Slice, Unique, Default, Set, Count",
                                   1),
       std::runtime_error);
 
-  // DefaultIfEmpty + Set + CountValues
-  vals.clear();
+  // DefaultIfEmpty (whitespace-aware) + CountValues (clears values) + Set
+  vals = {"   ", "\t"};
   scraper::DefaultIfEmptyStep("fallback").apply(root_node, vals, dict);
   CHECK(vals == std::vector<std::string>{"fallback"});
   scraper::CountValuesStep("n").apply(root_node, vals, dict);
-  scraper::SetStep("item").apply(root_node, vals, dict);
   CHECK(dict["n"].as<int64_t>() == 1);
+  CHECK(vals.empty());
+
+  vals = {"fallback"};
+  scraper::SetStep("item").apply(root_node, vals, dict);
   CHECK(dict["item"].as<std::string>() == "fallback");
   CHECK(vals.empty());
 }
@@ -250,36 +276,35 @@ TEST_CASE("dict_steps cover flatten, filter, remove, rename, merge, sort, dedup"
   })");
   std::vector<std::string> vals;
 
-  scraper::RemoveKeysStep({"secret"}, false).apply(dummy_node(), vals, dict);
+  scraper::RemoveKeysStep({"secret"}).apply(dummy_node(), vals, dict);
   CHECK_FALSE(dict["meta"].contains("secret"));
 
-  scraper::RenameKeysStep({{"author", "writer"}}, false)
+  scraper::RenameKeysStep({{"author", "writer"}})
       .apply(dummy_node(), vals, dict);
   CHECK(dict["meta"]["writer"].as<std::string>() == "Bob");
 
-  scraper::MergeKeysStep({"a", "b"}, "combined", false)
+  scraper::MergeKeysStep({"a", "b"}, "combined")
       .apply(dummy_node(), vals, dict);
   CHECK_FALSE(dict.contains("a"));
   CHECK_FALSE(dict.contains("b"));
   REQUIRE(dict["combined"].is_array());
   CHECK(dict["combined"].size() == 3);
 
-  scraper::DeduplicateStep(false).apply(dummy_node(), vals, dict);
-  scraper::SortKeysStep(true, false).apply(dummy_node(), vals, dict);
+  scraper::DeduplicateStep().apply(dummy_node(), vals, dict);
+  scraper::SortKeysStep(true).apply(dummy_node(), vals, dict);
   REQUIRE(dict["items"] == jsoncons::json::parse("[1, 2, 3]"));
 
-  scraper::FilterDictStep({"writer", "items"}, false)
-      .apply(dummy_node(), vals, dict);
+  scraper::FilterDictStep({"writer", "items"}).apply(dummy_node(), vals, dict);
   CHECK(dict.contains("meta"));
   CHECK(dict.contains("items"));
   CHECK_FALSE(dict.contains("combined"));
 
-  scraper::FlattenDictStep(false).apply(dummy_node(), vals, dict);
+  scraper::FlattenDictStep().apply(dummy_node(), vals, dict);
   CHECK(dict["meta_writer"].as<std::string>() == "Bob");
 }
 
 
-TEST_CASE("json_steps cover json_parse, json_dump, csv, binary, patch, pointer, and schema",
+TEST_CASE("json_steps cover json_parse, json_dump, csv, and schema",
           "[steps][json]") {
   const std::string html = R"(
     <html><body>
@@ -299,21 +324,14 @@ Widget,3
       .Text()
       .Trim()
       .CsvParse("rows")
-      .JsonPathReplace("$.payload.b[1]", jsoncons::json(99))
-      .JsonPointerSet("/payload/status", jsoncons::json("ok"))
-      .MergePatch(jsoncons::json::parse(R"({"payload": {"a": 2}})"))
-      .JsonPatch(jsoncons::json::parse(
-          R"([{"op": "add", "path": "/patched", "value": true}])"))
       .JsonSchema(jsoncons::json::parse(R"({
         "type": "object",
-        "required": ["payload", "rows", "patched"]
+        "required": ["payload", "rows"]
       })"));
 
   const auto out = sb.scrape_from_string(html);
-  CHECK(out["payload"]["a"].as<int>() == 2);
-  CHECK(out["payload"]["b"][1].as<int>() == 99);
-  CHECK(out["payload"]["status"].as<std::string>() == "ok");
-  CHECK(out["patched"].as<bool>() == true);
+  CHECK(out["payload"]["a"].as<int>() == 1);
+  CHECK(out["payload"]["b"][1].as<int>() == 20);
   REQUIRE(out["rows"].is_array());
   CHECK(out["rows"][0]["name"].as<std::string>() == "Widget");
   CHECK(out["rows"][0]["qty"].as<int>() == 3);
@@ -333,21 +351,11 @@ Widget,3
   CHECK(out_err["_errors"].is_array());
   CHECK_FALSE(out_err["_errors"].empty());
 
-  // Binary round-trip + JsonDump
-  jsoncons::json dict = jsoncons::json::parse(R"({"x": 7})");
+  // JsonDump
+  jsoncons::json dict = jsoncons::json::parse(R"({"decoded": {"x": 7}})");
   std::vector<std::string> vals;
-  scraper::BinaryEncodeStep(xsel::query::BinaryFormat::Cbor,
-                            xsel::query::BinaryEncoding::Base64)
-      .apply(dummy_node(), vals, dict);
-  REQUIRE(vals.size() == 1);
-  jsoncons::json decoded_dict = jsoncons::json::object();
-  scraper::BinaryDecodeStep(xsel::query::BinaryFormat::Cbor, "decoded",
-                            xsel::query::BinaryEncoding::Base64)
-      .apply(dummy_node(), vals, decoded_dict);
-  CHECK(decoded_dict["decoded"]["x"].as<int>() == 7);
-
   scraper::JsonDumpStep(false, 2, "decoded")
-      .apply(dummy_node(), vals, decoded_dict);
+      .apply(dummy_node(), vals, dict);
   REQUIRE(vals.size() == 1);
   CHECK(vals[0] == R"({"x":7})");
 
@@ -397,8 +405,9 @@ TEST_CASE("Edge cases: RegexExtractStep INT_MIN, SubstringStep, and FlattenDictS
     arr.push_back(std::move(deep));
     deep = std::move(arr);
   }
+  std::vector<std::string> empty_vals;
   CHECK_THROWS_AS(
-      (void)scraper::FlattenDictStep(true).execute_postponed(deep),
+      scraper::FlattenDictStep().apply(dummy_node(), empty_vals, deep),
       std::runtime_error);
 
   // BlockSeekerStep ignores braces and quotes inside JS comments
@@ -446,12 +455,12 @@ TEST_CASE("Tier 1 steps: typed parsing, URLs, DOM, Aho-Corasick, hash/base64, er
 
   // CastKeysStep
   jsoncons::json dict = jsoncons::json::parse(R"({"a": "12", "b": "3.5", "c": "no"})");
-  dict = scraper::CastKeysStep(
-             {{"a", scraper::ValueType::Int},
-              {"b", scraper::ValueType::Float},
-              {"c", scraper::ValueType::Bool}},
-             true)
-             .execute_postponed(dict);
+  std::vector<std::string> cast_vals;
+  scraper::CastKeysStep(
+      {{"a", scraper::ValueType::Int},
+       {"b", scraper::ValueType::Float},
+       {"c", scraper::ValueType::Bool}})
+      .apply(dummy_node(), cast_vals, dict);
   CHECK(dict["a"].as<int64_t>() == 12);
   CHECK(std::abs(dict["b"].as<double>() - 3.5) < 1e-6);
   CHECK(dict["c"].as<bool>() == false);
@@ -532,7 +541,7 @@ TEST_CASE("Tier 1 steps: typed parsing, URLs, DOM, Aho-Corasick, hash/base64, er
   CHECK(nums == std::vector<std::string>{"30", "10", "2"});
 
   std::vector<std::string> blanks = {"  ", "\t"};
-  scraper::CoalesceStep("N/A").apply(dummy_node(), blanks, dict);
+  scraper::DefaultIfEmptyStep("N/A").apply(dummy_node(), blanks, dict);
   CHECK(blanks == std::vector<std::string>{"N/A"});
 
   scraper::ScraperBuilder sb_erg;
@@ -696,9 +705,10 @@ TEST_CASE("Steps edge cases: type coercion bounds, block comments, regex, URL, a
     wrap.push_back(std::move(deep));
     deep = std::move(wrap);
   }
-  CHECK_THROWS_AS(scraper::RemoveKeysStep({"x"}).execute_postponed(deep), std::runtime_error);
-  CHECK_THROWS_AS(scraper::RenameKeysStep({{"a", "b"}}).execute_postponed(deep), std::runtime_error);
-  CHECK_THROWS_AS(scraper::FilterDictStep({"a"}).execute_postponed(deep), std::runtime_error);
+  std::vector<std::string> empty_dict_vals;
+  CHECK_THROWS_AS(scraper::RemoveKeysStep({"x"}).apply(dummy_node(), empty_dict_vals, deep), std::runtime_error);
+  CHECK_THROWS_AS(scraper::RenameKeysStep({{"a", "b"}}).apply(dummy_node(), empty_dict_vals, deep), std::runtime_error);
+  CHECK_THROWS_AS(scraper::FilterDictStep({"a"}).apply(dummy_node(), empty_dict_vals, deep), std::runtime_error);
 }
 
 TEST_CASE("Hardening: SortValuesStep NaN/prefix, StripQuery UAF, XPath namespace, Unescape, extract_number, and path depth",
@@ -774,8 +784,9 @@ TEST_CASE("Phase 1 steps: MapValues, QueryParams, Save/Restore, Tee, CoalesceKey
 
   // 2. QueryParamStep & QueryParamsStep tolerating raw '[' and ']'
   {
-    std::vector<std::string> vals = {
-        "https://example.com/_xa/ads_batch?clientType=desktop&channel[context_page_type]=video&channel[info]=%7B%22id%22%3A42%7D"};
+    const std::string raw_url =
+        "https://example.com/_xa/ads_batch?clientType=desktop&channel[context_page_type]=video&channel[info]=%7B%22id%22%3A42%7D";
+    std::vector<std::string> vals = {raw_url};
     jsoncons::json dict = jsoncons::json::object();
 
     scraper::QueryParamsStep qps({
@@ -787,12 +798,13 @@ TEST_CASE("Phase 1 steps: MapValues, QueryParams, Save/Restore, Tee, CoalesceKey
     CHECK(dict["client_type"].as<std::string>() == "desktop");
     CHECK(dict["context_page_type"].as<std::string>() == "video");
     CHECK_FALSE(dict.contains("missing_key"));
-    // values preserved when clear=false
-    REQUIRE(vals.size() == 1);
+    // Strict sink rule: query_params clears values
+    CHECK(vals.empty());
 
+    std::vector<std::string> vals2 = {raw_url};
     scraper::QueryParamStep qp("channel[info]");
-    qp.apply(dummy_node(), vals, dict);
-    CHECK(vals[0] == R"({"id":42})");
+    qp.apply(dummy_node(), vals2, dict);
+    CHECK(vals2[0] == R"({"id":42})");
   }
 
   // 3. Save/Restore & TeeStep via ExecutionContext
@@ -825,12 +837,13 @@ TEST_CASE("Phase 1 steps: MapValues, QueryParams, Save/Restore, Tee, CoalesceKey
             {"hover_cover", {"hover_cover", "hover_cover_data_src"}},
             {"video_id", {"nested.vkey", "fallback_id"}},
         },
-        true, true);
-    jsoncons::json out = coalesce.execute_postponed(input);
-    CHECK(out["hover_cover"].as<std::string>() == "https://cdn/cover.jpg");
-    CHECK_FALSE(out.contains("hover_cover_data_src"));
-    CHECK(out["video_id"].as<std::string>() == "abc");
-    CHECK(out["keep"].as<int>() == 1);
+        true);
+    std::vector<std::string> empty_vals;
+    coalesce.apply(dummy_node(), empty_vals, input);
+    CHECK(input["hover_cover"].as<std::string>() == "https://cdn/cover.jpg");
+    CHECK_FALSE(input.contains("hover_cover_data_src"));
+    CHECK(input["video_id"].as<std::string>() == "abc");
+    CHECK(input["keep"].as<int>() == 1);
   }
 
   // 5. FindFirstStep, AttrStep fallback, ExtractFieldsStep single-pass
@@ -938,7 +951,7 @@ TEST_CASE("Phase 2 steps: SubExtract (each), Conditional (when_exists/unless_exi
     scraper::ScraperBuilder sb;
     sb.Select("div.card", "cards")
         .SkipIfExists(".ad")
-        .FindFirst("h2")
+        .Find("h2")
         .SkipIfEmpty()
         .Set("title")
         .WhenExists(".badge", {std::make_shared<scraper::FindFirstStep>(
@@ -1000,7 +1013,7 @@ TEST_CASE("Phase 3 steps: regex_find_all, regex_groups, compact numbers, parse_d
     CHECK(gdict["rx_kind"].as<std::string>() == "item");
     CHECK(gdict["rx_id"].as<std::string>() == "42");
     CHECK(gdict["rx_cur"].as<std::string>() == "usd");
-    CHECK(gvals.size() == 1); // clear=false by default
+    CHECK(gvals.empty()); // strict sink rule: clears values
   }
 
   // 2. Compact numbers in extract_number_string / ParseNumberStep
@@ -1020,6 +1033,7 @@ TEST_CASE("Phase 3 steps: regex_find_all, regex_groups, compact numbers, parse_d
     scraper::ParseNumberStep(".", ",", true, "views", {}, true)
         .apply(dummy_node(), nvals, ndict);
     CHECK(ndict["views"].as<int64_t>() == 1500);
+    CHECK(nvals.empty());
   }
 
   // 3. ParseDurationStep
@@ -1034,6 +1048,7 @@ TEST_CASE("Phase 3 steps: regex_find_all, regex_groups, compact numbers, parse_d
     CHECK(ddict["dur"][1].as<int64_t>() == 3725);
     CHECK(ddict["dur"][2].as<int64_t>() == 3723);
     CHECK(ddict["dur"][3].as<int64_t>() == 320);
+    CHECK(dvals.empty());
 
     std::vector<std::string> ms_vals = {"1.5s"};
     scraper::ParseDurationStep("", "ms").apply(dummy_node(), ms_vals, ddict);
@@ -1050,6 +1065,13 @@ TEST_CASE("Phase 3 steps: regex_find_all, regex_groups, compact numbers, parse_d
     CHECK(rvals == std::vector<std::string>{
                        "2026-11-19T12:00:00Z", "2026-11-17T12:00:00Z",
                        "2026-11-20T14:00:00Z", "2026-11-20T12:00:00Z"});
+
+    std::vector<std::string> rvals_sink = {"yesterday"};
+    scraper::ParseDateStep("", "date", "posted", "UTC", {},
+                           "2026-11-20T12:00:00Z")
+        .apply(dummy_node(), rvals_sink, rdict);
+    CHECK(rdict["posted"].as<std::string>() == "2026-11-19");
+    CHECK(rvals_sink.empty());
   }
 
   // 5. UnescapeHtmlStep, ParseSrcsetStep, CssUrlStep

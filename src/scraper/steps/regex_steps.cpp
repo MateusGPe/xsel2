@@ -12,16 +12,38 @@ namespace detail {
 re2::RE2::Options get_re2_options(const std::optional<std::string> &flags_opt) {
   re2::RE2::Options opts;
   opts.set_log_errors(false);
+  opts.set_case_sensitive(true);
   if (!flags_opt.has_value() || flags_opt->empty()) {
-    opts.set_case_sensitive(false);
     return opts;
   }
-  const std::string &flags = *flags_opt;
-  opts.set_case_sensitive(flags.find("icase") == std::string::npos);
-  if (flags.find("dotall") != std::string::npos) {
+  std::string rem = *flags_opt;
+  bool icase = false;
+  bool dotall = false;
+  bool multiline = false;
+  auto consume_word = [&](std::string_view word, bool &flag) {
+    size_t pos = 0;
+    while ((pos = rem.find(word, pos)) != std::string::npos) {
+      flag = true;
+      rem.erase(pos, word.size());
+    }
+  };
+  consume_word("icase", icase);
+  consume_word("dotall", dotall);
+  consume_word("multiline", multiline);
+  for (char c : rem) {
+    if (c == 'i' || c == 'I') {
+      icase = true;
+    } else if (c == 's' || c == 'S') {
+      dotall = true;
+    } else if (c == 'm' || c == 'M') {
+      multiline = true;
+    }
+  }
+  opts.set_case_sensitive(!icase);
+  if (dotall) {
     opts.set_dot_nl(true);
   }
-  if (flags.find("multiline") != std::string::npos) {
+  if (multiline) {
     opts.set_one_line(false);
   }
   return opts;
@@ -317,12 +339,10 @@ void RegexFindAllStep::apply(Node, std::vector<std::string> &values,
 
 RegexGroupsStep::RegexGroupsStep(std::string_view pattern,
                                  const std::optional<std::string> &flags,
-                                 std::string_view prefix, bool clear,
-                                 InsertOptions opts)
+                                 std::string_view prefix, InsertOptions opts)
     : pattern_str_(pattern),
       regex_(pattern_str_, detail::get_re2_options(flags)),
       prefix_(prefix),
-      clear_(clear),
       opts_(opts) {
   validate_regex(regex_, "regex_groups", pattern_str_);
 }
@@ -332,9 +352,7 @@ void RegexGroupsStep::apply(Node, std::vector<std::string> &values,
   const int num_groups = regex_.NumberOfCapturingGroups();
   const auto &named = regex_.NamedCapturingGroups();
   if (named.empty()) {
-    if (clear_) {
-      values.clear();
-    }
+    values.clear();
     return;
   }
   std::vector<re2::StringPiece> groups(static_cast<size_t>(num_groups) + 1);
@@ -353,9 +371,7 @@ void RegexGroupsStep::apply(Node, std::vector<std::string> &values,
       }
     }
   }
-  if (clear_) {
-    values.clear();
-  }
+  values.clear();
 }
 
 } // namespace scraper

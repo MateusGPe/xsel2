@@ -37,17 +37,12 @@ See `./scripts/pack_python.sh --help` for options (`--wheel-only`, `--sdist-only
 | `Document` | Class | Parsed HTML/XML DOM (`Document.from_string`, `Document.from_file`) for single-parse reuse |
 | `scrape_many(scrapers, html)` | Function | Parses `html` once and executes every `ScraperPy` in `scrapers` on the shared `Document` |
 | `Value` | Enum | Extraction target for `find` / `find_all` (`Text`, `OwnText`, `Attribute`, `ElementExists`, `AttributeExists`, `Adjacent`) |
-| `Number` | Enum | Match selection for `find` (`All`, `Last`, `Nth`) |
 | `InsertMode` | Enum | Collision handling when writing keys (`Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`) |
 | `InsertOptions` | Class | Controls `mode`, `allow_empty`, and `nested_path` on `set`, `count`, and `parse_js` |
 | `AhoCorasick` | Class | Fast multi-pattern literal substring matcher |
 | `jmespath_eval(data, expr)` | Function | Evaluates a JMESPath expression against Python dicts/lists |
 | `jsonpath_query(data, expr)` | Function | Evaluates a JSONPath query against Python dicts/lists |
-| `json_patch_apply(data, patch)` | Function | Applies an RFC 6902 JSON Patch to Python dicts/lists |
-| `merge_patch_apply(data, patch)` | Function | Applies an RFC 7396 JSON Merge Patch to Python dicts/lists |
 | `json_schema_validate(data, schema)` | Function | Validates Python data against a JSON Schema, returning `(is_valid, errors)` |
-| `jsonpointer_get(data, pointer)` | Function | Extracts a value at an RFC 6901 JSON Pointer |
-| `json_flatten(data)` / `json_unflatten(data)` | Function | Flattens or unflattens Python dicts/lists using JSONPath keys |
 | `parse_js(source, simplify=True)` | Function | Heuristically parses JS/JSON-like text into Python objects without executing JS |
 | `json_parse(text, ..., lenient=False, simplify=True)` | Function | Parses strict/relaxed JSON (or delegates to `parse_js` when `lenient=True`) |
 | `parse_dsl_string(dsl_content)` | Function | Parses a `.dsl` string into `dict[str, ScraperPy]` |
@@ -76,7 +71,7 @@ data = s.from_file("examples/sample.html")
 
 For the full list of pipeline steps and their parameters, see the [DSL & Pipeline Steps Reference](dsl-and-steps.md). Keep these Python-specific notes in mind:
 
-- **Full step coverage**: All 118 registry pipeline steps (including `outer_html`, `rename_keys`, `merge_keys`, `find_first`, `try_find`, `extract_fields`, etc.) plus `include(other_scraper)` and the Python aliases `normalize_whitespace`, `extract_js_block`, `extract_js_blocks`, and `fields` are exposed as methods on `ScraperPy`.
+- **Full step coverage**: All registered pipeline steps (including `outer_html`, `rename_keys`, `merge_keys`, `find`, `find_all`, `extract_fields`, etc.) plus `include(other_scraper)` and the Python aliases `normalize_whitespace`, `extract_js_block`, `extract_js_blocks`, and `fields` are exposed as methods on `ScraperPy`.
 - **DSL-only syntax & block constructs**: Top-level `let` / `pipe` + `use(...)`, shorthand operators (`$`, `@`, `??`, `[i]`, `->`, `>>`, `as`), block-scoped control flow (`tee { ... }` / `branch { ... }`, `each(...) { ... }`, `when_exists(...) { ... }`, `unless_exists(...) { ... }`, `when_match(...) { ... }`, `finalize { ... }`), and short DSL aliases (`strip`, `clean`, `sub`, `grep`, `extract`, `limit`, `dedup`, `json`, `to_number`, `url_join`, `inner_html`) are `.dsl` parser features. Use `parse_dsl_string` / `load_scrapers` to run block-scoped DSL constructs from Python, or call canonical method names directly on `ScraperPy`.
 - **`InsertOptions` parameter order**: On `ScraperPy`, `set`, `count`, `parse_js`, `regex_groups`, `parse_number`, `parse_duration`, `attrs`, `table`, `extract_meta`, and `parse_date` accept an `opts: InsertOptions` parameter. Note that `ScraperPy.set(name, opts=..., type="string")` puts `opts` second, so pass `type` as a keyword argument in Python (e.g., `s.set("qty", type="int")`).
 
@@ -151,7 +146,7 @@ ac.clear()  # Reset to add a new pattern set
 
 ---
 
-## JSON Queries, Patching, Pointers & Schema Validation
+## JSON Queries & Schema Validation
 
 `scraperpy` exposes standalone `jsoncons`-backed helpers for Python dicts and lists:
 
@@ -161,18 +156,11 @@ import scraperpy
 doc = {"items": [{"name": "A", "price": 5}, {"name": "B", "price": 20}]}
 print(scraperpy.jmespath_eval(doc, "items[?price > `10`].name"))  # ['B']
 print(scraperpy.jsonpath_query(doc, "$.items[*].name"))           # ['A', 'B']
-print(scraperpy.jsonpointer_get(doc, "/items/1/name"))            # 'B'
 
-patched = scraperpy.json_patch_apply(doc, [{"op": "replace", "path": "/items/0/price", "value": 12}])
-merged = scraperpy.merge_patch_apply(patched, {"currency": "USD"})
-
-flat = scraperpy.json_flatten(merged)
-assert scraperpy.json_unflatten(flat) == merged
-
-valid, errors = scraperpy.json_schema_validate(merged, {
+valid, errors = scraperpy.json_schema_validate(doc, {
     "type": "object",
-    "required": ["items", "currency"],
-    "properties": {"currency": {"type": "string"}},
+    "required": ["items"],
+    "properties": {"items": {"type": "array"}},
 })
 ```
 

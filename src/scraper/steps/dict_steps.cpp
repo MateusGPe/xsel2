@@ -328,11 +328,7 @@ void TeeStep::apply(Node node, std::vector<std::string> &values,
     if (!step) {
       continue;
     }
-    if (step->is_postponable()) {
-      dict = step->execute_postponed(dict);
-    } else {
-      step->apply(node, local_values, dict, ctx);
-    }
+    step->apply(node, local_values, dict, ctx);
     if (ctx.skip_item || ctx.abort_scraper) {
       break;
     }

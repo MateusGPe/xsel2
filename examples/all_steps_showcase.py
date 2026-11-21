@@ -16,8 +16,8 @@ for name in [
     "urls_dates_unicode",
     "algorithms_and_matching",
     "types_tables_and_dict",
-    "serialization_and_binary",
-    "json_transforms_and_patch",
+    "serialization",
+    "json_transforms",
 ]:
     res = scrapers[name].from_string(HTML)
     print(f"=== DSL[{name}] ===")
@@ -28,9 +28,8 @@ algo_res = scrapers["algorithms_and_matching"].from_string(HTML)
 assert "Mechanical Keyboard" in algo_res["fuzzy"]["jw_matches"]
 assert "Mechnical Keybord" in algo_res["fuzzy"]["lev_matches"]
 
-ser_res = scrapers["serialization_and_binary"].from_string(HTML)
-for fmt in ["cbor_decoded", "msgpack_decoded", "bson_decoded", "ubjson_decoded"]:
-    assert ser_res["binary_roundtrip"][fmt] == {"env": "staging", "retries": 3}
+ser_res = scrapers["serialization"].from_string(HTML)
+assert ser_res["zipped"]["sku_to_rating"]["MK-75"] == "4.9"
 
 # ---------------------------------------------------------------------------
 # 2. Inline DSL parsing via parse_dsl_string()
@@ -44,7 +43,7 @@ print(inline_res)
 assert inline_res["slug"] == "cafe-resume-mechanical-gear"
 
 # ---------------------------------------------------------------------------
-# 3. Fluent ScraperPy: Value, Number, InsertMode & InsertOptions
+# 3. Fluent ScraperPy: Value, InsertMode & InsertOptions
 # ---------------------------------------------------------------------------
 opts_overwrite = sp.InsertOptions()
 opts_overwrite.mode = sp.InsertMode.Overwrite
@@ -80,11 +79,12 @@ fluent = (
     .set("tags_list", opts_append)
     .attr("data-tier")
     .set("tags_list", opts_append)
-    # Number.Nth & Number.Last in "catalog"
+    # first / last in "catalog"
     .select("section#catalog", "catalog")
-    .find("article.item h2.title", sp.Value.Text, "", sp.Number.Nth, 0)
+    .find("article.item h2.title", sp.Value.Text)
     .set("first_product")
-    .find("article.item h2.title", sp.Value.Text, "", sp.Number.Last)
+    .find_all("article.item h2.title", sp.Value.Text)
+    .last(1)
     .set("last_product")
     # Fuzzy similarity in Python
     .select("ul.models", "fuzzy")
@@ -93,7 +93,7 @@ fluent = (
     .set("jw")
 )
 fluent_res = fluent.from_string(HTML)
-print("\n=== Fluent ScraperPy (InsertMode, Value, Number, Fuzzy) ===")
+print("\n=== Fluent ScraperPy (InsertMode, Value, Fuzzy) ===")
 print(json.dumps(fluent_res, indent=2, ensure_ascii=False))
 assert fluent_res["hero"]["meta"]["title"] == "Café Résümé & Mechanical Gear"
 assert fluent_res["hero"]["hero.region"] == "na-east"
@@ -121,10 +121,11 @@ ac.clear()
 assert ac.pattern_count() == 0
 
 # ---------------------------------------------------------------------------
-# 5. Standalone JSON query, pointer, patch, flatten & schema functions
+# 5. Standalone JSON query & schema functions
 # ---------------------------------------------------------------------------
 doc = {
     "store": "xsel2",
+    "currency": "USD",
     "items": [
         {"sku": "MK-75", "price": 1299.5, "in_stock": True},
         {"sku": "MS-02", "price": 89.0, "in_stock": False},
@@ -133,16 +134,6 @@ doc = {
 
 in_stock_skus = sp.jmespath_eval(doc, "items[?in_stock].sku")
 all_prices = sp.jsonpath_query(doc, "$.items[*].price")
-first_sku = sp.jsonpointer_get(doc, "/items/0/sku")
-
-patched = sp.json_patch_apply(
-    doc, [{"op": "replace", "path": "/items/1/in_stock", "value": True}]
-)
-merged = sp.merge_patch_apply(patched, {"store": "xsel2-prod", "currency": "USD"})
-
-flattened = sp.json_flatten(merged)
-unflattened = sp.json_unflatten(flattened)
-assert unflattened == merged
 
 schema = {
     "type": "object",
@@ -153,9 +144,9 @@ schema = {
         "items": {"type": "array", "minItems": 2},
     },
 }
-valid, errors = sp.json_schema_validate(merged, schema)
+valid, errors = sp.json_schema_validate(doc, schema)
 print("\n=== Standalone JSON Tools ===")
-print("jmespath:", in_stock_skus, "jsonpath:", all_prices, "jsonpointer:", first_sku)
+print("jmespath:", in_stock_skus, "jsonpath:", all_prices)
 print("schema valid:", valid, "errors:", errors)
 assert valid and not errors
 print("\nAll showcase checks passed!")

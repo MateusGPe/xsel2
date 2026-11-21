@@ -6,8 +6,8 @@
 //   ./build/xsel2 -d examples/all_steps_showcase.dsl -n urls_dates_unicode --html examples/all_steps_showcase.html
 //   ./build/xsel2 -d examples/all_steps_showcase.dsl -n algorithms_and_matching --html examples/all_steps_showcase.html
 //   ./build/xsel2 -d examples/all_steps_showcase.dsl -n types_tables_and_dict --html examples/all_steps_showcase.html
-//   ./build/xsel2 -d examples/all_steps_showcase.dsl -n serialization_and_binary --html examples/all_steps_showcase.html
-//   ./build/xsel2 -d examples/all_steps_showcase.dsl -n json_transforms_and_patch --html examples/all_steps_showcase.html
+//   ./build/xsel2 -d examples/all_steps_showcase.dsl -n serialization --html examples/all_steps_showcase.html
+//   ./build/xsel2 -d examples/all_steps_showcase.dsl -n json_transforms --html examples/all_steps_showcase.html
 // =============================================================================
 
 let base_origin = "https://shop.example.com"
@@ -31,14 +31,14 @@ dom_and_text = Scraper()
     }
   | $("article.item", "items") {
       @"data-sku" -> "sku"
-      | find("h2.title", Value.Text) | replace("Pro 75", "Pro-75") | replace_exact("Wireless Ergonomic Mouse", "Ergo Mouse") -> "name"
+      | find("h2.title", Value.Text) | replace("Pro 75", "Pro-75") | replace("Wireless Ergonomic Mouse", "Ergo Mouse") -> "name"
       | find("h2.title", Value.Attribute, "data-status") ?? "In Stock" -> "status"
       | find_all("ul.tags li", Value.Text) | drop_empty(true) | unique(true) | sort(ascending=true, numeric=false) | reverse() -> "tags_sorted_desc"
       | find_all("ul.tags li", Value.Text) | unique(true) | first(2) -> "first_two_tags"
       | find_all("ul.tags li", Value.Text) | unique(true) | last(1) -> "last_tag"
       | find_all("ul.tags li", Value.Text) | nth(0) -> "first_tag"
       | find_all("ul.tags li", Value.Text) | slice(0, 1) | join(" | ") | prepend("[") | append("]") -> "tag_summary"
-      | find_all("h2.title", Value.Attribute, "data-badge") | coalesce("fallback-badge") -> "coalesced"
+      | find_all("h2.title", Value.Attribute, "data-badge") | default("fallback-badge") -> "coalesced"
       | find_all("h2.title", Value.Attribute, "data-default") | default("default-badge") -> "defaulted"
     }
   | $("span.label", "adjacent_labels") {
@@ -91,7 +91,7 @@ algorithms_and_matching = Scraper()
       | find("span.price", Value.Text) | regex_extract("([0-9,]+\\.[0-9]{2})", 1) -> "raw_price"
       | find_all("ul.tags li", Value.Text) | regex_filter("^(USB-C|Bluetooth)$") -> "connectivity_tags"
       | find_all("ul.tags li", Value.Text) | filter(["USB-C", "Thunderbolt"]) -> "ac_filtered_tags"
-      | find_all("ul.tags li", Value.Text) | replace_many({"USB-C": "Type-C", "Hot-Swap": "Hotswap"}) -> "ac_replaced_tags"
+      | find_all("ul.tags li", Value.Text) | replace({"USB-C": "Type-C", "Hot-Swap": "Hotswap"}) -> "ac_replaced_tags"
       | find("h2.title", Value.Text) | extract_many(["Mechanical", "Wireless", "USB-C", "Dock"], unique=true) -> "ac_extracted_keywords"
     }
   | $("ul.models", "fuzzy") {
@@ -120,25 +120,25 @@ types_tables_and_dict = Scraper()
       | find("span.price", Value.Text) | parse_number(allow_float=false) | to_int(key="price_int")
       | @"data-rating" | set("rating_auto", type="auto")
       | find("h2.title", Value.Text) -> "temp_name"
-      | flatten_local()
+      | flatten()
     }
   | $("table.comparison tbody tr", "zip_demo") {
-      find("td", Value.Text, number=Number.Nth, nth_val=0) -> "k"
-      | find("td", Value.Text, number=Number.Nth, nth_val=2) -> "v"
+      find_all("td", Value.Text) | nth(0) -> "k"
+      | find_all("td", Value.Text) | nth(2) -> "v"
     }
   | $("section#catalog", "numeric_sort") {
       find_all("article.item span.price", Value.Text) | parse_number() | sort(ascending=true, numeric=true) -> "prices_asc"
     }
-  | cast_keys({"page_meta.json_ld.numberOfItems": "int"}, postponable=true)
-  | rename_keys({"temp_name": "title"}, postponable=true)
-  | pick_keys(["page_meta", "comparison_rows", "products", "numeric_sort"], postponable=true)
-  | omit_keys(["page_meta.meta"], postponable=true)
-  | merge_keys(["numeric_sort"], "pricing_summary", postponable=true)
+  | cast_keys({"page_meta.json_ld.numberOfItems": "int"})
+  | rename_keys({"temp_name": "title"})
+  | pick_keys(["page_meta", "comparison_rows", "products", "numeric_sort"])
+  | omit_keys(["page_meta.meta"])
+  | merge_keys(["numeric_sort"], "pricing_summary")
   | sort_keys(true)
 
 
-// 5. Serialization & Binary formats (JSON, CSV, CBOR, MsgPack, BSON, UBJSON) + zip_keys
-serialization_and_binary = Scraper()
+// 5. Serialization (JSON, CSV) + zip_keys
+serialization = Scraper()
   | $("div.json-blob", "parsed") {
       text | strip_comments() | json_parse("config", allow_comments=true, allow_trailing_comma=true, strict=false)
       | json_dump(pretty=false, source_key="config") -> "config_json_str"
@@ -154,40 +154,26 @@ serialization_and_binary = Scraper()
   | $("section#catalog", "zipped") {
       find_all("article.item", Value.Attribute, "data-sku") -> "skus"
       | find_all("article.item", Value.Attribute, "data-rating") -> "ratings"
-      | zip_keys("skus", "ratings", "sku_to_rating", postponable=false)
-    }
-  | $("div.json-blob", "binary_roundtrip") {
-      text | strip_comments() | json_parse("payload", allow_trailing_comma=true)
-      | to_cbor(encoding="hex", source_key="payload") | from_cbor("cbor_decoded", encoding="hex")
-      | to_msgpack(encoding="base64", source_key="payload") | from_msgpack("msgpack_decoded", encoding="base64")
-      | to_bson(encoding="hex", source_key="payload") | from_bson("bson_decoded", encoding="hex")
-      | to_ubjson(encoding="hex", source_key="payload") | from_ubjson("ubjson_decoded", encoding="hex")
+      | zip_keys("skus", "ratings", "sku_to_rating")
     }
 
 
-// 6. Postponed JSON transforms: flatten, json_flatten/unflatten, JSONPath, Pointer, Patch, Schema, JMESPath
-json_transforms_and_patch = Scraper()
+// 6. Top-level JSON transforms: flatten, Schema, JMESPath, JSONPath
+json_transforms = Scraper()
   | $("script") {
       text | js_block("window.__SHOWCASE_STATE__ =") | parse_js("state", simplify=true)
     }
-  | jsonpath_replace("$.state.secretToken", "***REDACTED***")
-  | jsonpointer_get("/state/store", target_key="store_name")
-  | jsonpointer_set("/state/environment", "production")
-  | jsonpointer_remove("/state/flags/experimental")
-  | merge_patch({"source": "showcase_html"})
-  | json_patch([{"op": "replace", "path": "/state/build", "value": 43}])
+  | omit_keys(["secretToken", "experimental"])
   | json_schema({
       "type": "object",
-      "required": ["state", "store_name", "source"],
+      "required": ["state"],
       "properties": {
-        "store_name": {"type": "string"}
+        "state": {"type": "object"}
       }
     }, strict=true)
-  | flatten(postponable=true)
-  | json_flatten(postponable=true)
-  | json_unflatten(postponable=true)
-  | deduplicate(postponable=true)
-  | jmespath("{store: store_name, build: \"state.build\", fast: \"state.flags.fastMode\", source: source}")
+  | flatten()
+  | deduplicate()
+  | jmespath("{store: state_store, build: state_build, fast: state_flags_fastMode}")
   | jsonpath("$.*")
 
 

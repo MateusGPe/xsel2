@@ -17,10 +17,10 @@ TEST_CASE("DslParser supports variables, :=, grouped chains, and dict steps",
       .(
         .find(".title", Value.Text).trim().set("title")
         .find(".tag", Value.Text).set("tags")
+        .rename_keys(["title", "heading"])
+        .merge_keys(["heading", "tags"], "summary")
       )
-      .rename_keys(["title", "heading"], false)
-      .merge_keys(["heading", "tags"], "summary", false)
-      .sort_keys(true, true);
+      .sort_keys(true);
   )";
 
   scraper::dsl::DslParser parser;
@@ -78,15 +78,12 @@ TEST_CASE("DslParser supports syntax sugar: pipes, arrows, blocks, kwargs, objec
       |> select("script#cfg") {
            text()
            |> json_parse("cfg", allow_comments=true, allow_trailing_comma=true)
-           |> jsonpointer_set("/cfg/role", "${role}", postponable=false)
-           |> jsonpointer_set("/cfg/weight", 1.5, postponable=false)
-           |> jsonpointer_set("/cfg/removed", null, postponable=false)
+           |> cast_keys({"weight": "float"})
          }
-      |> merge_patch({"meta": {source: "dsl", escaped: "\${role}"}})
-      |> rename_keys({"title": "heading"})
+      |> rename_keys({"title": "heading", "role_src": "${role}", "esc_src": "\${role}"})
       |> json_schema({
            type: "object",
-           required: ["heading", "cfg", "meta"]
+           required: ["heading", "cfg"]
          })
   )";
 
@@ -95,7 +92,7 @@ TEST_CASE("DslParser supports syntax sugar: pipes, arrows, blocks, kwargs, objec
       <h1>  Hello World  </h1>
       <span class="tag">c++</span>
       <span class="tag">json</span>
-      <script id="cfg">{ /* c */ "active": true, }</script>
+      <script id="cfg">{ /* c */ "active": true, "weight": "1.5", "role_src": 1, "esc_src": 2, }</script>
     </body></html>
   )";
 
@@ -108,11 +105,9 @@ TEST_CASE("DslParser supports syntax sugar: pipes, arrows, blocks, kwargs, objec
   REQUIRE(out["tags"].is_array());
   CHECK(out["tags"].size() == 2);
   CHECK(out["cfg"]["active"].as<bool>() == true);
-  CHECK(out["cfg"]["role"].as<std::string>() == "admin");
   CHECK(out["cfg"]["weight"].as<double>() == 1.5);
-  CHECK(out["cfg"]["removed"].is_null());
-  CHECK(out["meta"]["source"].as<std::string>() == "dsl");
-  CHECK(out["meta"]["escaped"].as<std::string>() == "${role}");
+  CHECK(out["cfg"]["admin"].as<int>() == 1);
+  CHECK(out["cfg"]["${role}"].as<int>() == 2);
 }
 
 TEST_CASE("DslParser rejects invalid kwargs and undefined interpolation variables",
@@ -231,9 +226,9 @@ TEST_CASE("DslParser executes Tier 1 steps and aliases", "[dsl][tier1]") {
       | $(".price")  { text | parse_number(key="price") }
       | $(".qty")    { text | set("qty", type="int") }
       | $("a.buy")   { @href | resolve_url("https://example.com/shop/") | strip_query(["id"]) -> "url" }
-      | $(".title")  { text | replace_many({"Pro": "Professional", "Edition": "Ed."}) | slugify() -> "slug" }
+      | $(".title")  { text | replace({"Pro": "Professional", "Edition": "Ed."}) | slugify() -> "slug" }
       | $(".tags")   { text | extract_many(["USB-C", "4K"], unique=true) | sort() -> "tags" }
-      | $(".badge")  { text | coalesce("Standard") -> "badge" }
+      | $(".badge")  { text | default("Standard") -> "badge" }
       | $(".id_src") { text | hash("sha256") -> "id_hash" }
   )";
 
@@ -417,8 +412,8 @@ TEST_CASE("Phase 1 DSL: fields, find_first, try_find, attr fallback, tee, save/r
           views: { sel: ".views", cast: "int" },
           tags: { sel: ".tag", first: false, join: ", " }
         })
-        | try_find(".maybe-missing", Value.Text) | set("maybe")
-        | find_first(".subtitle") | set("subtitle")
+        | find_all(".maybe-missing", Value.Text) | set("maybe")
+        | find(".subtitle") | set("subtitle")
         | find_all(".rank-label", Value.Text) | squish
             | map_values({"monthly rank": "ibox_rank_monthly", "weekly rank": "ibox_rank_weekly"})
             | set("mapped_ranks")
@@ -495,7 +490,7 @@ TEST_CASE("Phase 2 DSL: pipe/use, include, each, when_exists/unless_exists/when_
 
     base_meta := Scraper()
       .select("html") {
-        find_first("h1") -> "page_title"
+        find("h1") -> "page_title"
         | abort_if_exists(".removed", "status", "removed")
       };
 
@@ -503,16 +498,16 @@ TEST_CASE("Phase 2 DSL: pipe/use, include, each, when_exists/unless_exists/when_
       .include(base_meta)
       .select(".card", "items") {
         skip_if_exists(".ad")
-        | find_first(".name") | skip_if_empty | set("name")
+        | find(".name") | skip_if_empty | set("name")
         | when_exists(".price") {
-            find_first(".price") | when_match("\\$") { replace_exact("$", "") } -> "price"
+            find(".price") | when_match("\\$") { replace("$", "") } -> "price"
           }
         | unless_exists(".price") {
             default("free") -> "price"
           }
         | each(".links a", "links") { use(link_map) }
         | each(".variants .v", "variants") {
-            find_first(".sku") -> "sku"
+            find(".sku") -> "sku"
             | each(".opts span", "opts") { text | squish -> "label" }
           }
       }
@@ -582,14 +577,14 @@ TEST_CASE("Phase 3 DSL: regex_find_all, regex_groups, compact numbers, parse_dur
     wild := Scraper()
       .select("html") {
         extract_meta(key="ld", include_json_ld=true, index_json_ld=true)
-        | find_first(".views") | parse_number(compact=true, key="views")
-        | find_first(".dur") | parse_duration(key="duration_sec")
-        | find_first(".ago") | parse_date(output="date", now="2026-11-20T12:00:00Z") -> "posted_date"
-        | find_first(".hero", Value.Attribute, "srcset") | parse_srcset("largest") -> "hero_img"
-        | find_first(".bg", Value.Attribute, "style") | css_url -> "bg_img"
-        | find_first(".sku") | regex_groups("(?P<cat>[a-z]+)-(?P<num>\\d+)", prefix="sku_", clear=true)
-        | find_first(".nums") | regex_find_all("\\d+") -> "all_nums"
-        | find_first(".enc") | unescape_html -> "decoded"
+        | find(".views") | parse_number(compact=true, key="views")
+        | find(".dur") | parse_duration(key="duration_sec")
+        | find(".ago") | parse_date(output="date", now="2026-11-20T12:00:00Z") -> "posted_date"
+        | find(".hero", attr="srcset") | parse_srcset("largest") -> "hero_img"
+        | find(".bg", Value.Attribute, "style") | css_url -> "bg_img"
+        | find(".sku") | regex_groups("(?P<cat>[a-z]+)-(?P<num>\\d+)", prefix="sku_")
+        | find(".nums") | regex_find_all("\\d+") -> "all_nums"
+        | find(".enc") | unescape_html -> "decoded"
         | find_all("a", Value.Attribute, "href")
             | filter_urls(allowed_domains=["example.com"], blocked_domains=["track.example.com"])
             | strip_query(drop_params=["utm_*", "fbclid"]) -> "clean_links"
@@ -634,4 +629,86 @@ TEST_CASE("Phase 3 DSL: regex_find_all, regex_groups, compact numbers, parse_dur
   CHECK(out["all_nums"].size() == 3);
   CHECK(out["decoded"].as<std::string>() == "A & B");
   CHECK(out["clean_links"].as<std::string>() == "https://shop.example.com/item?id=5");
+}
+
+TEST_CASE("Cleanup seams: lexical nested select, 0-match top-level transforms, strict sinks, regex default, and replace default",
+          "[dsl][seams]") {
+  const std::string dsl = R"DSL(
+    nested_scoping := Scraper()
+      | $(".card", "cards") {
+          find(".title") -> "title"
+          | select(".tag", "tags") { text | squish -> "name" }
+          | $(".meta") {
+              @id -> "meta_id"
+              | flatten()
+            }
+          | rename_keys({"title": "heading"})
+        }
+      | $(".nonexistent") { text -> "missing" }
+      | jmespath("{cards: cards, checked: `true`}");
+
+    sink_and_defaults := Scraper()
+      | $("div") {
+          find(".text") | replace("a", "b") -> "replaced_all"
+          | find(".text") | replace("a", "b", first_only=true) -> "replaced_first"
+          | find(".code") | regex_replace("abc", "X") -> "case_sens"
+          | find(".code") | regex_replace("abc", "X", flags="i") -> "case_insens"
+          | find(".code") | regex_replace("abc", "X", flags="multiline") -> "multiline_case_sens"
+          | find_all(".item") | count("n") -> "after_count_empty"
+          | find(".sku") | regex_groups("(?P<p>[a-z]+)-(?P<n>\\d+)") -> "after_rg_empty"
+        };
+  )DSL";
+
+  scraper::dsl::DslParser parser;
+  auto scrapers = parser.parse(dsl);
+
+  const std::string html1 = R"HTML(
+    <span class="tag">OUTSIDE</span>
+    <div class="card">
+      <h2 class="title">Card 1</h2>
+      <span class="tag">c1_t1</span>
+      <span class="tag">c1_t2</span>
+      <div class="meta" id="m1"></div>
+    </div>
+    <div class="card">
+      <h2 class="title">Card 2</h2>
+      <span class="tag">c2_t1</span>
+    </div>
+  )HTML";
+  const auto out1 = scrapers["nested_scoping"].scrape_from_string(html1);
+  CHECK(out1["checked"].as<bool>() == true);
+  REQUIRE(out1["cards"].is_array());
+  REQUIRE(out1["cards"].size() == 2);
+  CHECK(out1["cards"][0]["heading"].as<std::string>() == "Card 1");
+  REQUIRE(out1["cards"][0]["tags"].size() == 2);
+  CHECK(out1["cards"][0]["tags"][0]["name"].as<std::string>() == "c1_t1");
+  CHECK(out1["cards"][0]["meta_id"].as<std::string>() == "m1");
+  CHECK(out1["cards"][1]["heading"].as<std::string>() == "Card 2");
+  CHECK(out1["cards"][1]["tags"]["name"].as<std::string>() == "c2_t1");
+
+  const std::string html2 = R"HTML(
+    <div>
+      <span class="text">a-a-a</span>
+      <span class="code">ABC abc</span>
+      <span class="item">one</span>
+      <span class="item">two</span>
+      <span class="sku">kbd-99</span>
+    </div>
+  )HTML";
+  const auto out2 = scrapers["sink_and_defaults"].scrape_from_string(html2);
+  CHECK(out2["replaced_all"].as<std::string>() == "b-b-b");
+  CHECK(out2["replaced_first"].as<std::string>() == "b-a-a");
+  CHECK(out2["case_sens"].as<std::string>() == "ABC X");
+  CHECK(out2["case_insens"].as<std::string>() == "X X");
+  CHECK(out2["multiline_case_sens"].as<std::string>() == "ABC X");
+  CHECK(out2["n"].as<int64_t>() == 2);
+  CHECK_FALSE(out2.contains("after_count_empty"));
+  CHECK(out2["p"].as<std::string>() == "kbd");
+  CHECK(out2["n_0"].as<std::string>() == "99");
+  CHECK_FALSE(out2.contains("after_rg_empty"));
+
+  // Nested select without block inside { ... } is rejected
+  CHECK_THROWS_AS(
+      parser.parse(R"(s = Scraper() | $("div") { $("span") | text -> "x" };)"),
+      std::runtime_error);
 }

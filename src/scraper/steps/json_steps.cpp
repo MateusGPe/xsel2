@@ -101,66 +101,6 @@ void CsvDumpStep::apply(Node, std::vector<std::string> &values,
   });
 }
 
-void BinaryDecodeStep::apply(Node, std::vector<std::string> &values,
-                             jsoncons::json &dict) {
-  parse_and_store(values, dict, objname_, strict_, insert_opts_,
-                  [this](std::string_view input) {
-                    return xsel::query::decode_binary(fmt_, input, enc_);
-                  });
-}
-
-void BinaryEncodeStep::apply(Node, std::vector<std::string> &values,
-                             jsoncons::json &dict) {
-  dump_from_dict(values, dict, source_key_, [this](const jsoncons::json &src) {
-    return xsel::query::encode_binary(fmt_, src, enc_);
-  });
-}
-
-jsoncons::json
-JsonPathReplaceStep::transform(const jsoncons::json &input) const {
-  return xsel::query::jsonpath_replace(input, expr_, replacement_);
-}
-
-jsoncons::json
-JsonFlattenStep::transform(const jsoncons::json &input) const {
-  return xsel::query::json_flatten(input);
-}
-
-jsoncons::json
-JsonUnflattenStep::transform(const jsoncons::json &input) const {
-  return xsel::query::json_unflatten(input);
-}
-
-jsoncons::json
-JsonPointerGetStep::transform(const jsoncons::json &input) const {
-  jsoncons::json val = xsel::query::jsonpointer_get(input, pointer_);
-  if (target_key_.empty()) {
-    return val;
-  }
-  jsoncons::json out = input.is_object() ? input : jsoncons::json::object();
-  insert_into_json(out, target_key_, std::move(val),
-                   InsertOptions{InsertMode::Overwrite, true, true});
-  return out;
-}
-
-jsoncons::json
-JsonPointerSetStep::transform(const jsoncons::json &input) const {
-  return xsel::query::jsonpointer_set(input, pointer_, value_);
-}
-
-jsoncons::json
-JsonPointerRemoveStep::transform(const jsoncons::json &input) const {
-  return xsel::query::jsonpointer_remove(input, pointer_);
-}
-
-jsoncons::json JsonPatchStep::transform(const jsoncons::json &input) const {
-  return xsel::query::apply_json_patch(input, patch_);
-}
-
-jsoncons::json MergePatchStep::transform(const jsoncons::json &input) const {
-  return xsel::query::apply_merge_patch(input, patch_);
-}
-
 jsoncons::json JsonSchemaStep::transform(const jsoncons::json &input) const {
   std::vector<std::string> errors;
   if (xsel::query::validate_json_schema(input, schema_, &errors)) {

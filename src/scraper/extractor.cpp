@@ -66,22 +66,12 @@ void Extractor::extract(QueryResult &selection, jsoncons::json &dest,
     }
   }
 
-  std::vector<std::shared_ptr<Step>> postponed_steps;
-  for (const auto &step : steps_) {
-    if (step->is_postponable()) {
-      postponed_steps.push_back(step);
-    }
-  }
-
   for (const auto &sel_node : sel) {
     jsoncons::json item = jsoncons::json::null();
     std::vector<std::string> values;
     ExecutionContext ctx;
 
     for (const auto &step : steps_) {
-      if (step->is_postponable()) {
-        continue;
-      }
       try {
         step->apply(sel_node, values, item, ctx);
       } catch (const std::exception &e) {
@@ -104,14 +94,6 @@ void Extractor::extract(QueryResult &selection, jsoncons::json &dest,
     }
     if (ctx.abort_scraper) {
       return;
-    }
-  }
-
-  for (const auto &postponed : postponed_steps) {
-    try {
-      dest = postponed->execute_postponed(dest);
-    } catch (const std::exception &e) {
-      handle_step_error(e, err_prefix, name_, stream, opts);
     }
   }
 }

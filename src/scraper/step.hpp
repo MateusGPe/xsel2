@@ -33,44 +33,21 @@ public:
                      jsoncons::json &dict, ExecutionContext &) {
     apply(node, values, dict);
   }
-
-  [[nodiscard]] virtual bool is_postponable() const noexcept { return false; }
-
-  [[nodiscard]] virtual jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const {
-    return dest;
-  }
 };
 
 /**
- * Convenience base class for JSON-transforming steps that support postponed
- * execution on the accumulated destination document.
+ * Convenience base class for JSON-transforming steps that operate directly
+ * on the target dictionary/document.
  */
-class PostponableJsonStep : public Step {
+class JsonTransformStep : public Step {
 public:
-  explicit PostponableJsonStep(bool postponable = true) noexcept
-      : postponable_(postponable) {}
-
   void apply(Node, std::vector<std::string> &, jsoncons::json &dict) final {
-    if (!postponable_) {
-      dict = transform(dict);
-    }
-  }
-
-  [[nodiscard]] bool is_postponable() const noexcept final {
-    return postponable_;
-  }
-
-  [[nodiscard]] jsoncons::json
-  execute_postponed(const jsoncons::json &dest) const final {
-    return transform(dest);
+    dict = transform(dict);
   }
 
 protected:
   [[nodiscard]] virtual jsoncons::json
   transform(const jsoncons::json &input) const = 0;
-
-  bool postponable_;
 };
 
 } // namespace scraper

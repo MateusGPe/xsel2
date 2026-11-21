@@ -23,9 +23,6 @@ struct CsvOptions {
   bool trim = true;
 };
 
-enum class BinaryFormat { Cbor, MsgPack, Bson, Ubjson };
-enum class BinaryEncoding { Hex, Base64, Raw };
-
 /// Evaluates a JMESPath expression against `doc` and returns the transformed
 /// JSON result. Throws `std::runtime_error` on invalid syntax or evaluation error.
 [[nodiscard]] jsoncons::json evaluate_jmespath(const jsoncons::json &doc,
@@ -49,38 +46,6 @@ enum class BinaryEncoding { Hex, Base64, Raw };
 [[nodiscard]] std::string dump_json(const jsoncons::json &doc,
                                     bool pretty = false, int indent = 2);
 
-/// Replaces values matching JSONPath `expr` in a copy of `doc` with `replacement`.
-[[nodiscard]] jsoncons::json jsonpath_replace(const jsoncons::json &doc,
-                                              std::string_view expr,
-                                              const jsoncons::json &replacement);
-
-/// Flattens `doc` into an object keyed by normalized JSONPath expressions.
-[[nodiscard]] jsoncons::json json_flatten(const jsoncons::json &doc);
-
-/// Unflattens a JSONPath-flattened object back into a nested JSON value.
-[[nodiscard]] jsoncons::json json_unflatten(const jsoncons::json &doc);
-
-/// Returns the value at RFC 6901 JSON Pointer `pointer` in `doc`.
-[[nodiscard]] jsoncons::json jsonpointer_get(const jsoncons::json &doc,
-                                             std::string_view pointer);
-
-/// Inserts or assigns `value` at RFC 6901 JSON Pointer `pointer` in a copy of `doc`.
-[[nodiscard]] jsoncons::json jsonpointer_set(const jsoncons::json &doc,
-                                             std::string_view pointer,
-                                             const jsoncons::json &value);
-
-/// Removes the value at RFC 6901 JSON Pointer `pointer` from a copy of `doc`.
-[[nodiscard]] jsoncons::json jsonpointer_remove(const jsoncons::json &doc,
-                                                std::string_view pointer);
-
-/// Applies an RFC 6902 JSON Patch array to a copy of `doc`.
-[[nodiscard]] jsoncons::json apply_json_patch(const jsoncons::json &doc,
-                                              const jsoncons::json &patch);
-
-/// Applies an RFC 7396 JSON Merge Patch to a copy of `doc`.
-[[nodiscard]] jsoncons::json apply_merge_patch(const jsoncons::json &doc,
-                                               const jsoncons::json &patch);
-
 /// Validates `doc` against `schema`. Returns true if valid; collects
 /// formatted error strings into `errors_out` when provided.
 [[nodiscard]] bool validate_json_schema(const jsoncons::json &doc,
@@ -94,15 +59,5 @@ enum class BinaryEncoding { Hex, Base64, Raw };
 /// Encodes a JSON array/value into a CSV string.
 [[nodiscard]] std::string encode_csv(const jsoncons::json &doc,
                                      const CsvOptions &opts = {});
-
-/// Decodes a binary JSON representation (CBOR/MsgPack/BSON/UBJSON) from `input`.
-[[nodiscard]] jsoncons::json decode_binary(BinaryFormat fmt,
-                                           std::string_view input,
-                                           BinaryEncoding enc = BinaryEncoding::Hex);
-
-/// Encodes `doc` into a binary JSON representation (CBOR/MsgPack/BSON/UBJSON).
-[[nodiscard]] std::string encode_binary(BinaryFormat fmt,
-                                        const jsoncons::json &doc,
-                                        BinaryEncoding enc = BinaryEncoding::Hex);
 
 } // namespace xsel::query

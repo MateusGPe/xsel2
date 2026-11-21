@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `xsel_common` | `common/ahocorasick.hpp`, `common/fuzzy.hpp`, `common/hex_utils.hpp`, `common/json_utils.hpp`, `common/string_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, Jaro-Winkler & Levenshtein fuzzy matching, hex/string/UTF-8 & JSON helpers |
 | `digger` | `digger/digger.hpp`, `digger/tokenizer.hpp`, `digger/scalar_parser.hpp` | Heuristic JS/JSON object extractor |
-| `xsel_query` | `query/json_query.hpp` | JMESPath, JSONPath, JSON Pointer, Patch, Merge Patch, Flatten, Schema, CSV & binary formats over `jsoncons::json` |
+| `xsel_query` | `query/json_query.hpp` | JMESPath, JSONPath, JSON Schema & CSV over `jsoncons::json` |
 | `scraper` | `scraper/scraper.hpp`, `scraper/dsl_parser.hpp`, `scraper/merge.hpp` | Full scraping pipeline, steps, and `.dsl` parser |
 
 Linking `scraper` transitively links `xsel_common`, `digger`, `xsel_query`, `jsoncons`, `mgp::lxml2-query`, `re2::re2`, `utf8proc`, and Abseil.
@@ -45,11 +45,11 @@ Use `builder.scrape_from_file("page.html")` to parse directly from disk.
 - `ErrorPolicy::ThrowOnError`: rethrows the first step exception immediately.
 - `ErrorPolicy::CollectErrors`: appends formatted errors to `scraper.errors()` without printing.
 
-`InsertOptions` (`mode`: `Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`; `allow_empty`; `nested_path`) is accepted by `Set`, `Count`, `ParseJs`, `ExtractFields`, `RegexGroups`, `JsonParse`, `CsvParse`, `FromCbor`, `FromMsgPack`, `FromBson`, `FromUbjson`, `ParseNumber`, `ParseDuration`, `ToInt`, `ToFloat`, `ToBool`, `Attrs`, `Table`, `ExtractMeta`, `ParseDate`, and `QueryParams`.
+`InsertOptions` (`mode`: `Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`; `allow_empty`; `nested_path`) is accepted by `Set`, `Count`, `ParseJs`, `ExtractFields`, `RegexGroups`, `JsonParse`, `CsvParse`, `ParseNumber`, `ParseDuration`, `ToInt`, `ToFloat`, `ToBool`, `Attrs`, `Table`, `ExtractMeta`, `ParseDate`, and `QueryParams`.
 
 ### Single-Parse `Document` Reuse, Single-Pass Extraction & Composition
 
-Parse HTML once into `Document` (`lxml2-query.h`), run zero-alloc single-pass extraction (`FindFirst`, `ExtractFields`), and compose pipelines with `Each`, `Tee`, `WhenExists`/`UnlessExists`/`WhenMatch`, `SkipIfExists`/`SkipIfEmpty`/`AbortIfExists`, `Save`/`Restore`, `Finalize`, and `Include`:
+Parse HTML once into `Document` (`lxml2-query.h`), run zero-alloc single-pass extraction (`Find`, `ExtractFields`), and compose pipelines with `Each`, `Tee`, `WhenExists`/`UnlessExists`/`WhenMatch`, `SkipIfExists`/`SkipIfEmpty`/`AbortIfExists`, `Save`/`Restore`, `Finalize`, and `Include`:
 
 ```cpp
 #include "scraper/scraper.hpp"
@@ -74,7 +74,7 @@ int main() {
   scraper::ScraperBuilder main_scraper;
   main_scraper.Select("body")
       .ExtractFields({title_spec, badge_spec})
-      .FindFirst(".views")
+      .Find(".views")
       .ParseNumber(".", ",", true, "views", {}, /*compact=*/true)
       .Each("ul.tags li", "tags", sub.get_extractors().front()->steps())
       .Tee({std::make_shared<scraper::CountValuesStep>("tag_nodes")})
@@ -135,7 +135,7 @@ int main() {
 
 ---
 
-## `xsel::query` (JMESPath, JSONPath, Patch, Pointer & Schema)
+## `xsel::query` (JMESPath, JSONPath & Schema)
 
 ```cpp
 #include "query/json_query.hpp"
@@ -145,19 +145,14 @@ int main() {
   auto doc = jsoncons::json::parse(R"({"items":[{"name":"A","price":5},{"name":"B","price":20}]})");
   auto jmes = xsel::query::evaluate_jmespath(doc, "items[?price > `10`].name");
   auto jpath = xsel::query::evaluate_jsonpath(doc, "$.items[*].name");
-  auto ptr = xsel::query::jsonpointer_get(doc, "/items/1/name");
-  auto flat = xsel::query::json_flatten(doc);
-  auto roundtrip = xsel::query::json_unflatten(flat);
-  std::cout << jmes << '\n' << jpath << '\n' << ptr << '\n';
+  std::cout << jmes << '\n' << jpath << '\n';
 }
 ```
 
 Also available in `query/json_query.hpp`:
 - `parse_json`, `dump_json` (`JsonParseOptions`)
-- `apply_json_patch`, `apply_merge_patch`, `validate_json_schema`
-- `jsonpointer_set`, `jsonpointer_remove`, and `jsonpath_replace`
+- `validate_json_schema`
 - `decode_csv`, `encode_csv` (`CsvOptions`)
-- `decode_binary`, `encode_binary` (`BinaryFormat::Cbor` / `MsgPack` / `Bson` / `Ubjson`, `BinaryEncoding::Hex` / `Base64` / `Raw`)
 
 ---
 

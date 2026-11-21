@@ -7,7 +7,7 @@ namespace scraper {
 
 Scraper::Scraper(const Scraper &other)
     : finalize_steps_(other.finalize_steps_), error_policy_(other.error_policy_),
-      errors_(other.errors_) {
+      errors_(other.errors_), in_block_(other.in_block_) {
   extractors_.reserve(other.extractors_.size());
   for (const auto &ext : other.extractors_) {
     extractors_.push_back(ext ? std::make_shared<Extractor>(*ext) : nullptr);
@@ -25,6 +25,7 @@ Scraper &Scraper::operator=(const Scraper &other) {
     finalize_steps_ = other.finalize_steps_;
     error_policy_ = other.error_policy_;
     errors_ = other.errors_;
+    in_block_ = other.in_block_;
   }
   return *this;
 }
@@ -34,6 +35,17 @@ void Scraper::add_step(std::shared_ptr<Step> step) {
     extractors_.push_back(std::make_shared<Extractor>(nullptr, ""));
   }
   extractors_.back()->append_step(std::move(step));
+}
+
+void Scraper::add_dict_step(std::shared_ptr<Step> step) {
+  if (!step) {
+    return;
+  }
+  if (in_block_) {
+    add_step(std::move(step));
+  } else {
+    finalize_steps_.push_back(std::move(step));
+  }
 }
 
 void Scraper::scrape_document(Document &document, jsoncons::json &data,
@@ -85,11 +97,7 @@ void Scraper::perform_extraction(QueryResult &selection, jsoncons::json &data,
         continue;
       }
       try {
-        if (step->is_postponable()) {
-          data = step->execute_postponed(data);
-        } else {
-          step->apply(root_node, empty_vals, data, ctx);
-        }
+        step->apply(root_node, empty_vals, data, ctx);
       } catch (const std::exception &e) {
         if (local_opts.error_policy == ErrorPolicy::ThrowOnError) {
           throw;

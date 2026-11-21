@@ -52,11 +52,11 @@ class QueryParamsStep final : public Step {
 public:
   using ParamMapping = std::pair<std::string, std::string>;
 
-  QueryParamsStep(std::vector<ParamMapping> param_to_key,
-                  std::string_view default_val = "", bool clear = false,
-                  InsertOptions opts = {})
+  explicit QueryParamsStep(std::vector<ParamMapping> param_to_key,
+                           std::string_view default_val = "",
+                           InsertOptions opts = {})
       : param_to_key_(std::move(param_to_key)), default_val_(default_val),
-        clear_(clear), opts_(opts) {}
+        opts_(opts) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -64,7 +64,6 @@ public:
 private:
   std::vector<ParamMapping> param_to_key_;
   std::string default_val_;
-  bool clear_;
   InsertOptions opts_;
 };
 

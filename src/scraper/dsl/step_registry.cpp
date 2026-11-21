@@ -31,31 +31,39 @@ QueryAllStep::Type parse_value_type(const std::string &s) {
   throw std::runtime_error("Unknown Value enum in DSL: " + s);
 }
 
-QueryStep::Number parse_number_type(const std::string &s) {
-  if (s == "Number.All" || s == "All" || s == "all") {
-    return QueryStep::Number::All;
-  }
-  if (s == "Number.Last" || s == "Last" || s == "last") {
-    return QueryStep::Number::Last;
-  }
-  if (s == "Number.Nth" || s == "Nth" || s == "nth") {
-    return QueryStep::Number::Nth;
-  }
-  throw std::runtime_error("Unknown Number enum in DSL: " + s);
-}
+struct ParsedFindArgs {
+  std::string sel;
+  QueryAllStep::Type type = QueryAllStep::Type::Text;
+  std::vector<std::string> attrs;
+  bool squish = true;
+  bool required = false;
+};
 
-xsel::query::BinaryEncoding parse_binary_encoding(const std::string &s) {
-  if (s == "hex" || s == "Hex") {
-    return xsel::query::BinaryEncoding::Hex;
+ParsedFindArgs parse_find_args(const DslArgList &args, std::string_view name,
+                               bool default_squish) {
+  ParsedFindArgs out;
+  out.sel = as_str(require_arg(args, 0, "selector", name));
+  const DslValue *type_arg = find_arg(args, 1, "type");
+  const bool has_type = (type_arg && !type_arg->is_null());
+  if (has_type) {
+    out.type = parse_value_type(as_str(*type_arg));
   }
-  if (s == "base64" || s == "Base64") {
-    return xsel::query::BinaryEncoding::Base64;
+  if (const DslValue *av = find_arg(args, 2, "attr"); av && !av->is_null()) {
+    if (av->is_list()) {
+      out.attrs = as_str_list(*av);
+    } else {
+      std::string s = as_str(*av);
+      if (!s.empty()) {
+        out.attrs.push_back(std::move(s));
+      }
+    }
   }
-  if (s == "raw" || s == "Raw") {
-    return xsel::query::BinaryEncoding::Raw;
+  if (!has_type && !out.attrs.empty()) {
+    out.type = QueryAllStep::Type::Attribute;
   }
-  throw std::runtime_error("Unknown binary encoding in DSL: " + s +
-                           " (expected 'hex', 'base64', or 'raw')");
+  out.squish = opt_bool(args, 3, "squish", default_squish);
+  out.required = opt_bool(args, 4, "required", false);
+  return out;
 }
 
 std::optional<std::string> opt_flags(const DslArgList &args, size_t idx) {
@@ -140,49 +148,13 @@ get_method_registry() {
        }},
       {"find_all",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         const auto &sel = require_arg(args, 0, "selector", name);
-         const auto &type = require_arg(args, 1, "type", name);
-         b.FindAll(as_str(sel), parse_value_type(as_str(type)),
-                   opt_str(args, 2, "attr", ""),
-                   opt_bool(args, 3, "optional", false));
+         auto f = parse_find_args(args, name, false);
+         b.FindAll(f.sel, f.type, std::move(f.attrs), f.squish, f.required);
        }},
       {"find",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         const auto &sel = require_arg(args, 0, "selector", name);
-         const auto &type = require_arg(args, 1, "type", name);
-         const auto *num = find_arg(args, 3, "number");
-         b.Find(as_str(sel), parse_value_type(as_str(type)),
-                opt_str(args, 2, "attr", ""),
-                num ? parse_number_type(as_str(*num))
-                    : QueryStep::Number::All,
-                opt_non_negative_size(args, 4, "nth_val", name, 0),
-                opt_bool(args, 5, "optional", false));
-       }},
-      {"try_find",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         const auto &sel = require_arg(args, 0, "selector", name);
-         const auto &type = require_arg(args, 1, "type", name);
-         const auto *num = find_arg(args, 3, "number");
-         b.Find(as_str(sel), parse_value_type(as_str(type)),
-                opt_str(args, 2, "attr", ""),
-                num ? parse_number_type(as_str(*num))
-                    : QueryStep::Number::All,
-                opt_non_negative_size(args, 4, "nth_val", name, 0), true);
-       }},
-      {"find_first",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         const auto &sel = require_arg(args, 0, "selector", name);
-         const auto *type_arg = find_arg(args, 1, "type");
-         const auto type = (type_arg && !type_arg->is_null())
-                               ? parse_value_type(as_str(*type_arg))
-                               : QueryAllStep::Type::Text;
-         std::vector<std::string> attrs;
-         if (const auto *av = find_arg(args, 2, "attr"); av && !av->is_null()) {
-           attrs = as_str_list(*av);
-         }
-         b.FindFirst(as_str(sel), type, std::move(attrs),
-                     opt_bool(args, 3, "squish", true),
-                     opt_bool(args, 4, "required", false));
+         auto f = parse_find_args(args, name, true);
+         b.Find(f.sel, f.type, std::move(f.attrs), f.squish, f.required);
        }},
       {"extract_fields",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -268,13 +240,28 @@ get_method_registry() {
        }},
       {"replace",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.Replace(as_str(require_arg(args, 0, "from", name)),
-                   opt_str(args, 1, "to", ""));
-       }},
-      {"replace_exact",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.ReplaceExact(as_str(require_arg(args, 0, "from", name)),
-                        opt_str(args, 1, "to", ""));
+         const bool via_mapping_kw = args.named.contains("mapping");
+         const DslValue *first_arg = via_mapping_kw
+                                         ? find_arg(args, 0, "mapping")
+                                         : &require_arg(args, 0, "from", name);
+         if (via_mapping_kw || first_arg->is_object()) {
+           const jsoncons::json j = as_json_document(*first_arg);
+           if (!j.is_object()) {
+             throw std::runtime_error("replace: mapping must be an object");
+           }
+           absl::flat_hash_map<std::string, std::string> mapping;
+           for (const auto &kv : j.object_range()) {
+             if (!kv.value().is_string()) {
+               throw std::runtime_error(
+                   "replace: mapping values must be strings");
+             }
+             mapping.emplace(kv.key(), kv.value().as_string());
+           }
+           b.Replace(mapping);
+           return;
+         }
+         b.Replace(as_str(*first_arg), opt_str(args, 1, "to", ""),
+                   opt_bool(args, 2, "first_only", false));
        }},
       {"split",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -340,8 +327,7 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
          const auto &pat = require_arg(args, 0, "pattern", name);
          b.RegexGroups(as_str(pat), opt_flags(args, 1),
-                       opt_str(args, 2, "prefix", ""),
-                       opt_bool(args, 3, "clear", false));
+                       opt_str(args, 2, "prefix", ""));
        }},
       {"filter",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -435,22 +421,16 @@ get_method_registry() {
                    opt_bool(args, 1, "simplify", true));
        }},
       {"flatten",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.Flatten(opt_bool(args, 0, "postponable", true));
-       }},
-      {"flatten_local",
        [](ScraperBuilder &b, const DslArgList &, std::string_view) {
-         b.FlattenLocal();
+         b.Flatten();
        }},
       {"pick_keys",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.PickKeys(as_str_list(require_arg(args, 0, "keys_to_keep", name)),
-                    opt_bool(args, 1, "postponable", true));
+         b.PickKeys(as_str_list(require_arg(args, 0, "keys_to_keep", name)));
        }},
       {"omit_keys",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.OmitKeys(as_str_list(require_arg(args, 0, "keys_to_remove", name)),
-                    opt_bool(args, 1, "postponable", true));
+         b.OmitKeys(as_str_list(require_arg(args, 0, "keys_to_remove", name)));
        }},
       {"rename_keys",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -473,33 +453,28 @@ get_method_registry() {
              rename_map.emplace(pairs[i], pairs[i + 1]);
            }
          }
-         b.RenameKeys(std::move(rename_map),
-                      opt_bool(args, 1, "postponable", true));
+         b.RenameKeys(std::move(rename_map));
        }},
       {"merge_keys",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
          b.MergeKeys(as_str_list(require_arg(args, 0, "source_keys", name)),
-                     as_str(require_arg(args, 1, "target_key", name)),
-                     opt_bool(args, 2, "postponable", true));
+                     as_str(require_arg(args, 1, "target_key", name)));
        }},
       {"sort_keys",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.SortKeys(opt_bool(args, 0, "ascending", true),
-                    opt_bool(args, 1, "postponable", true));
+         b.SortKeys(opt_bool(args, 0, "ascending", true));
        }},
       {"deduplicate",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.Deduplicate(opt_bool(args, 0, "postponable", true));
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.Deduplicate();
        }},
       {"jmespath",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JmesPath(as_str(require_arg(args, 0, "expr", name)),
-                    opt_bool(args, 1, "postponable", true));
+         b.JmesPath(as_str(require_arg(args, 0, "expr", name)));
        }},
       {"jsonpath",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JsonPath(as_str(require_arg(args, 0, "expr", name)),
-                    opt_bool(args, 1, "postponable", true));
+         b.JsonPath(as_str(require_arg(args, 0, "expr", name)));
        }},
       {"json_parse",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
@@ -523,101 +498,11 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
          b.CsvDump(parse_csv_opts(args, 0), opt_str(args, 3, "source_key", ""));
        }},
-      {"from_cbor",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.FromCbor(opt_str(args, 0, "objname", ""),
-                    parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
-                    opt_bool(args, 2, "strict", true));
-       }},
-      {"to_cbor",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.ToCbor(parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
-                  opt_str(args, 1, "source_key", ""));
-       }},
-      {"from_msgpack",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.FromMsgPack(
-             opt_str(args, 0, "objname", ""),
-             parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
-             opt_bool(args, 2, "strict", true));
-       }},
-      {"to_msgpack",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.ToMsgPack(parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
-                     opt_str(args, 1, "source_key", ""));
-       }},
-      {"from_bson",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.FromBson(opt_str(args, 0, "objname", ""),
-                    parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
-                    opt_bool(args, 2, "strict", true));
-       }},
-      {"to_bson",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.ToBson(parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
-                  opt_str(args, 1, "source_key", ""));
-       }},
-      {"from_ubjson",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.FromUbjson(
-             opt_str(args, 0, "objname", ""),
-             parse_binary_encoding(opt_str(args, 1, "encoding", "hex")),
-             opt_bool(args, 2, "strict", true));
-       }},
-      {"to_ubjson",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.ToUbjson(parse_binary_encoding(opt_str(args, 0, "encoding", "hex")),
-                    opt_str(args, 1, "source_key", ""));
-       }},
-      {"jsonpath_replace",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JsonPathReplace(
-             as_str(require_arg(args, 0, "expr", name)),
-             dsl_value_to_json(require_arg(args, 1, "replacement", name)),
-             opt_bool(args, 2, "postponable", true));
-       }},
-      {"json_flatten",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.JsonFlatten(opt_bool(args, 0, "postponable", true));
-       }},
-      {"json_unflatten",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.JsonUnflatten(opt_bool(args, 0, "postponable", true));
-       }},
-      {"jsonpointer_get",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JsonPointerGet(as_str(require_arg(args, 0, "pointer", name)),
-                          opt_str(args, 1, "target_key", ""),
-                          opt_bool(args, 2, "postponable", true));
-       }},
-      {"jsonpointer_set",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JsonPointerSet(
-             as_str(require_arg(args, 0, "pointer", name)),
-             dsl_value_to_json(require_arg(args, 1, "value", name)),
-             opt_bool(args, 2, "postponable", true));
-       }},
-      {"jsonpointer_remove",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JsonPointerRemove(as_str(require_arg(args, 0, "pointer", name)),
-                             opt_bool(args, 1, "postponable", true));
-       }},
-      {"json_patch",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JsonPatch(as_json_document(require_arg(args, 0, "patch", name)),
-                     opt_bool(args, 1, "postponable", true));
-       }},
-      {"merge_patch",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.MergePatch(as_json_document(require_arg(args, 0, "patch", name)),
-                      opt_bool(args, 1, "postponable", true));
-       }},
       {"json_schema",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
          b.JsonSchema(as_json_document(require_arg(args, 0, "schema", name)),
                       opt_bool(args, 1, "strict", true),
-                      opt_str(args, 2, "error_key", "_schema_errors"),
-                      opt_bool(args, 3, "postponable", true));
+                      opt_str(args, 2, "error_key", "_schema_errors"));
        }},
       {"debug",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
@@ -680,7 +565,7 @@ get_method_registry() {
            }
            schema.emplace(kv.key(), parse_value_type_name(kv.value().as_string_view()));
          }
-         b.CastKeys(std::move(schema), opt_bool(args, 1, "postponable", true));
+         b.CastKeys(std::move(schema));
        }},
       {"resolve_url",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -775,23 +660,6 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
          b.Hash(opt_str(args, 0, "algo", "fnv1a64"));
        }},
-      {"replace_many",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         const jsoncons::json j =
-             as_json_document(require_arg(args, 0, "mapping", name));
-         if (!j.is_object()) {
-           throw std::runtime_error("replace_many: mapping must be an object");
-         }
-         absl::flat_hash_map<std::string, std::string> mapping;
-         for (const auto &kv : j.object_range()) {
-           if (!kv.value().is_string()) {
-             throw std::runtime_error(
-                 "replace_many: mapping values must be strings");
-           }
-           mapping.emplace(kv.key(), kv.value().as_string());
-         }
-         b.ReplaceMany(mapping);
-       }},
       {"extract_many",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
          b.ExtractMany(as_str_list(require_arg(args, 0, "patterns", name)),
@@ -806,16 +674,11 @@ get_method_registry() {
        [](ScraperBuilder &b, const DslArgList &, std::string_view) {
          b.Reverse();
        }},
-      {"coalesce",
-       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.Coalesce(opt_str(args, 0, "fallback", ""));
-       }},
       {"zip_keys",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
          b.ZipKeys(as_str(require_arg(args, 0, "keys_key", name)),
                    as_str(require_arg(args, 1, "values_key", name)),
-                   opt_str(args, 2, "target_key", ""),
-                   opt_bool(args, 3, "postponable", true));
+                   opt_str(args, 2, "target_key", ""));
        }},
       {"xpath",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -916,8 +779,7 @@ get_method_registry() {
            rules.emplace_back(target, as_str_list(srcs));
          }
          b.CoalesceKeys(std::move(rules),
-                        opt_bool(args, 1, "drop_sources", true),
-                        opt_bool(args, 2, "postponable", true));
+                        opt_bool(args, 1, "drop_sources", true));
        }},
       {"query_params",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -933,8 +795,7 @@ get_method_registry() {
              pairs.emplace_back(p, p);
            }
          }
-         b.QueryParams(std::move(pairs), opt_str(args, 1, "default_val", ""),
-                       opt_bool(args, 2, "clear", false));
+         b.QueryParams(std::move(pairs), opt_str(args, 1, "default_val", ""));
        }},
       {"skip_if_exists",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {

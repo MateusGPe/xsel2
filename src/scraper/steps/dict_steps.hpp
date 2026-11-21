@@ -12,11 +12,7 @@
 
 namespace scraper {
 
-class FlattenDictStep final : public PostponableJsonStep {
-public:
-  explicit FlattenDictStep(bool postponable = true) noexcept
-      : PostponableJsonStep(postponable) {}
-
+class FlattenDictStep final : public JsonTransformStep {
 protected:
   [[nodiscard]] jsoncons::json
   transform(const jsoncons::json &input) const override;
@@ -26,12 +22,10 @@ private:
                                             int depth) const;
 };
 
-class FilterDictStep final : public PostponableJsonStep {
+class FilterDictStep final : public JsonTransformStep {
 public:
-  explicit FilterDictStep(const std::vector<std::string> &keys_to_keep,
-                          bool postponable = true)
-      : PostponableJsonStep(postponable),
-        keys_to_keep_(keys_to_keep.begin(), keys_to_keep.end()) {}
+  explicit FilterDictStep(const std::vector<std::string> &keys_to_keep)
+      : keys_to_keep_(keys_to_keep.begin(), keys_to_keep.end()) {}
 
 protected:
   [[nodiscard]] jsoncons::json
@@ -41,12 +35,10 @@ private:
   absl::flat_hash_set<std::string> keys_to_keep_;
 };
 
-class RemoveKeysStep final : public PostponableJsonStep {
+class RemoveKeysStep final : public JsonTransformStep {
 public:
-  explicit RemoveKeysStep(const std::vector<std::string> &keys_to_remove,
-                          bool postponable = true)
-      : PostponableJsonStep(postponable),
-        keys_to_remove_(keys_to_remove.begin(), keys_to_remove.end()) {}
+  explicit RemoveKeysStep(const std::vector<std::string> &keys_to_remove)
+      : keys_to_remove_(keys_to_remove.begin(), keys_to_remove.end()) {}
 
 protected:
   [[nodiscard]] jsoncons::json
@@ -58,12 +50,11 @@ private:
                                            int depth) const;
 };
 
-class RenameKeysStep final : public PostponableJsonStep {
+class RenameKeysStep final : public JsonTransformStep {
 public:
   explicit RenameKeysStep(
-      absl::flat_hash_map<std::string, std::string> rename_map,
-      bool postponable = true)
-      : PostponableJsonStep(postponable), rename_map_(std::move(rename_map)) {}
+      absl::flat_hash_map<std::string, std::string> rename_map)
+      : rename_map_(std::move(rename_map)) {}
 
 protected:
   [[nodiscard]] jsoncons::json
@@ -75,12 +66,10 @@ private:
                                            int depth) const;
 };
 
-class MergeKeysStep final : public PostponableJsonStep {
+class MergeKeysStep final : public JsonTransformStep {
 public:
-  MergeKeysStep(std::vector<std::string> source_keys, std::string target_key,
-                bool postponable = true)
-      : PostponableJsonStep(postponable),
-        source_keys_(std::move(source_keys)),
+  MergeKeysStep(std::vector<std::string> source_keys, std::string target_key)
+      : source_keys_(std::move(source_keys)),
         target_key_(std::move(target_key)) {}
 
 protected:
@@ -92,10 +81,10 @@ private:
   std::string target_key_;
 };
 
-class SortKeysStep final : public PostponableJsonStep {
+class SortKeysStep final : public JsonTransformStep {
 public:
-  explicit SortKeysStep(bool ascending = true, bool postponable = true) noexcept
-      : PostponableJsonStep(postponable), ascending_(ascending) {}
+  explicit SortKeysStep(bool ascending = true) noexcept
+      : ascending_(ascending) {}
 
 protected:
   [[nodiscard]] jsoncons::json
@@ -107,11 +96,7 @@ private:
                                          int depth) const;
 };
 
-class DeduplicateStep final : public PostponableJsonStep {
-public:
-  explicit DeduplicateStep(bool postponable = true) noexcept
-      : PostponableJsonStep(postponable) {}
-
+class DeduplicateStep final : public JsonTransformStep {
 protected:
   [[nodiscard]] jsoncons::json
   transform(const jsoncons::json &input) const override;
@@ -121,11 +106,10 @@ private:
                                           int depth) const;
 };
 
-class JsonQueryStep final : public PostponableJsonStep {
+class JsonQueryStep final : public JsonTransformStep {
 public:
-  JsonQueryStep(xsel::query::QueryDialect dialect, std::string_view expr,
-                bool postponable = true)
-      : PostponableJsonStep(postponable), dialect_(dialect), expr_(expr) {}
+  JsonQueryStep(xsel::query::QueryDialect dialect, std::string_view expr)
+      : dialect_(dialect), expr_(expr) {}
 
 protected:
   [[nodiscard]] jsoncons::json
@@ -136,12 +120,13 @@ private:
   std::string expr_;
 };
 
-class ZipKeysStep final : public PostponableJsonStep {
+class ZipKeysStep final : public JsonTransformStep {
 public:
   ZipKeysStep(std::string_view keys_key, std::string_view values_key,
-              std::string_view target_key = "", bool postponable = true)
-      : PostponableJsonStep(postponable), keys_key_(keys_key),
-        values_key_(values_key), target_key_(target_key) {}
+              std::string_view target_key = "")
+      : keys_key_(keys_key),
+        values_key_(values_key),
+        target_key_(target_key) {}
 
 protected:
   [[nodiscard]] jsoncons::json
@@ -196,14 +181,12 @@ private:
   std::string name_;
 };
 
-class CoalesceKeysStep final : public PostponableJsonStep {
+class CoalesceKeysStep final : public JsonTransformStep {
 public:
   using Rule = std::pair<std::string, std::vector<std::string>>;
 
-  explicit CoalesceKeysStep(std::vector<Rule> rules, bool drop_sources = true,
-                            bool postponable = true)
-      : PostponableJsonStep(postponable), rules_(std::move(rules)),
-        drop_sources_(drop_sources) {}
+  explicit CoalesceKeysStep(std::vector<Rule> rules, bool drop_sources = true)
+      : rules_(std::move(rules)), drop_sources_(drop_sources) {}
 
 protected:
   [[nodiscard]] jsoncons::json

@@ -112,18 +112,15 @@ void ReplaceStep::apply(Node, std::vector<std::string> &values,
                         jsoncons::json &) {
   if (from_str_.empty())
     return;
-  for (auto &v : values) {
-    const size_t pos = v.find(from_str_);
-    if (pos != std::string::npos) {
-      v.replace(pos, from_str_.size(), to_str_);
+  if (first_only_) {
+    for (auto &v : values) {
+      const size_t pos = v.find(from_str_);
+      if (pos != std::string::npos) {
+        v.replace(pos, from_str_.size(), to_str_);
+      }
     }
-  }
-}
-
-void SubstituteStep::apply(Node, std::vector<std::string> &values,
-                           jsoncons::json &) {
-  if (from_str_.empty())
     return;
+  }
   for (auto &v : values) {
     size_t pos = 0;
     while ((pos = v.find(from_str_, pos)) != std::string::npos) {
@@ -606,23 +603,28 @@ void SimilarityStep::apply(Node, std::vector<std::string> &values,
   const auto algo = xsel::common::parse_fuzzy_algo(algo_);
   std::vector<double> scores;
   scores.reserve(values.size());
-  for (auto &v : values) {
-    const double score =
-        xsel::common::fuzzy_similarity(v, query_, algo, case_sensitive_);
-    scores.push_back(score);
-    std::ostringstream oss;
-    oss << score;
-    v = oss.str();
+  for (const auto &v : values) {
+    scores.push_back(
+        xsel::common::fuzzy_similarity(v, query_, algo, case_sensitive_));
   }
-  if (!key_.empty() && !scores.empty()) {
-    if (scores.size() == 1) {
-      insert_into_json(dict, key_, jsoncons::json(scores.front()));
-    } else {
-      jsoncons::json arr = jsoncons::json::array();
-      for (double s : scores) {
-        arr.push_back(s);
+  if (!key_.empty()) {
+    if (!scores.empty()) {
+      if (scores.size() == 1) {
+        insert_into_json(dict, key_, jsoncons::json(scores.front()));
+      } else {
+        jsoncons::json arr = jsoncons::json::array();
+        for (double s : scores) {
+          arr.push_back(s);
+        }
+        insert_into_json(dict, key_, std::move(arr));
       }
-      insert_into_json(dict, key_, std::move(arr));
+    }
+    values.clear();
+  } else {
+    for (size_t i = 0; i < values.size(); ++i) {
+      std::ostringstream oss;
+      oss << scores[i];
+      values[i] = oss.str();
     }
   }
 }

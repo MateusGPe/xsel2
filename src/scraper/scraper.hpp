@@ -10,6 +10,7 @@
 #include "scraper/steps/type_steps.hpp"
 #include "scraper/steps/url_steps.hpp"
 #include <absl/container/flat_hash_map.h>
+#include <concepts>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -78,12 +79,17 @@ public:
     finalize_steps_ = std::move(steps);
   }
 
+  void set_in_block(bool v) noexcept { in_block_ = v; }
+  [[nodiscard]] bool in_block() const noexcept { return in_block_; }
+
 protected:
   void add_step(std::shared_ptr<Step> step);
+  void add_dict_step(std::shared_ptr<Step> step);
   std::vector<std::shared_ptr<Extractor>> extractors_;
   std::vector<std::shared_ptr<Step>> finalize_steps_;
   ErrorPolicy error_policy_ = ErrorPolicy::LogAndContinue;
   std::vector<std::string> errors_;
+  bool in_block_ = false;
 };
 
 template <typename Derived> class ScraperBuilderBase : public Scraper {
@@ -128,13 +134,15 @@ public:
     return self();
   }
 
-  Derived &Replace(std::string_view from, std::string_view to = "") {
-    add_step(std::make_shared<ReplaceStep>(from, to));
+  Derived &Replace(std::string_view from, std::string_view to = "",
+                   bool first_only = false) {
+    add_step(std::make_shared<ReplaceStep>(from, to, first_only));
     return self();
   }
 
-  Derived &ReplaceExact(std::string_view from, std::string_view to = "") {
-    add_step(std::make_shared<SubstituteStep>(from, to));
+  Derived &
+  Replace(const absl::flat_hash_map<std::string, std::string> &mapping) {
+    add_step(std::make_shared<ReplaceManyStep>(mapping));
     return self();
   }
 
@@ -202,10 +210,8 @@ public:
   Derived &
   RegexGroups(std::string_view pattern,
               const std::optional<std::string> &flags = std::nullopt,
-              std::string_view prefix = "", bool clear = false,
-              InsertOptions opts = {}) {
-    add_step(
-        std::make_shared<RegexGroupsStep>(pattern, flags, prefix, clear, opts));
+              std::string_view prefix = "", InsertOptions opts = {}) {
+    add_step(std::make_shared<RegexGroupsStep>(pattern, flags, prefix, opts));
     return self();
   }
 
@@ -214,27 +220,37 @@ public:
     return self();
   }
 
-  Derived &FindAll(std::string_view sel, QueryAllStep::Type type,
-                   std::string_view attr = "", bool optional = false) {
-    add_step(std::make_shared<QueryAllStep>(sel, type, attr, optional));
-    return self();
-  }
-
-  Derived &Find(std::string_view sel, QueryAllStep::Type type,
-                std::string_view attr = "",
-                QueryStep::Number number = QueryStep::Number::All,
-                size_t nth_val = 0, bool optional = false) {
-    add_step(
-        std::make_shared<QueryStep>(sel, type, attr, number, nth_val, optional));
-    return self();
-  }
-
-  Derived &FindFirst(std::string_view sel,
-                     QueryAllStep::Type type = QueryAllStep::Type::Text,
-                     std::vector<std::string> attrs = {}, bool squish = true,
-                     bool required = false) {
+  Derived &Find(std::string_view sel,
+                QueryAllStep::Type type = QueryAllStep::Type::Text,
+                std::vector<std::string> attrs = {}, bool squish = true,
+                bool required = false) {
     add_step(std::make_shared<FindFirstStep>(sel, type, std::move(attrs),
                                              squish, required));
+    return self();
+  }
+
+  template <std::convertible_to<std::string_view> AttrStr>
+  Derived &Find(std::string_view sel, QueryAllStep::Type type, AttrStr &&attr,
+                bool squish = true, bool required = false) {
+    add_step(std::make_shared<FindFirstStep>(
+        sel, type, std::forward<AttrStr>(attr), squish, required));
+    return self();
+  }
+
+  Derived &FindAll(std::string_view sel,
+                   QueryAllStep::Type type = QueryAllStep::Type::Text,
+                   std::vector<std::string> attrs = {}, bool squish = false,
+                   bool required = false) {
+    add_step(std::make_shared<QueryAllStep>(sel, type, std::move(attrs), squish,
+                                            required));
+    return self();
+  }
+
+  template <std::convertible_to<std::string_view> AttrStr>
+  Derived &FindAll(std::string_view sel, QueryAllStep::Type type,
+                   AttrStr &&attr, bool squish = false, bool required = false) {
+    add_step(std::make_shared<QueryAllStep>(
+        sel, type, std::forward<AttrStr>(attr), squish, required));
     return self();
   }
 
@@ -339,58 +355,53 @@ public:
     return self();
   }
 
-  Derived &Flatten(bool postponable = true) {
-    add_step(std::make_shared<FlattenDictStep>(postponable));
+  Derived &Flatten() {
+    add_dict_step(std::make_shared<FlattenDictStep>());
     return self();
   }
 
-  Derived &FlattenLocal() { return Flatten(false); }
-
-  Derived &PickKeys(const std::vector<std::string> &keys_to_keep,
-                    bool postponable = true) {
-    add_step(std::make_shared<FilterDictStep>(keys_to_keep, postponable));
+  Derived &PickKeys(const std::vector<std::string> &keys_to_keep) {
+    add_dict_step(std::make_shared<FilterDictStep>(keys_to_keep));
     return self();
   }
 
-  Derived &OmitKeys(const std::vector<std::string> &keys_to_remove,
-                    bool postponable = true) {
-    add_step(std::make_shared<RemoveKeysStep>(keys_to_remove, postponable));
+  Derived &OmitKeys(const std::vector<std::string> &keys_to_remove) {
+    add_dict_step(std::make_shared<RemoveKeysStep>(keys_to_remove));
     return self();
   }
 
-  Derived &RenameKeys(absl::flat_hash_map<std::string, std::string> rename_map,
-                      bool postponable = true) {
-    add_step(
-        std::make_shared<RenameKeysStep>(std::move(rename_map), postponable));
+  Derived &
+  RenameKeys(absl::flat_hash_map<std::string, std::string> rename_map) {
+    add_dict_step(std::make_shared<RenameKeysStep>(std::move(rename_map)));
     return self();
   }
 
   Derived &MergeKeys(std::vector<std::string> source_keys,
-                     std::string target_key, bool postponable = true) {
-    add_step(std::make_shared<MergeKeysStep>(
-        std::move(source_keys), std::move(target_key), postponable));
+                     std::string target_key) {
+    add_dict_step(std::make_shared<MergeKeysStep>(std::move(source_keys),
+                                                  std::move(target_key)));
     return self();
   }
 
-  Derived &SortKeys(bool ascending = true, bool postponable = true) {
-    add_step(std::make_shared<SortKeysStep>(ascending, postponable));
+  Derived &SortKeys(bool ascending = true) {
+    add_dict_step(std::make_shared<SortKeysStep>(ascending));
     return self();
   }
 
-  Derived &Deduplicate(bool postponable = true) {
-    add_step(std::make_shared<DeduplicateStep>(postponable));
+  Derived &Deduplicate() {
+    add_dict_step(std::make_shared<DeduplicateStep>());
     return self();
   }
 
-  Derived &JmesPath(std::string_view expr, bool postponable = true) {
-    add_step(std::make_shared<JsonQueryStep>(
-        xsel::query::QueryDialect::JmesPath, expr, postponable));
+  Derived &JmesPath(std::string_view expr) {
+    add_dict_step(std::make_shared<JsonQueryStep>(
+        xsel::query::QueryDialect::JmesPath, expr));
     return self();
   }
 
-  Derived &JsonPath(std::string_view expr, bool postponable = true) {
-    add_step(std::make_shared<JsonQueryStep>(
-        xsel::query::QueryDialect::JsonPath, expr, postponable));
+  Derived &JsonPath(std::string_view expr) {
+    add_dict_step(std::make_shared<JsonQueryStep>(
+        xsel::query::QueryDialect::JsonPath, expr));
     return self();
   }
 
@@ -422,127 +433,10 @@ public:
     return self();
   }
 
-  Derived &FromCbor(
-      std::string_view objname = "",
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      bool strict = true, InsertOptions insert_opts = {}) {
-    add_step(std::make_shared<BinaryDecodeStep>(
-        xsel::query::BinaryFormat::Cbor, objname, enc, strict, insert_opts));
-    return self();
-  }
-
-  Derived &ToCbor(
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      std::string_view source_key = "") {
-    add_step(std::make_shared<BinaryEncodeStep>(
-        xsel::query::BinaryFormat::Cbor, enc, source_key));
-    return self();
-  }
-
-  Derived &FromMsgPack(
-      std::string_view objname = "",
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      bool strict = true, InsertOptions insert_opts = {}) {
-    add_step(std::make_shared<BinaryDecodeStep>(
-        xsel::query::BinaryFormat::MsgPack, objname, enc, strict, insert_opts));
-    return self();
-  }
-
-  Derived &ToMsgPack(
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      std::string_view source_key = "") {
-    add_step(std::make_shared<BinaryEncodeStep>(
-        xsel::query::BinaryFormat::MsgPack, enc, source_key));
-    return self();
-  }
-
-  Derived &FromBson(
-      std::string_view objname = "",
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      bool strict = true, InsertOptions insert_opts = {}) {
-    add_step(std::make_shared<BinaryDecodeStep>(
-        xsel::query::BinaryFormat::Bson, objname, enc, strict, insert_opts));
-    return self();
-  }
-
-  Derived &ToBson(
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      std::string_view source_key = "") {
-    add_step(std::make_shared<BinaryEncodeStep>(
-        xsel::query::BinaryFormat::Bson, enc, source_key));
-    return self();
-  }
-
-  Derived &FromUbjson(
-      std::string_view objname = "",
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      bool strict = true, InsertOptions insert_opts = {}) {
-    add_step(std::make_shared<BinaryDecodeStep>(
-        xsel::query::BinaryFormat::Ubjson, objname, enc, strict, insert_opts));
-    return self();
-  }
-
-  Derived &ToUbjson(
-      xsel::query::BinaryEncoding enc = xsel::query::BinaryEncoding::Hex,
-      std::string_view source_key = "") {
-    add_step(std::make_shared<BinaryEncodeStep>(
-        xsel::query::BinaryFormat::Ubjson, enc, source_key));
-    return self();
-  }
-
-  Derived &JsonPathReplace(std::string_view expr, jsoncons::json replacement,
-                           bool postponable = true) {
-    add_step(std::make_shared<JsonPathReplaceStep>(expr, std::move(replacement),
-                                                   postponable));
-    return self();
-  }
-
-  Derived &JsonFlatten(bool postponable = true) {
-    add_step(std::make_shared<JsonFlattenStep>(postponable));
-    return self();
-  }
-
-  Derived &JsonUnflatten(bool postponable = true) {
-    add_step(std::make_shared<JsonUnflattenStep>(postponable));
-    return self();
-  }
-
-  Derived &JsonPointerGet(std::string_view pointer,
-                          std::string_view target_key = "",
-                          bool postponable = true) {
-    add_step(std::make_shared<JsonPointerGetStep>(pointer, target_key,
-                                                  postponable));
-    return self();
-  }
-
-  Derived &JsonPointerSet(std::string_view pointer, jsoncons::json value,
-                          bool postponable = true) {
-    add_step(std::make_shared<JsonPointerSetStep>(pointer, std::move(value),
-                                                  postponable));
-    return self();
-  }
-
-  Derived &JsonPointerRemove(std::string_view pointer,
-                             bool postponable = true) {
-    add_step(std::make_shared<JsonPointerRemoveStep>(pointer, postponable));
-    return self();
-  }
-
-  Derived &JsonPatch(jsoncons::json patch, bool postponable = true) {
-    add_step(std::make_shared<JsonPatchStep>(std::move(patch), postponable));
-    return self();
-  }
-
-  Derived &MergePatch(jsoncons::json patch, bool postponable = true) {
-    add_step(std::make_shared<MergePatchStep>(std::move(patch), postponable));
-    return self();
-  }
-
   Derived &JsonSchema(jsoncons::json schema, bool strict = true,
-                      std::string_view error_key = "_schema_errors",
-                      bool postponable = true) {
-    add_step(std::make_shared<JsonSchemaStep>(std::move(schema), strict,
-                                              error_key, postponable));
+                      std::string_view error_key = "_schema_errors") {
+    add_dict_step(std::make_shared<JsonSchemaStep>(std::move(schema), strict,
+                                                   error_key));
     return self();
   }
 
@@ -588,9 +482,8 @@ public:
     return self();
   }
 
-  Derived &CastKeys(absl::flat_hash_map<std::string, ValueType> schema,
-                    bool postponable = true) {
-    add_step(std::make_shared<CastKeysStep>(std::move(schema), postponable));
+  Derived &CastKeys(absl::flat_hash_map<std::string, ValueType> schema) {
+    add_dict_step(std::make_shared<CastKeysStep>(std::move(schema)));
     return self();
   }
 
@@ -673,12 +566,6 @@ public:
     return self();
   }
 
-  Derived &ReplaceMany(
-      const absl::flat_hash_map<std::string, std::string> &mapping) {
-    add_step(std::make_shared<ReplaceManyStep>(mapping));
-    return self();
-  }
-
   Derived &ExtractMany(const std::vector<std::string> &patterns,
                        bool unique = true) {
     add_step(std::make_shared<ExtractManyStep>(patterns, unique));
@@ -695,15 +582,10 @@ public:
     return self();
   }
 
-  Derived &Coalesce(std::string_view fallback = "") {
-    add_step(std::make_shared<CoalesceStep>(fallback));
-    return self();
-  }
-
   Derived &ZipKeys(std::string_view keys_key, std::string_view values_key,
-                   std::string_view target_key = "", bool postponable = true) {
-    add_step(std::make_shared<ZipKeysStep>(keys_key, values_key, target_key,
-                                           postponable));
+                   std::string_view target_key = "") {
+    add_dict_step(
+        std::make_shared<ZipKeysStep>(keys_key, values_key, target_key));
     return self();
   }
 
@@ -798,17 +680,17 @@ public:
   }
 
   Derived &CoalesceKeys(std::vector<CoalesceKeysStep::Rule> rules,
-                        bool drop_sources = true, bool postponable = true) {
-    add_step(std::make_shared<CoalesceKeysStep>(std::move(rules), drop_sources,
-                                                postponable));
+                        bool drop_sources = true) {
+    add_dict_step(
+        std::make_shared<CoalesceKeysStep>(std::move(rules), drop_sources));
     return self();
   }
 
   Derived &QueryParams(std::vector<QueryParamsStep::ParamMapping> param_to_key,
-                       std::string_view default_val = "", bool clear = false,
+                       std::string_view default_val = "",
                        InsertOptions opts = {}) {
     add_step(std::make_shared<QueryParamsStep>(std::move(param_to_key),
-                                               default_val, clear, opts));
+                                               default_val, opts));
     return self();
   }
 

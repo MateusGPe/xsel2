@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "scraperpy"
-version = "0.5.1"
+version = "0.6.0"
 description = "High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine"
 readme = "README.md"
 requires-python = ">=3.9"

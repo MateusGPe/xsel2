@@ -64,6 +64,20 @@ std::vector<std::string> py_str_or_list(const py::object &obj) {
   return obj.cast<std::vector<std::string>>();
 }
 
+std::vector<std::string> py_attr_list(const py::object &obj) {
+  if (obj.is_none()) {
+    return {};
+  }
+  if (py::isinstance<py::str>(obj)) {
+    std::string s = obj.cast<std::string>();
+    if (s.empty()) {
+      return {};
+    }
+    return {std::move(s)};
+  }
+  return obj.cast<std::vector<std::string>>();
+}
+
 scraper::QueryAllStep::Type py_parse_value_type(const py::object &obj) {
   if (py::isinstance<scraper::QueryAllStep::Type>(obj)) {
     return obj.cast<scraper::QueryAllStep::Type>();
@@ -198,22 +212,6 @@ py::dict scrapers_to_py_dict(
   return out;
 }
 
-xsel::query::BinaryEncoding
-parse_py_binary_encoding(std::string_view encoding) {
-  if (absl::EqualsIgnoreCase(encoding, "hex")) {
-    return xsel::query::BinaryEncoding::Hex;
-  }
-  if (absl::EqualsIgnoreCase(encoding, "base64")) {
-    return xsel::query::BinaryEncoding::Base64;
-  }
-  if (absl::EqualsIgnoreCase(encoding, "raw")) {
-    return xsel::query::BinaryEncoding::Raw;
-  }
-  std::cerr << "[xsel2] Warning: Unknown binary encoding '" << encoding
-            << "', defaulting to 'hex'\n";
-  return xsel::query::BinaryEncoding::Hex;
-}
-
 } // namespace
 
 PYBIND11_MODULE(_scraperpy, m) {
@@ -222,7 +220,7 @@ PYBIND11_MODULE(_scraperpy, m) {
 #ifdef SCRAPERPY_VERSION_INFO
   m.attr("__version__") = SCRAPERPY_VERSION_INFO;
 #else
-  m.attr("__version__") = "0.5.1-dev";
+  m.attr("__version__") = "0.6.0-dev";
 #endif
 
   py::enum_<scraper::QueryAllStep::Type>(m, "Value")
@@ -232,12 +230,6 @@ PYBIND11_MODULE(_scraperpy, m) {
       .value("ElementExists", scraper::QueryAllStep::Type::ElementExists)
       .value("AttributeExists", scraper::QueryAllStep::Type::AttributeExists)
       .value("Adjacent", scraper::QueryAllStep::Type::AdjacentText)
-      .export_values();
-
-  py::enum_<scraper::QueryStep::Number>(m, "Number")
-      .value("All", scraper::QueryStep::Number::All)
-      .value("Last", scraper::QueryStep::Number::Last)
-      .value("Nth", scraper::QueryStep::Number::Nth)
       .export_values();
 
   py::enum_<scraper::InsertMode>(m, "InsertMode")
@@ -296,33 +288,39 @@ PYBIND11_MODULE(_scraperpy, m) {
             return self.AttrFallback(py_str_or_list(attr_name));
           },
           py::arg("attr_name"), py::return_value_policy::reference_internal)
-      .def("find_all", &ScraperPy::FindAll, py::arg("sel"), py::arg("type"),
-           py::arg("attr") = "", py::arg("optional") = false,
-           py::return_value_policy::reference_internal)
-      .def("find", &ScraperPy::Find, py::arg("sel"), py::arg("type"),
-           py::arg("attr") = "",
-           py::arg("number") = scraper::QueryStep::Number::All,
-           py::arg("nth_val") = 0, py::arg("optional") = false,
-           py::return_value_policy::reference_internal)
       .def(
-          "try_find",
+          "find_all",
           [](ScraperPy &self, const std::string &sel,
-             scraper::QueryAllStep::Type type, const std::string &attr,
-             scraper::QueryStep::Number number, size_t nth_val) -> ScraperPy & {
-            return self.Find(sel, type, attr, number, nth_val, true);
+             const py::object &type_obj, const py::object &attr, bool squish,
+             bool required) -> ScraperPy & {
+            std::vector<std::string> attrs = py_attr_list(attr);
+            const bool has_type = !type_obj.is_none();
+            scraper::QueryAllStep::Type type =
+                has_type ? py_parse_value_type(type_obj)
+                         : (attrs.empty()
+                                ? scraper::QueryAllStep::Type::Text
+                                : scraper::QueryAllStep::Type::Attribute);
+            return self.FindAll(sel, type, std::move(attrs), squish, required);
           },
-          py::arg("sel"), py::arg("type"), py::arg("attr") = "",
-          py::arg("number") = scraper::QueryStep::Number::All,
-          py::arg("nth_val") = 0, py::return_value_policy::reference_internal)
+          py::arg("sel"), py::arg("type") = py::none(),
+          py::arg("attr") = py::str(""), py::arg("squish") = false,
+          py::arg("required") = false,
+          py::return_value_policy::reference_internal)
       .def(
-          "find_first",
+          "find",
           [](ScraperPy &self, const std::string &sel,
-             scraper::QueryAllStep::Type type, const py::object &attr,
-             bool squish, bool required) -> ScraperPy & {
-            return self.FindFirst(sel, type, py_str_or_list(attr), squish,
-                                  required);
+             const py::object &type_obj, const py::object &attr, bool squish,
+             bool required) -> ScraperPy & {
+            std::vector<std::string> attrs = py_attr_list(attr);
+            const bool has_type = !type_obj.is_none();
+            scraper::QueryAllStep::Type type =
+                has_type ? py_parse_value_type(type_obj)
+                         : (attrs.empty()
+                                ? scraper::QueryAllStep::Type::Text
+                                : scraper::QueryAllStep::Type::Attribute);
+            return self.Find(sel, type, std::move(attrs), squish, required);
           },
-          py::arg("sel"), py::arg("type") = scraper::QueryAllStep::Type::Text,
+          py::arg("sel"), py::arg("type") = py::none(),
           py::arg("attr") = py::str(""), py::arg("squish") = true,
           py::arg("required") = false,
           py::return_value_policy::reference_internal)
@@ -344,10 +342,26 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("unescape", &ScraperPy::Unescape, py::arg("url_decode") = true,
            py::return_value_policy::reference_internal)
-      .def("replace", &ScraperPy::Replace, py::arg("from_str"),
-           py::arg("to_str") = "", py::return_value_policy::reference_internal)
-      .def("replace_exact", &ScraperPy::ReplaceExact, py::arg("from_str"),
-           py::arg("to_str") = "", py::return_value_policy::reference_internal)
+      .def(
+          "replace",
+          [](ScraperPy &self, const py::object &from_or_mapping,
+             const std::string &to_str, bool first_only) -> ScraperPy & {
+            if (py::isinstance<py::dict>(from_or_mapping)) {
+              py::dict d = from_or_mapping.cast<py::dict>();
+              absl::flat_hash_map<std::string, std::string> map;
+              map.reserve(d.size());
+              for (const auto &kv : d) {
+                map.emplace(kv.first.cast<std::string>(),
+                            kv.second.cast<std::string>());
+              }
+              return self.Replace(map);
+            }
+            return self.Replace(from_or_mapping.cast<std::string>(), to_str,
+                                first_only);
+          },
+          py::arg("from_str"), py::arg("to_str") = "",
+          py::arg("first_only") = false,
+          py::return_value_policy::reference_internal)
       .def("split", &ScraperPy::Split, py::arg("delimiter"),
            py::arg("keep_empty_parts") = false,
            py::return_value_policy::reference_internal)
@@ -379,7 +393,7 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("regex_groups", &ScraperPy::RegexGroups, py::arg("pattern"),
            py::arg("flags") = std::nullopt, py::arg("prefix") = "",
-           py::arg("clear") = false, py::arg("opts") = scraper::InsertOptions{},
+           py::arg("opts") = scraper::InsertOptions{},
            py::return_value_policy::reference_internal)
       .def("filter", &ScraperPy::Filter, py::arg("patterns"),
            py::return_value_policy::reference_internal)
@@ -426,13 +440,10 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::arg("simplify") = true,
            py::arg("opts") = scraper::InsertOptions{},
            py::return_value_policy::reference_internal)
-      .def("flatten", &ScraperPy::Flatten, py::arg("postponable") = true,
-           py::return_value_policy::reference_internal)
-      .def("flatten_local", &ScraperPy::FlattenLocal,
+      .def("flatten", &ScraperPy::Flatten,
            py::return_value_policy::reference_internal)
       .def("rename_keys",
-           [](ScraperPy &self, const py::object &pairs,
-              bool postponable) -> ScraperPy & {
+           [](ScraperPy &self, const py::object &pairs) -> ScraperPy & {
              absl::flat_hash_map<std::string, std::string> rename_map;
              if (py::isinstance<py::dict>(pairs)) {
                py::dict d = pairs.cast<py::dict>();
@@ -453,24 +464,19 @@ PYBIND11_MODULE(_scraperpy, m) {
                  rename_map.emplace(list[i], list[i + 1]);
                }
              }
-             return self.RenameKeys(std::move(rename_map), postponable);
+             return self.RenameKeys(std::move(rename_map));
            },
-           py::arg("pairs"), py::arg("postponable") = true,
-           py::return_value_policy::reference_internal)
+           py::arg("pairs"), py::return_value_policy::reference_internal)
       .def("merge_keys",
            [](ScraperPy &self, const py::object &source_keys,
-              const std::string &target_key, bool postponable) -> ScraperPy & {
-             return self.MergeKeys(py_str_or_list(source_keys), target_key,
-                                   postponable);
+              const std::string &target_key) -> ScraperPy & {
+             return self.MergeKeys(py_str_or_list(source_keys), target_key);
            },
            py::arg("source_keys"), py::arg("target_key"),
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("pick_keys", &ScraperPy::PickKeys, py::arg("keys_to_keep"),
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("omit_keys", &ScraperPy::OmitKeys, py::arg("keys_to_remove"),
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def(
           "debug",
@@ -482,16 +488,12 @@ PYBIND11_MODULE(_scraperpy, m) {
           py::arg("print_node") = false,
           py::return_value_policy::reference_internal)
       .def("sort_keys", &ScraperPy::SortKeys, py::arg("ascending") = true,
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("deduplicate", &ScraperPy::Deduplicate,
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("jmespath", &ScraperPy::JmesPath, py::arg("expr"),
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("jsonpath", &ScraperPy::JsonPath, py::arg("expr"),
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def(
           "json_parse",
@@ -546,134 +548,14 @@ PYBIND11_MODULE(_scraperpy, m) {
           py::arg("trim") = true, py::arg("source_key") = "",
           py::return_value_policy::reference_internal)
       .def(
-          "jsonpath_replace",
-          [](ScraperPy &self, const std::string &expr, py::object replacement,
-             bool postponable) -> ScraperPy & {
-            return self.JsonPathReplace(
-                expr, xsel::python::python_to_json(replacement), postponable);
-          },
-          py::arg("expr"), py::arg("replacement"),
-          py::arg("postponable") = true,
-          py::return_value_policy::reference_internal)
-      .def("json_flatten", &ScraperPy::JsonFlatten,
-           py::arg("postponable") = true,
-           py::return_value_policy::reference_internal)
-      .def("json_unflatten", &ScraperPy::JsonUnflatten,
-           py::arg("postponable") = true,
-           py::return_value_policy::reference_internal)
-      .def("jsonpointer_get", &ScraperPy::JsonPointerGet, py::arg("pointer"),
-           py::arg("target_key") = "", py::arg("postponable") = true,
-           py::return_value_policy::reference_internal)
-      .def(
-          "jsonpointer_set",
-          [](ScraperPy &self, const std::string &pointer, py::object value,
-             bool postponable) -> ScraperPy & {
-            return self.JsonPointerSet(
-                pointer, xsel::python::python_to_json(value), postponable);
-          },
-          py::arg("pointer"), py::arg("value"), py::arg("postponable") = true,
-          py::return_value_policy::reference_internal)
-      .def("jsonpointer_remove", &ScraperPy::JsonPointerRemove,
-           py::arg("pointer"), py::arg("postponable") = true,
-           py::return_value_policy::reference_internal)
-      .def(
-          "json_patch",
-          [](ScraperPy &self, py::object patch,
-             bool postponable) -> ScraperPy & {
-            return self.JsonPatch(xsel::python::python_to_json(patch),
-                                  postponable);
-          },
-          py::arg("patch"), py::arg("postponable") = true,
-          py::return_value_policy::reference_internal)
-      .def(
-          "merge_patch",
-          [](ScraperPy &self, py::object patch,
-             bool postponable) -> ScraperPy & {
-            return self.MergePatch(xsel::python::python_to_json(patch),
-                                   postponable);
-          },
-          py::arg("patch"), py::arg("postponable") = true,
-          py::return_value_policy::reference_internal)
-      .def(
           "json_schema",
           [](ScraperPy &self, py::object schema, bool strict,
-             const std::string &error_key, bool postponable) -> ScraperPy & {
+             const std::string &error_key) -> ScraperPy & {
             return self.JsonSchema(xsel::python::python_to_json(schema), strict,
-                                   error_key, postponable);
+                                   error_key);
           },
           py::arg("schema"), py::arg("strict") = true,
           py::arg("error_key") = "_schema_errors",
-          py::arg("postponable") = true,
-          py::return_value_policy::reference_internal)
-      .def(
-          "from_cbor",
-          [](ScraperPy &self, const std::string &objname,
-             const std::string &encoding, bool strict) -> ScraperPy & {
-            return self.FromCbor(objname, parse_py_binary_encoding(encoding),
-                                 strict);
-          },
-          py::arg("objname") = "", py::arg("encoding") = "hex",
-          py::arg("strict") = true, py::return_value_policy::reference_internal)
-      .def(
-          "to_cbor",
-          [](ScraperPy &self, const std::string &encoding,
-             const std::string &source_key) -> ScraperPy & {
-            return self.ToCbor(parse_py_binary_encoding(encoding), source_key);
-          },
-          py::arg("encoding") = "hex", py::arg("source_key") = "",
-          py::return_value_policy::reference_internal)
-      .def(
-          "from_msgpack",
-          [](ScraperPy &self, const std::string &objname,
-             const std::string &encoding, bool strict) -> ScraperPy & {
-            return self.FromMsgPack(objname, parse_py_binary_encoding(encoding),
-                                    strict);
-          },
-          py::arg("objname") = "", py::arg("encoding") = "hex",
-          py::arg("strict") = true, py::return_value_policy::reference_internal)
-      .def(
-          "to_msgpack",
-          [](ScraperPy &self, const std::string &encoding,
-             const std::string &source_key) -> ScraperPy & {
-            return self.ToMsgPack(parse_py_binary_encoding(encoding),
-                                  source_key);
-          },
-          py::arg("encoding") = "hex", py::arg("source_key") = "",
-          py::return_value_policy::reference_internal)
-      .def(
-          "from_bson",
-          [](ScraperPy &self, const std::string &objname,
-             const std::string &encoding, bool strict) -> ScraperPy & {
-            return self.FromBson(objname, parse_py_binary_encoding(encoding),
-                                 strict);
-          },
-          py::arg("objname") = "", py::arg("encoding") = "hex",
-          py::arg("strict") = true, py::return_value_policy::reference_internal)
-      .def(
-          "to_bson",
-          [](ScraperPy &self, const std::string &encoding,
-             const std::string &source_key) -> ScraperPy & {
-            return self.ToBson(parse_py_binary_encoding(encoding), source_key);
-          },
-          py::arg("encoding") = "hex", py::arg("source_key") = "",
-          py::return_value_policy::reference_internal)
-      .def(
-          "from_ubjson",
-          [](ScraperPy &self, const std::string &objname,
-             const std::string &encoding, bool strict) -> ScraperPy & {
-            return self.FromUbjson(objname, parse_py_binary_encoding(encoding),
-                                   strict);
-          },
-          py::arg("objname") = "", py::arg("encoding") = "hex",
-          py::arg("strict") = true, py::return_value_policy::reference_internal)
-      .def(
-          "to_ubjson",
-          [](ScraperPy &self, const std::string &encoding,
-             const std::string &source_key) -> ScraperPy & {
-            return self.ToUbjson(parse_py_binary_encoding(encoding),
-                                 source_key);
-          },
-          py::arg("encoding") = "hex", py::arg("source_key") = "",
           py::return_value_policy::reference_internal)
       .def("parse_number", &ScraperPy::ParseNumber, py::arg("decimal") = ".",
            py::arg("thousands") = ",", py::arg("allow_float") = true,
@@ -723,16 +605,15 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def(
           "cast_keys",
           [](ScraperPy &self,
-             const std::unordered_map<std::string, std::string> &schema,
-             bool postponable) -> ScraperPy & {
+             const std::unordered_map<std::string, std::string> &schema)
+              -> ScraperPy & {
             absl::flat_hash_map<std::string, scraper::ValueType> typed;
             for (const auto &[k, v] : schema) {
               typed.emplace(k, scraper::parse_value_type_name(v));
             }
-            return self.CastKeys(std::move(typed), postponable);
+            return self.CastKeys(std::move(typed));
           },
-          py::arg("schema"), py::arg("postponable") = true,
-          py::return_value_policy::reference_internal)
+          py::arg("schema"), py::return_value_policy::reference_internal)
       .def("resolve_url", &ScraperPy::ResolveUrl, py::arg("base_url"),
            py::return_value_policy::reference_internal)
       .def("url_part", &ScraperPy::UrlPart, py::arg("part"),
@@ -777,16 +658,6 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("hash", &ScraperPy::Hash, py::arg("algo") = "fnv1a64",
            py::return_value_policy::reference_internal)
-      .def(
-          "replace_many",
-          [](ScraperPy &self,
-             const std::unordered_map<std::string, std::string> &mapping)
-              -> ScraperPy & {
-            absl::flat_hash_map<std::string, std::string> map(mapping.begin(),
-                                                              mapping.end());
-            return self.ReplaceMany(map);
-          },
-          py::arg("mapping"), py::return_value_policy::reference_internal)
       .def("extract_many", &ScraperPy::ExtractMany, py::arg("patterns"),
            py::arg("unique") = true,
            py::return_value_policy::reference_internal)
@@ -795,11 +666,8 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("reverse", &ScraperPy::Reverse,
            py::return_value_policy::reference_internal)
-      .def("coalesce", &ScraperPy::Coalesce, py::arg("fallback") = "",
-           py::return_value_policy::reference_internal)
       .def("zip_keys", &ScraperPy::ZipKeys, py::arg("keys_key"),
            py::arg("values_key"), py::arg("target_key") = "",
-           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("xpath", &ScraperPy::XPath, py::arg("expr"), py::arg("attr") = "",
            py::return_value_policy::reference_internal)
@@ -834,8 +702,8 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def(
           "coalesce_keys",
-          [](ScraperPy &self, const py::dict &mapping, bool drop_sources,
-             bool postponable) -> ScraperPy & {
+          [](ScraperPy &self, const py::dict &mapping,
+             bool drop_sources) -> ScraperPy & {
             std::vector<scraper::CoalesceKeysStep::Rule> rules;
             rules.reserve(mapping.size());
             for (const auto &item : mapping) {
@@ -844,16 +712,14 @@ PYBIND11_MODULE(_scraperpy, m) {
                   py_str_or_list(
                       py::reinterpret_borrow<py::object>(item.second)));
             }
-            return self.CoalesceKeys(std::move(rules), drop_sources,
-                                     postponable);
+            return self.CoalesceKeys(std::move(rules), drop_sources);
           },
           py::arg("mapping"), py::arg("drop_sources") = true,
-          py::arg("postponable") = true,
           py::return_value_policy::reference_internal)
       .def(
           "query_params",
           [](ScraperPy &self, const py::object &mapping,
-             const std::string &default_val, bool clear) -> ScraperPy & {
+             const std::string &default_val) -> ScraperPy & {
             std::vector<scraper::QueryParamsStep::ParamMapping> pairs;
             if (py::isinstance<py::dict>(mapping)) {
               for (const auto &item : mapping.cast<py::dict>()) {
@@ -865,10 +731,10 @@ PYBIND11_MODULE(_scraperpy, m) {
                 pairs.emplace_back(p, p);
               }
             }
-            return self.QueryParams(std::move(pairs), default_val, clear);
+            return self.QueryParams(std::move(pairs), default_val);
           },
           py::arg("mapping"), py::arg("default_val") = "",
-          py::arg("clear") = false, py::return_value_policy::reference_internal)
+          py::return_value_policy::reference_internal)
       .def(
           "map_values",
           [](ScraperPy &self,
@@ -945,40 +811,12 @@ PYBIND11_MODULE(_scraperpy, m) {
         xsel::query::evaluate_jsonpath(doc, expr));
   });
 
-  m.def("json_patch_apply", [](py::object data, py::object patch) {
-    const jsoncons::json doc = xsel::python::python_to_json(data);
-    const jsoncons::json p = xsel::python::python_to_json(patch);
-    return xsel::python::json_to_python(xsel::query::apply_json_patch(doc, p));
-  });
-
-  m.def("merge_patch_apply", [](py::object data, py::object patch) {
-    const jsoncons::json doc = xsel::python::python_to_json(data);
-    const jsoncons::json p = xsel::python::python_to_json(patch);
-    return xsel::python::json_to_python(xsel::query::apply_merge_patch(doc, p));
-  });
-
   m.def("json_schema_validate", [](py::object data, py::object schema) {
     const jsoncons::json doc = xsel::python::python_to_json(data);
     const jsoncons::json s = xsel::python::python_to_json(schema);
     std::vector<std::string> errors;
     const bool ok = xsel::query::validate_json_schema(doc, s, &errors);
     return py::make_tuple(ok, errors);
-  });
-
-  m.def("jsonpointer_get", [](py::object data, const std::string &pointer) {
-    const jsoncons::json doc = xsel::python::python_to_json(data);
-    return xsel::python::json_to_python(
-        xsel::query::jsonpointer_get(doc, pointer));
-  });
-
-  m.def("json_flatten", [](py::object data) {
-    const jsoncons::json doc = xsel::python::python_to_json(data);
-    return xsel::python::json_to_python(xsel::query::json_flatten(doc));
-  });
-
-  m.def("json_unflatten", [](py::object data) {
-    const jsoncons::json doc = xsel::python::python_to_json(data);
-    return xsel::python::json_to_python(xsel::query::json_unflatten(doc));
   });
 
   m.def("parse_dsl_string", [](const std::string &dsl_content) {

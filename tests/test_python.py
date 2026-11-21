@@ -160,22 +160,10 @@ def test_metadata_dsl_exhaustive():
     assert summary["json_ld"]["@type"] == "Article"
 
 
-def test_json_query_and_patch_helpers():
+def test_json_query_and_schema_helpers():
     doc = {"user": {"name": "Ada", "scores": [10, 20, 30]}}
     assert sp.jmespath_eval(doc, "user.scores[1]") == 20
     assert sp.jsonpath_query(doc, "$.user.scores[0:2]") == [10, 20]
-    assert sp.jsonpointer_get(doc, "/user/name") == "Ada"
-
-    patched = sp.json_patch_apply(
-        doc, [{"op": "replace", "path": "/user/name", "value": "Grace"}]
-    )
-    assert patched["user"]["name"] == "Grace"
-
-    merged = sp.merge_patch_apply(doc, {"user": {"role": "admin"}})
-    assert merged["user"]["role"] == "admin"
-
-    flat = sp.json_flatten({"a": {"b": [1, 2]}})
-    assert sp.json_unflatten(flat) == {"a": {"b": [1, 2]}}
 
 
 def test_json_schema_validate():
@@ -197,7 +185,7 @@ def test_json_schema_validate():
     "fn,args",
     [
         (sp.jmespath_eval, ({}, "invalid[[")),
-        (sp.jsonpointer_get, ({"a": 1}, "/missing")),
+        (sp.jsonpath_query, ({"a": 1}, "$[invalid")),
         (sp.parse_dsl_string, ("broken = (;",)),
     ],
 )
@@ -218,17 +206,15 @@ def test_marketplace_example_synergy():
     assert ac.has_all(html)
 
     scrapers = sp.load_scrapers(str(repo_root / "examples" / "marketplace.dsl"))
-    assert {"catalog_full", "catalog_summary", "product_skus", "flattened_storefront"} <= set(scrapers.keys())
+    assert {"catalog_full", "catalog_summary", "product_skus"} <= set(scrapers.keys())
 
     full = scrapers["catalog_full"].from_string(html)
-    assert full["storefront"]["verified"] is True
     assert full["storefront"]["promo"] == "Featured: Save 20% on Audio & Keyboards!"
     assert full["hydration"]["apiBase"] == "https://cdn.example.com/catalog/v2"
     assert full["hydration"]["fulfillment"] == {"tier": "prime", "warehouse": "US-EAST"}
     assert full["hydration"]["deprecatedFlag"] is None
-    assert full["hydration"]["internal"]["apiSecret"] == "***REDACTED***"
+    assert "apiSecret" not in full["hydration"]["internal"]
     assert "wholesaleCost" not in full["hydration"]["internal"]
-    assert full["hydration"]["environment"] == "production"
     assert full["hydration"]["featuredSkus"] == ["APX-101", "APX-202"]
     assert full["window"]["__PROMO_CONFIG__"]["code"] == "SPRING20"
     assert full["json_ld"]["numberOfItems"] == 3
@@ -241,9 +227,6 @@ def test_marketplace_example_synergy():
     assert summary["shipping_carriers"] == ["ApexAir", "GroundX", "EuroPost"]
 
     assert scrapers["product_skus"].from_string(html) == ["APX-101", "APX-202", "APX-303"]
-
-    flat = scrapers["flattened_storefront"].from_string(html)
-    assert sp.json_unflatten(flat)["storefront"]["canonical"] == "https://marketplace.example.com/collections/audio-peripherals"
 
     assert sp.jsonpath_query(full, "$.products[?(@.category == 'audio')].name") == ["Studio Monitor Headphones"]
     assert sp.jmespath_eval(full, "window.__PROMO_CONFIG__.discountPct") == 20
@@ -264,7 +247,7 @@ def test_tier1_steps_python():
     s.select("a.go").attr("href").resolve_url("https://shop.test/").strip_query(["id"]).set("url")
     s.select("p.raw").html().strip_tags().set("clean_text")
     s.select("#item").attrs(data_only=True)
-    s.select("p.raw").text().replace_many({"World": "Python"}).hash("fnv1a64").set("hash")
+    s.select("p.raw").text().replace({"World": "Python"}).hash("fnv1a64").set("hash")
 
     out = s.from_string(html)
     assert out["price"] == 1050.25
@@ -360,33 +343,41 @@ def test_python_scraper_edge_cases():
         sp.ScraperPy().select("div").regex_replace("[unclosed", "x")
 
 
-def test_python_binary_encoding_hardening():
-    s = sp.ScraperPy()
-    s.select("h1").text().set("title")
-    s.to_cbor(encoding="BASE64")
-    s.from_cbor("decoded", encoding="BASE64")
-    out = s.from_string("<h1>Hello</h1>")
-    assert out["decoded"] == {"title": "Hello"}
-
-    # Unknown encoding logs warning and falls back to hex
-    s_bad = sp.ScraperPy()
-    s_bad.select("h1").text().set("title")
-    s_bad.to_cbor(encoding="unknown_enc")
-    s_bad.from_cbor("decoded", encoding="HEX")
-    out_bad = s_bad.from_string("<h1>Hello</h1>")
-    assert out_bad["decoded"] == {"title": "Hello"}
-
-    proc = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import scraperpy as sp; sp.ScraperPy().to_cbor(encoding='unknown_enc')",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
+def test_python_find_replace_and_regex_defaults():
+    html = """
+    <div class="box">
+      <a class="lnk" href="/a?b=c">  One   Two  </a>
+      <span class="txt">x-x-x</span>
+      <span class="case">FOO foo</span>
+    </div>
+    """
+    s = (
+        sp.ScraperPy()
+        .select(".box")
+        .find("a.lnk")
+        .set("link_text")
+        .find("a.lnk", attr="href")
+        .set("href")
+        .find(".txt")
+        .replace("x", "y")
+        .set("rep_all")
+        .find(".txt")
+        .replace("x", "y", first_only=True)
+        .set("rep_first")
+        .find(".case")
+        .regex_replace("foo", "bar")
+        .set("rx_default")
+        .find(".case")
+        .regex_replace("foo", "bar", flags="icase")
+        .set("rx_icase")
     )
-    assert "Unknown binary encoding" in proc.stderr
+    out = s.from_string(html)
+    assert out["link_text"] == "One Two"
+    assert out["href"] == "/a?b=c"
+    assert out["rep_all"] == "y-y-y"
+    assert out["rep_first"] == "y-x-x"
+    assert out["rx_default"] == "FOO bar"
+    assert out["rx_icase"] == "bar bar"
 
 
 def test_python_json_parse_lenient():
@@ -460,11 +451,11 @@ def test_python_phase1_to_3_and_single_parse_document():
             "cover": {"sel": "img.pic", "attr": ["src", "data-src"]},
             "has_pic": {"sel": "img.pic", "type": "exists"},
         })
-        .find_first(".views").parse_number(compact=True, key="views")
-        .find_first(".dur").parse_duration(key="dur_s")
-        .find_first(".dt").parse_date(output="date", now="2026-11-20T12:00:00Z").set("posted")
-        .find_first("img.pic", sp.Value.Attribute, "srcset").parse_srcset("largest").set("best_img")
-        .find_first("a.lnk", sp.Value.Attribute, "href").strip_query(drop_params=["utm_*"]).set("clean_url")
+        .find(".views").parse_number(compact=True, key="views")
+        .find(".dur").parse_duration(key="dur_s")
+        .find(".dt").parse_date(output="date", now="2026-11-20T12:00:00Z").set("posted")
+        .find("img.pic", sp.Value.Attribute, "srcset").parse_srcset("largest").set("best_img")
+        .find("a.lnk", sp.Value.Attribute, "href").strip_query(drop_params=["utm_*"]).set("clean_url")
         .extract_meta("meta", index_json_ld=True)
     )
     out1 = s1.from_document(doc)

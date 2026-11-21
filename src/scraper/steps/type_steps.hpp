@@ -81,11 +81,10 @@ private:
   InsertOptions opts_;
 };
 
-class CastKeysStep final : public PostponableJsonStep {
+class CastKeysStep final : public JsonTransformStep {
 public:
-  CastKeysStep(absl::flat_hash_map<std::string, ValueType> schema,
-               bool postponable = true)
-      : PostponableJsonStep(postponable), schema_(std::move(schema)) {}
+  explicit CastKeysStep(absl::flat_hash_map<std::string, ValueType> schema)
+      : schema_(std::move(schema)) {}
 
 protected:
   [[nodiscard]] jsoncons::json

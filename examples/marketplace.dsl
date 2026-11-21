@@ -6,15 +6,13 @@
 //   - DOM, text, regex, and slicing steps
 //   - Lenient JS/JSON digger (js_block, js_blocks, parse_js with simplify=true)
 //   - Relaxed JSON-LD (json_parse) and CSV (csv_parse)
-//   - JSONPath (jsonpath, jsonpath_replace), JSON Pointer (set/remove),
-//     RFC 6902 json_patch, RFC 7396 merge_patch, json_flatten, json_schema,
-//     and JMESPath normalization.
+//   - JSONPath (jsonpath), JSON Schema (json_schema), and JMESPath normalization.
 // =============================================================================
 
 let card_sel = ".product-card"
 let json_ld_sel = "script[type='application/ld+json']"
 
-// 1. Full extraction + lenient digger + JSONPath/Pointer/Patch/Schema pipeline
+// 1. Full extraction + lenient digger + JSON transformations & validation
 catalog_full = Scraper()
   | $("head title", "storefront") {
       text | unescape | clean -> "title"
@@ -49,12 +47,8 @@ catalog_full = Scraper()
       text | js_block("window.__CATALOG_STATE__ =") | parse_js("hydration", true)
       | text | js_blocks(["window.__PROMO_CONFIG__"])
     }
-  // Postponed JSON transformations & validation
-  | jsonpath_replace("$.hydration.internal.apiSecret", "***REDACTED***")
-  | jsonpointer_remove("/hydration/internal/wholesaleCost")
-  | jsonpointer_set("/hydration/environment", "production")
-  | merge_patch({"source": "marketplace_html", "schema_version": 2})
-  | json_patch([{"op": "add", "path": "/storefront/verified", "value": true}])
+  // Top-level JSON transformations & validation
+  | omit_keys(["apiSecret", "wholesaleCost"])
   | deduplicate()
   | sort_keys(true)
   | json_schema({
@@ -92,10 +86,3 @@ catalog_summary = Scraper()
 product_skus = Scraper()
   | $(card_sel, "products") { @"data-sku" -> "sku" }
   | jsonpath("$.products[*].sku")
-
-
-// 4. JSONPath-flattened storefront metadata
-flattened_storefront = Scraper()
-  | $("head title", "storefront") { text | unescape | clean -> "title" }
-  | $("link[rel='canonical']", "storefront") { @href -> "canonical" }
-  | json_flatten()

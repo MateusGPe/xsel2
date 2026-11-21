@@ -346,9 +346,7 @@ void QueryParamsStep::apply(Node, std::vector<std::string> &values,
     }
   }
 
-  if (clear_) {
-    values.clear();
-  }
+  values.clear();
 }
 
 void StripQueryStep::apply(Node, std::vector<std::string> &values,

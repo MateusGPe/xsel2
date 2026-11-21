@@ -1,6 +1,6 @@
 """Comprehensive example showing synergy across xsel2 / scraperpy modules:
 AhoCorasick pre-scan -> DSL scrapers (lenient digger, relaxed JSON, CSV,
-JSONPath, JSON Pointer, Patch, Schema, JMESPath) -> fluent ScraperPy ->
+JSONPath, JSON Schema, JMESPath) -> fluent ScraperPy ->
 standalone JSON queries & validation.
 """
 
@@ -41,10 +41,6 @@ print(json.dumps(summary_doc, indent=2))
 skus = scrapers["product_skus"].from_string(HTML)
 print("\n4. product_skus (JSONPath):", skus)
 
-flat_store = scrapers["flattened_storefront"].from_string(HTML)
-print("\n5. flattened_storefront (json_flatten):", flat_store)
-print("   unflattened:", sp.json_unflatten(flat_store))
-
 # 3. Fluent ScraperPy pipeline extracting spec counts & USB-C products
 fluent = (
     sp.ScraperPy()
@@ -57,23 +53,18 @@ fluent = (
     .count("usbc_spec_count")
 )
 fluent_res = fluent.from_string(HTML)
-print("\n6. Fluent ScraperPy USB-C spec count:", fluent_res)
+print("\n5. Fluent ScraperPy USB-C spec count:", fluent_res)
 
 # 4. Standalone jsoncons queries & validation on scraped output
 audio_names = sp.jsonpath_query(
     full_doc, "$.products[?(@.category == 'audio')].name"
 )
-warehouse = sp.jsonpointer_get(full_doc, "/hydration/fulfillment/warehouse")
 promo_code = sp.jmespath_eval(full_doc, "window.__PROMO_CONFIG__.code")
 print(
-    f"\n7. Standalone queries -> audio_names={audio_names}, "
-    f"warehouse={warehouse!r}, promo_code={promo_code!r}"
+    f"\n6. Standalone queries -> audio_names={audio_names}, "
+    f"promo_code={promo_code!r}"
 )
 
-# Apply an RFC 6902 patch & validate against a strict JSON Schema in Python
-patched = sp.json_patch_apply(
-    summary_doc, [{"op": "replace", "path": "/warehouse", "value": "US-WEST"}]
-)
 summary_schema = {
     "type": "object",
     "required": ["store", "warehouse", "in_stock_products", "shipping_carriers"],
@@ -84,5 +75,5 @@ summary_schema = {
         "shipping_carriers": {"type": "array"},
     },
 }
-ok, errors = sp.json_schema_validate(patched, summary_schema)
-print(f"8. Patched summary schema valid={ok}, errors={errors}")
+ok, errors = sp.json_schema_validate(summary_doc, summary_schema)
+print(f"7. Summary schema valid={ok}, errors={errors}")

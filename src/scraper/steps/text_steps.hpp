@@ -42,8 +42,9 @@ public:
 
 class ReplaceStep final : public Step {
 public:
-  ReplaceStep(std::string_view from_str, std::string_view to_str = "")
-      : from_str_(from_str), to_str_(to_str) {}
+  ReplaceStep(std::string_view from_str, std::string_view to_str = "",
+              bool first_only = false)
+      : from_str_(from_str), to_str_(to_str), first_only_(first_only) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -51,19 +52,7 @@ public:
 private:
   std::string from_str_;
   std::string to_str_;
-};
-
-class SubstituteStep final : public Step {
-public:
-  SubstituteStep(std::string_view from_str, std::string_view to_str = "")
-      : from_str_(from_str), to_str_(to_str) {}
-
-  void apply(Node node, std::vector<std::string> &values,
-             jsoncons::json &dict) override;
-
-private:
-  std::string from_str_;
-  std::string to_str_;
+  bool first_only_;
 };
 
 class SplitStep final : public Step {

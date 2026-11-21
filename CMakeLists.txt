@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   xsel2
-  VERSION 0.5.1
+  VERSION 0.6.0
   DESCRIPTION "High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine"
   LANGUAGES C CXX)
 

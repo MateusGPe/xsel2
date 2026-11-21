@@ -790,18 +790,21 @@ void ParseDateStep::apply(Node, std::vector<std::string> &values,
     }
   }
 
-  values = std::move(out_values);
-
-  if (!key_.empty() && !out_json.empty()) {
-    if (out_json.size() == 1) {
-      insert_into_json(dict, key_, std::move(out_json.front()), opts_);
-    } else {
-      jsoncons::json arr = jsoncons::json::array();
-      for (auto &item : out_json) {
-        arr.push_back(std::move(item));
+  if (!key_.empty()) {
+    if (!out_json.empty()) {
+      if (out_json.size() == 1) {
+        insert_into_json(dict, key_, std::move(out_json.front()), opts_);
+      } else {
+        jsoncons::json arr = jsoncons::json::array();
+        for (auto &item : out_json) {
+          arr.push_back(std::move(item));
+        }
+        insert_into_json(dict, key_, std::move(arr), opts_);
       }
-      insert_into_json(dict, key_, std::move(arr), opts_);
     }
+    values.clear();
+  } else {
+    values = std::move(out_values);
   }
 }
 

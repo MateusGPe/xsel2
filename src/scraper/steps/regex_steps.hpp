@@ -116,8 +116,7 @@ class RegexGroupsStep final : public Step {
 public:
   RegexGroupsStep(std::string_view pattern,
                   const std::optional<std::string> &flags = std::nullopt,
-                  std::string_view prefix = "", bool clear = false,
-                  InsertOptions opts = {});
+                  std::string_view prefix = "", InsertOptions opts = {});
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -126,7 +125,6 @@ private:
   std::string pattern_str_;
   re2::RE2 regex_;
   std::string prefix_;
-  bool clear_;
   InsertOptions opts_;
 };
 

@@ -32,7 +32,7 @@ private:
   void apply_method(ScraperBuilder &builder, std::string_view name,
                     const DslArgList &args);
   void parse_chain(ScraperBuilder &builder, int depth = 0,
-                   bool in_block = false);
+                   bool in_block = false, bool in_brace_block = false);
 };
 
 } // namespace scraper::dsl

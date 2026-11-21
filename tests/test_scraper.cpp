@@ -39,7 +39,7 @@ TEST_CASE("Scraper extracts typed JSON, counts, and JMESPath transforms",
       .Find(".name", scraper::QueryAllStep::Type::Text)
       .Set("name")
       .FindAll(".tag", scraper::QueryAllStep::Type::Text)
-      .Count("tag_count")
+      .Tee({std::make_shared<scraper::CountValuesStep>("tag_count")})
       .Set("tags")
       .Select("script[type='application/json']", "config")
       .Text()
@@ -95,7 +95,7 @@ TEST_CASE("Scraper supports ErrorPolicy modes and multiple postponed steps",
   scraper::ScraperBuilder collect_sb;
   collect_sb.set_error_policy(scraper::ErrorPolicy::CollectErrors);
   collect_sb.Select("div")
-      .Find(".missing", scraper::QueryAllStep::Type::Text)
+      .Find(".missing", scraper::QueryAllStep::Type::Text, {}, true, true)
       .Set("val");
   const auto collected_out = collect_sb.scrape_from_string(html);
   CHECK(collected_out.empty());
@@ -105,11 +105,11 @@ TEST_CASE("Scraper supports ErrorPolicy modes and multiple postponed steps",
   scraper::ScraperBuilder throw_sb;
   throw_sb.set_error_policy(scraper::ErrorPolicy::ThrowOnError);
   throw_sb.Select("div")
-      .Find(".missing", scraper::QueryAllStep::Type::Text)
+      .Find(".missing", scraper::QueryAllStep::Type::Text, {}, true, true)
       .Set("val");
   CHECK_THROWS_AS((void)throw_sb.scrape_from_string(html), std::runtime_error);
 
-  // 3. Multiple postponed steps in a single extractor run in order at the end
+  // 3. Top-level dict steps run in order at the end
   scraper::ScraperBuilder multi_post;
   multi_post.Select("div")
       .Find(".x", scraper::QueryAllStep::Type::Text)
@@ -121,7 +121,7 @@ TEST_CASE("Scraper supports ErrorPolicy modes and multiple postponed steps",
   CHECK(post_out["renamed"].as<std::string>() == "hello");
 }
 
-TEST_CASE("Scraper handles LogAndContinue, postponed step errors, empty and malformed HTML",
+TEST_CASE("Scraper handles LogAndContinue, top-level step errors, empty and malformed HTML",
           "[scraper][edge]") {
   const std::string html = R"(<div><span class="x">hello</span></div>)";
 
@@ -129,7 +129,7 @@ TEST_CASE("Scraper handles LogAndContinue, postponed step errors, empty and malf
   scraper::ScraperBuilder log_sb;
   log_sb.set_error_policy(scraper::ErrorPolicy::LogAndContinue);
   log_sb.Select("div")
-      .Find(".missing", scraper::QueryAllStep::Type::Text)
+      .Find(".missing", scraper::QueryAllStep::Type::Text, {}, true, true)
       .Set("val");
   Document doc;
   doc.parseMemory(html);
@@ -191,7 +191,7 @@ TEST_CASE("Phase 2 Scraper: finalize always runs even on 0-match last select, an
           std::make_shared<scraper::CoalesceKeysStep>(
               std::vector<scraper::CoalesceKeysStep::Rule>{
                   {"final_title", {"opt", "title"}}},
-              true, true),
+              true),
       });
 
   // Copy constructor preserves finalize_steps_
