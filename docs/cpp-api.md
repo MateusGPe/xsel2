@@ -6,12 +6,12 @@
 
 | Target | Headers | Purpose |
 | --- | --- | --- |
-| `xsel_common` | `common/ahocorasick.hpp`, `common/fuzzy.hpp`, `common/json_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, Jaro-Winkler & Levenshtein fuzzy matching, UTF-8 & JSON helpers |
+| `xsel_common` | `common/ahocorasick.hpp`, `common/fuzzy.hpp`, `common/hex_utils.hpp`, `common/json_utils.hpp`, `common/string_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, Jaro-Winkler & Levenshtein fuzzy matching, hex/string/UTF-8 & JSON helpers |
 | `digger` | `digger/digger.hpp`, `digger/tokenizer.hpp`, `digger/scalar_parser.hpp` | Heuristic JS/JSON object extractor |
-| `xsel_query` | `query/json_query.hpp` | JMESPath, JSONPath, JSON Pointer, Patch, Merge Patch, Flatten & Schema over `jsoncons::json` |
+| `xsel_query` | `query/json_query.hpp` | JMESPath, JSONPath, JSON Pointer, Patch, Merge Patch, Flatten, Schema, CSV & binary formats over `jsoncons::json` |
 | `scraper` | `scraper/scraper.hpp`, `scraper/dsl_parser.hpp`, `scraper/merge.hpp` | Full scraping pipeline, steps, and `.dsl` parser |
 
-Linking `scraper` transitively links `xsel_common`, `digger`, `xsel_query`, `jsoncons`, `mgp::lxml2-query`, `re2::re2`, and Abseil.
+Linking `scraper` transitively links `xsel_common`, `digger`, `xsel_query`, `jsoncons`, `mgp::lxml2-query`, `re2::re2`, `utf8proc`, and Abseil.
 
 ---
 
@@ -42,10 +42,57 @@ Use `builder.scrape_from_file("page.html")` to parse directly from disk.
 
 `Scraper` supports three error policies via `set_error_policy(scraper::ErrorPolicy)`:
 - `ErrorPolicy::LogAndContinue` (default): logs extractor errors to `error_stream` and continues.
-- `ErrorPolicy::Throw`: throws `std::runtime_error` on the first extractor error.
-- `ErrorPolicy::Collect`: appends errors to `scraper.errors()` without printing.
+- `ErrorPolicy::ThrowOnError`: rethrows the first step exception immediately.
+- `ErrorPolicy::CollectErrors`: appends formatted errors to `scraper.errors()` without printing.
 
-`Set`, `Count`, and `ParseJs` accept `scraper::InsertOptions` (`mode`: `Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`; `allow_empty`; `nested_path`).
+`InsertOptions` (`mode`: `Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`; `allow_empty`; `nested_path`) is accepted by `Set`, `Count`, `ParseJs`, `ExtractFields`, `RegexGroups`, `JsonParse`, `CsvParse`, `FromCbor`, `FromMsgPack`, `FromBson`, `FromUbjson`, `ParseNumber`, `ParseDuration`, `ToInt`, `ToFloat`, `ToBool`, `Attrs`, `Table`, `ExtractMeta`, `ParseDate`, and `QueryParams`.
+
+### Single-Parse `Document` Reuse, Single-Pass Extraction & Composition
+
+Parse HTML once into `Document` (`lxml2-query.h`), run zero-alloc single-pass extraction (`FindFirst`, `ExtractFields`), and compose pipelines with `Each`, `Tee`, `WhenExists`/`UnlessExists`/`WhenMatch`, `SkipIfExists`/`SkipIfEmpty`/`AbortIfExists`, `Save`/`Restore`, `Finalize`, and `Include`:
+
+```cpp
+#include "scraper/scraper.hpp"
+#include <iostream>
+
+int main() {
+  scraper::FieldSpec title_spec;
+  title_spec.key = "title";
+  title_spec.selector_str = "h1";
+
+  scraper::FieldSpec badge_spec;
+  badge_spec.key = "has_sale";
+  badge_spec.selector_str = ".sale-badge";
+  badge_spec.type = scraper::QueryAllStep::Type::ElementExists;
+
+  scraper::ScraperBuilder sub;
+  sub.Select("")
+      .Text()
+      .Squish()
+      .Set("text");
+
+  scraper::ScraperBuilder main_scraper;
+  main_scraper.Select("body")
+      .ExtractFields({title_spec, badge_spec})
+      .FindFirst(".views")
+      .ParseNumber(".", ",", true, "views", {}, /*compact=*/true)
+      .Each("ul.tags li", "tags", sub.get_extractors().front()->steps())
+      .Tee({std::make_shared<scraper::CountValuesStep>("tag_nodes")})
+      .SkipIfExists(".deleted");
+
+  // Parse once and share Document across multiple scrapers:
+  Document doc;
+  doc.parseMemory(
+      "<html><body><h1>  Keyboard  </h1><span class='views'>1.2K</span>"
+      "<ul class='tags'><li>mech</li></ul></body></html>");
+
+  jsoncons::json out = jsoncons::json::object();
+  main_scraper.scrape_document(doc, out, "page");
+  std::cout << jsoncons::pretty_print(out) << '\n';
+}
+```
+
+Use `builder.Include(other_scraper)` to append extractors and `finalize_steps` from another `Scraper`, and `builder.Finalize(steps)` to attach post-processing steps that always run once after all extractors finish.
 
 ---
 
@@ -105,7 +152,12 @@ int main() {
 }
 ```
 
-Also available in `query/json_query.hpp`: `apply_json_patch`, `apply_merge_patch`, `validate_json_schema`, `jsonpointer_set`, `jsonpointer_remove`, and `jsonpath_replace`.
+Also available in `query/json_query.hpp`:
+- `parse_json`, `dump_json` (`JsonParseOptions`)
+- `apply_json_patch`, `apply_merge_patch`, `validate_json_schema`
+- `jsonpointer_set`, `jsonpointer_remove`, and `jsonpath_replace`
+- `decode_csv`, `encode_csv` (`CsvOptions`)
+- `decode_binary`, `encode_binary` (`BinaryFormat::Cbor` / `MsgPack` / `Bson` / `Ubjson`, `BinaryEncoding::Hex` / `Base64` / `Raw`)
 
 ---
 

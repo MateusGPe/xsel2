@@ -14,16 +14,16 @@ High-performance HTML/XML scraping, multi-pattern text search, and JSON transfor
 
 | Guide | Description |
 | --- | --- |
-| [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, building, testing, and 5-minute walkthrough |
+| [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, helper scripts, building, testing, and 5-minute walkthrough |
 | [CLI Reference](docs/cli.md) | `xsel2` CLI (single input, `stdin` pipe, and multi-threaded `--batch`) |
-| [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `InsertMode`, `AhoCorasick`, `.dsl` loading, and JSON queries |
-| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` manual: syntax, sugar, execution/merge model, caveats, and all 100 steps + 15 aliases |
+| [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `Document`, `scrape_many`, `InsertMode`, `AhoCorasick`, `.dsl` loading, JSON queries, and `pip`/`uv` packaging |
+| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and all 126 steps/constructs + 17 aliases |
 | [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
-| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), and complete all-steps/algorithms showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py) |
+| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`metadata.dsl`](examples/metadata.dsl) / [`metadata_sample.html`](examples/metadata_sample.html), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), complete all-steps showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py), and real-world scraper suite [`scrapers.dsl`](scrapers.dsl) |
 
 ## Quick Build & Test
 
-Requires a C++20 compiler (GCC or Clang), CMake >= 3.24, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `Catch2`) are fetched automatically via [CPM.cmake](cmake/CPM.cmake). `libxml2` uses the system package if found, and falls back to fetching `GNOME/libxml2` via CPM otherwise (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`).
+Requires a C++20 compiler (GCC or Clang), CMake >= 3.24, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `utf8proc`, `Catch2`) are fetched automatically via [CPM.cmake](cmake/CPM.cmake). `libxml2` uses the system package if found, and falls back to fetching `GNOME/libxml2` via CPM otherwise (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`).
 
 ```bash
 cmake --preset debug
@@ -31,7 +31,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Use `--preset release` (`build-release/`) for an optimized `-O3` build. See [Quickstart](docs/quickstart.md) for install and `asan-ubsan` details.
+Or run `./scripts/build_and_test.sh`. Use `--preset release` (`build-release/`) for an optimized `-O3` build. To build/install the `scraperpy` Python package via `scikit-build-core`, run `uv pip install .` (or `./scripts/pack_python.sh --clean --test`). See [Quickstart](docs/quickstart.md) for install, helper scripts, and `asan-ubsan` details.
 
 ## Quick Examples
 
@@ -77,6 +77,7 @@ Type stubs are provided in [`scraperpy-stubs/_scraperpy.pyi`](scraperpy-stubs/_s
 - `src/scraper/` — Extraction pipeline, merge logic, DSL parser, and pipeline steps
 - `src/cli/` — `xsel2` executable
 - `src/python/` — `pybind11` bindings (`_scraperpy`)
-- `scraperpy/` & `scraperpy-stubs/` — Python wrapper and `.pyi` type stubs
-- `docs/` & `examples/` — User guides, API references, and runnable examples
-- `tests/` — Catch2 unit test suite
+- `scraperpy/` & `scraperpy-stubs/` — Python wrapper, `py.typed`, and `.pyi` type stubs
+- `scripts/` — Build, test, and Python wheel packaging helper scripts (`build.sh`, `test.sh`, `build_and_test.sh`, `pack_python.sh`)
+- `docs/` & `examples/` — User guides, API references, and runnable examples (plus root [`scrapers.dsl`](scrapers.dsl))
+- `tests/` — Catch2 C++ unit test suite, CMake CLI tests, and `pytest` suites (`test_python.py`, `test_cli.py`)
