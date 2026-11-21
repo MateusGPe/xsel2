@@ -273,7 +273,11 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
         apply_method(builder, "attr", parse_arg_list(depth + 1));
       } else {
         DslValue attr_name = parse_arg(depth + 1);
-        builder.Attr(as_str(attr_name));
+        if (attr_name.is_list()) {
+          builder.AttrFallback(as_str_list(attr_name));
+        } else {
+          builder.Attr(as_str(attr_name));
+        }
       }
       continue;
     }
@@ -301,6 +305,104 @@ void DslParser::parse_chain(ScraperBuilder &builder, int depth, bool in_block) {
     if (current_.type == Token::Type::LPAREN) {
       args = parse_arg_list(depth + 1);
     }
+
+    if (method == "tee" || method == "branch") {
+      validate_args_consumed(args, method);
+      expect(Token::Type::LBRACE, "Expected '{' after tee/branch");
+      ScraperBuilder sub;
+      sub.Select("");
+      parse_chain(sub, depth + 1, true);
+      expect(Token::Type::RBRACE, "Expected '}' after tee/branch block");
+      builder.Tee(sub.get_extractors().front()->steps());
+      continue;
+    }
+
+    if (method == "each") {
+      const std::string sel =
+          as_str(require_arg(args, 0, "selector", method));
+      const std::string key = opt_str(args, 1, "key", "");
+      validate_args_consumed(args, method);
+      expect(Token::Type::LBRACE, "Expected '{' after each(...)");
+      ScraperBuilder sub;
+      sub.Select("");
+      parse_chain(sub, depth + 1, true);
+      expect(Token::Type::RBRACE, "Expected '}' after each block");
+      builder.Each(sel, key, sub.get_extractors().front()->steps());
+      continue;
+    }
+
+    if (method == "when_exists" || method == "unless_exists") {
+      const std::string sel =
+          as_str(require_arg(args, 0, "selector", method));
+      validate_args_consumed(args, method);
+      expect(Token::Type::LBRACE, "Expected '{' after " + method);
+      ScraperBuilder sub;
+      sub.Select("");
+      parse_chain(sub, depth + 1, true);
+      expect(Token::Type::RBRACE, "Expected '}' after " + method + " block");
+      builder.WhenExists(sel, sub.get_extractors().front()->steps(),
+                         method == "unless_exists");
+      continue;
+    }
+
+    if (method == "when_match") {
+      const std::string pat =
+          as_str(require_arg(args, 0, "pattern", method));
+      const bool negate = opt_bool(args, 1, "negate", false);
+      std::optional<std::string> flags;
+      if (const DslValue *fv = find_arg(args, 2, "flags");
+          fv && !fv->is_null()) {
+        flags = as_str(*fv);
+      }
+      validate_args_consumed(args, method);
+      expect(Token::Type::LBRACE, "Expected '{' after when_match");
+      ScraperBuilder sub;
+      sub.Select("");
+      parse_chain(sub, depth + 1, true);
+      expect(Token::Type::RBRACE, "Expected '}' after when_match block");
+      builder.WhenMatch(pat, sub.get_extractors().front()->steps(), negate,
+                        flags);
+      continue;
+    }
+
+    if (method == "finalize") {
+      validate_args_consumed(args, method);
+      expect(Token::Type::LBRACE, "Expected '{' after finalize");
+      ScraperBuilder sub;
+      sub.Select("");
+      parse_chain(sub, depth + 1, true);
+      expect(Token::Type::RBRACE, "Expected '}' after finalize block");
+      builder.Finalize(sub.get_extractors().front()->steps());
+      continue;
+    }
+
+    if (method == "use") {
+      const std::string pipe_name =
+          as_str(require_arg(args, 0, "name", method));
+      validate_args_consumed(args, method);
+      const auto it = pipes_.find(pipe_name);
+      if (it == pipes_.end()) {
+        throw std::runtime_error("Unknown pipe in DSL: '" + pipe_name + "'");
+      }
+      for (const auto &step : it->second) {
+        builder.AddStep(step);
+      }
+      continue;
+    }
+
+    if (method == "include") {
+      const std::string scraper_name =
+          as_str(require_arg(args, 0, "scraper", method));
+      validate_args_consumed(args, method);
+      const auto it = scrapers_.find(scraper_name);
+      if (it == scrapers_.end()) {
+        throw std::runtime_error("Unknown scraper in include(): '" +
+                                 scraper_name + "'");
+      }
+      builder.Include(it->second);
+      continue;
+    }
+
     apply_method(builder, method, args);
 
     if (method == "select" && current_.type == Token::Type::LBRACE) {
@@ -315,6 +417,7 @@ absl::flat_hash_map<std::string, ScraperBuilder>
 DslParser::parse(const std::string &dsl_source) {
   variables_.clear();
   scrapers_.clear();
+  pipes_.clear();
   Lexer lex(dsl_source);
   struct LexerGuard {
     Lexer *&slot;
@@ -342,6 +445,27 @@ DslParser::parse(const std::string &dsl_source) {
     if (current_.type == Token::Type::IDENTIFIER) {
       const std::string name = current_.value;
       advance_token();
+      if (name == "pipe" && current_.type == Token::Type::IDENTIFIER &&
+          current_.value != "Scraper" && current_.value != "ScraperPy") {
+        const std::string pipe_name = current_.value;
+        advance_token();
+        if (current_.type == Token::Type::ASSIGN ||
+            current_.type == Token::Type::COLON ||
+            current_.type == Token::Type::COLON_ASSIGN) {
+          advance_token();
+        }
+        expect(Token::Type::LBRACE, "Expected '{' after pipe name");
+        ScraperBuilder temp;
+        temp.Select("");
+        parse_chain(temp, 0, true);
+        expect(Token::Type::RBRACE, "Expected '}' after pipe block");
+        pipes_.insert_or_assign(pipe_name,
+                                temp.get_extractors().front()->steps());
+        if (current_.type == Token::Type::SEMICOLON) {
+          advance_token();
+        }
+        continue;
+      }
       if (current_.type == Token::Type::ASSIGN ||
           current_.type == Token::Type::COLON ||
           current_.type == Token::Type::COLON_ASSIGN) {

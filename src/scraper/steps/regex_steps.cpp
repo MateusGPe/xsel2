@@ -261,4 +261,101 @@ void ExtractManyStep::apply(Node, std::vector<std::string> &values,
   values = std::move(extracted);
 }
 
+RegexFindAllStep::RegexFindAllStep(std::string_view pattern, int group_index,
+                                   const std::optional<std::string> &flags)
+    : pattern_str_(pattern),
+      regex_(pattern_str_, detail::get_re2_options(flags)),
+      group_index_(group_index) {
+  validate_regex(regex_, "regex_find_all", pattern_str_);
+}
+
+void RegexFindAllStep::apply(Node, std::vector<std::string> &values,
+                             jsoncons::json &) {
+  const int num_groups = regex_.NumberOfCapturingGroups();
+  std::vector<re2::StringPiece> groups(static_cast<size_t>(num_groups) + 1);
+  std::vector<std::string> new_values;
+
+  for (const auto &v : values) {
+    const re2::StringPiece input(v);
+    size_t pos = 0;
+    while (pos <= input.size()) {
+      if (!regex_.Match(input, pos, input.size(), re2::RE2::UNANCHORED,
+                        groups.data(), num_groups + 1)) {
+        break;
+      }
+      if (group_index_ == 0) {
+        for (int i = 0; i <= num_groups; ++i) {
+          if (groups[i].data() != nullptr && !groups[i].empty()) {
+            new_values.emplace_back(groups[i].data(), groups[i].size());
+          }
+        }
+      } else if (group_index_ < 0) {
+        const size_t start =
+            static_cast<size_t>(-static_cast<int64_t>(group_index_));
+        for (size_t i = start; i <= static_cast<size_t>(num_groups); ++i) {
+          if (groups[i].data() != nullptr && !groups[i].empty()) {
+            new_values.emplace_back(groups[i].data(), groups[i].size());
+          }
+        }
+      } else if (group_index_ <= num_groups) {
+        const auto &g = groups[static_cast<size_t>(group_index_)];
+        if (g.data() != nullptr) {
+          new_values.emplace_back(g.data(), g.size());
+        } else {
+          new_values.emplace_back();
+        }
+      }
+
+      const size_t match_start =
+          static_cast<size_t>(groups[0].data() - input.data());
+      const size_t match_end = match_start + groups[0].size();
+      pos = (match_end > pos) ? match_end : (pos + 1);
+    }
+  }
+  values = std::move(new_values);
+}
+
+RegexGroupsStep::RegexGroupsStep(std::string_view pattern,
+                                 const std::optional<std::string> &flags,
+                                 std::string_view prefix, bool clear,
+                                 InsertOptions opts)
+    : pattern_str_(pattern),
+      regex_(pattern_str_, detail::get_re2_options(flags)),
+      prefix_(prefix),
+      clear_(clear),
+      opts_(opts) {
+  validate_regex(regex_, "regex_groups", pattern_str_);
+}
+
+void RegexGroupsStep::apply(Node, std::vector<std::string> &values,
+                            jsoncons::json &dict) {
+  const int num_groups = regex_.NumberOfCapturingGroups();
+  const auto &named = regex_.NamedCapturingGroups();
+  if (named.empty()) {
+    if (clear_) {
+      values.clear();
+    }
+    return;
+  }
+  std::vector<re2::StringPiece> groups(static_cast<size_t>(num_groups) + 1);
+  for (const auto &v : values) {
+    if (!regex_.Match(v, 0, v.size(), re2::RE2::UNANCHORED, groups.data(),
+                      num_groups + 1)) {
+      continue;
+    }
+    for (const auto &[name, idx] : named) {
+      if (idx >= 1 && idx <= num_groups && groups[idx].data() != nullptr &&
+          !groups[idx].empty()) {
+        insert_into_json(
+            dict, prefix_ + name,
+            jsoncons::json(std::string(groups[idx].data(), groups[idx].size())),
+            opts_);
+      }
+    }
+  }
+  if (clear_) {
+    values.clear();
+  }
+}
+
 } // namespace scraper

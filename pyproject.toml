@@ -1,0 +1,50 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "scraperpy"
+version = "0.5.0"
+description = "High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "MateusGPe" }]
+keywords = ["scraping", "html", "xml", "css", "xpath", "json", "jmespath", "jsonpath", "aho-corasick"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup :: HTML",
+    "Topic :: Text Processing :: Markup :: XML",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.scikit-build]
+cmake.version = ">=3.24"
+cmake.build-type = "Release"
+wheel.packages = ["scraperpy"]
+sdist.include = [
+    "CMakeLists.txt",
+    "cmake/CPM.cmake",
+    "README.md",
+    "pyproject.toml",
+    "src/**",
+    "scraperpy/**",
+    "scraperpy-stubs/**",
+]
+sdist.exclude = [
+    "build*",
+    "dist",
+    "install",
+    "xmlsel-main",
+    ".git*",
+    ".cache",
+]

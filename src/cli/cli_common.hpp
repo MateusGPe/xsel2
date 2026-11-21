@@ -41,9 +41,13 @@ inline void print_json(const jsoncons::json &doc, bool compact) {
     return scrapers.begin()->second.scrape_from_string(html);
   }
 
+  Document doc;
+  doc.parseMemory(html);
   jsoncons::json all = jsoncons::json::object();
   for (auto &[name, builder] : scrapers) {
-    all.insert_or_assign(name, builder.scrape_from_string(html));
+    jsoncons::json out = jsoncons::json::object();
+    builder.scrape_document(doc, out, name);
+    all.insert_or_assign(name, std::move(out));
   }
   return all;
 }

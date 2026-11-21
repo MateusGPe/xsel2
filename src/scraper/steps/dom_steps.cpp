@@ -1,7 +1,10 @@
 #include "scraper/steps/dom_steps.hpp"
+#include "scraper/steps/regex_steps.hpp"
+#include "scraper/steps/text_steps.hpp"
 #include <absl/container/flat_hash_set.h>
 #include <absl/strings/ascii.h>
 #include <absl/strings/match.h>
+#include <absl/strings/str_join.h>
 #include <algorithm>
 #include <cctype>
 #include <charconv>
@@ -26,13 +29,81 @@ bool has_non_whitespace(std::string_view s) noexcept {
   });
 }
 
+std::string extract_first_attr(const Node &n,
+                               const std::vector<std::string> &attrs) {
+  for (const auto &attr : attrs) {
+    if (auto val = n.Attribute(attr); val && !val->empty()) {
+      return *val;
+    }
+  }
+  return {};
+}
+
+std::string extract_node_value_opts(const Node &n, QueryAllStep::Type type,
+                                    const std::vector<std::string> &attrs,
+                                    bool squish, bool trim) {
+  std::string out;
+  switch (type) {
+  case QueryAllStep::Type::Text:
+  case QueryAllStep::Type::AdjacentText:
+    out = (squish ? n.TextNormalized() : n.Text()).value_or("");
+    break;
+  case QueryAllStep::Type::OwnText:
+    out = (squish ? n.OwnTextNormalized() : n.OwnText()).value_or("");
+    break;
+  case QueryAllStep::Type::Attribute:
+    out = extract_first_attr(n, attrs);
+    if (squish && !out.empty()) {
+      out = normalizeHtmlText(out);
+    }
+    break;
+  case QueryAllStep::Type::ElementExists:
+  case QueryAllStep::Type::AttributeExists:
+    return "true";
+  }
+  if (trim && !squish && !out.empty()) {
+    detail::trim_in_place(out);
+  }
+  return out;
+}
+
 } // namespace
 
+namespace detail {
+
+xmlNodePtr find_first_match(xmlNodePtr root, const Selector &sel) {
+  if (!root) {
+    return nullptr;
+  }
+  std::vector<xmlNodePtr> stack;
+  stack.reserve(64);
+  stack.push_back(root);
+  while (!stack.empty()) {
+    xmlNodePtr cur = stack.back();
+    stack.pop_back();
+    if (sel.matches(cur)) {
+      return cur;
+    }
+    if (cur->type == XML_ELEMENT_NODE || cur->type == XML_HTML_DOCUMENT_NODE ||
+        cur->type == XML_DOCUMENT_NODE) {
+      for (xmlNodePtr c = cur->last; c != nullptr; c = c->prev) {
+        if (c->type == XML_ELEMENT_NODE) {
+          stack.push_back(c);
+        }
+      }
+    }
+  }
+  return nullptr;
+}
+
+} // namespace detail
+
 QueryAllStep::QueryAllStep(std::string_view sel, Type type,
-                           std::string_view attr)
+                           std::string_view attr, bool optional)
     : selector_(SelectorParser::Create(std::string(sel))),
       query_type_(type),
-      attr_name_(attr) {
+      attr_name_(attr),
+      optional_(optional) {
   if (!selector_) {
     throw std::runtime_error("FindAll: failed to parse CSS selector: " +
                              std::string(sel));
@@ -83,6 +154,9 @@ bool QueryAllStep::handle_empty_selection(const QueryResult &selected,
         extract_value_from_node(std::nullopt, query_type_, attr_name_));
     return true;
   }
+  if (optional_) {
+    return true;
+  }
   std::ostringstream err;
   err << step_name << "(" << std::quoted(selector_->toString())
       << "): no match for non-existence query type.";
@@ -91,6 +165,14 @@ bool QueryAllStep::handle_empty_selection(const QueryResult &selected,
 
 void QueryAllStep::apply(Node node, std::vector<std::string> &values,
                          jsoncons::json &) {
+  if (query_type_ == Type::ElementExists) {
+    const bool found =
+        node.valid() &&
+        detail::find_first_match(node.getRaw(), *selector_) != nullptr;
+    values.emplace_back(found ? "true" : "false");
+    return;
+  }
+
   QueryResult selected = select_nodes(node);
   if (handle_empty_selection(selected, values, "queryAll")) {
     return;
@@ -110,8 +192,8 @@ void QueryAllStep::apply(Node node, std::vector<std::string> &values,
 }
 
 QueryStep::QueryStep(std::string_view sel, Type type, std::string_view attr,
-                     Number number, size_t nth_val)
-    : QueryAllStep(sel, type, attr),
+                     Number number, size_t nth_val, bool optional)
+    : QueryAllStep(sel, type, attr, optional),
       number_(number),
       nth_element_(number == Number::Last ? static_cast<size_t>(-1) : nth_val) {
 }
@@ -136,6 +218,254 @@ void QueryStep::apply(Node node, std::vector<std::string> &values,
       extract_value_from_node(selected[idx], query_type_, attr_name_));
 }
 
+FindFirstStep::FindFirstStep(std::string_view sel, QueryAllStep::Type type,
+                             std::vector<std::string> attrs, bool squish,
+                             bool required)
+    : selector_(SelectorParser::Create(std::string(sel))),
+      query_type_(type),
+      attrs_(std::move(attrs)),
+      squish_(squish),
+      required_(required) {
+  if (!selector_) {
+    throw std::runtime_error("find_first: failed to parse CSS selector: " +
+                             std::string(sel));
+  }
+}
+
+void FindFirstStep::apply(Node node, std::vector<std::string> &values,
+                          jsoncons::json &) {
+  if (!node.valid()) {
+    if (query_type_ == QueryAllStep::Type::ElementExists ||
+        query_type_ == QueryAllStep::Type::AttributeExists) {
+      values.emplace_back("false");
+    } else if (required_) {
+      throw std::runtime_error("find_first(" + selector_->toString() +
+                               "): invalid node.");
+    }
+    return;
+  }
+
+  if (query_type_ == QueryAllStep::Type::ElementExists) {
+    const bool found =
+        detail::find_first_match(node.getRaw(), *selector_) != nullptr;
+    values.emplace_back(found ? "true" : "false");
+    return;
+  }
+
+  if (query_type_ == QueryAllStep::Type::AdjacentText) {
+    QueryResult selected = node.NextSiblings().Find(selector_);
+    for (const auto &n : selected) {
+      if (!n.valid()) {
+        continue;
+      }
+      std::string val =
+          extract_node_value_opts(n, query_type_, attrs_, squish_, false);
+      if (!val.empty()) {
+        values.push_back(std::move(val));
+        return;
+      }
+    }
+    if (required_) {
+      throw std::runtime_error("find_first(" + selector_->toString() +
+                               "): no match.");
+    }
+    return;
+  }
+
+  // Zero-alloc pre-order traversal stopping on the first match yielding a
+  // value (or matching attribute for Attribute/AttributeExists).
+  std::vector<xmlNodePtr> stack;
+  stack.reserve(64);
+  stack.push_back(node.getRaw());
+  while (!stack.empty()) {
+    xmlNodePtr cur = stack.back();
+    stack.pop_back();
+    if (selector_->matches(cur)) {
+      Node n(cur);
+      if (query_type_ == QueryAllStep::Type::AttributeExists) {
+        for (const auto &attr : attrs_) {
+          if (n.HasAttribute(attr)) {
+            values.emplace_back("true");
+            return;
+          }
+        }
+      } else {
+        std::string val =
+            extract_node_value_opts(n, query_type_, attrs_, squish_, false);
+        if (!val.empty()) {
+          values.push_back(std::move(val));
+          return;
+        }
+      }
+    }
+    if (cur->type == XML_ELEMENT_NODE || cur->type == XML_HTML_DOCUMENT_NODE ||
+        cur->type == XML_DOCUMENT_NODE) {
+      for (xmlNodePtr c = cur->last; c != nullptr; c = c->prev) {
+        if (c->type == XML_ELEMENT_NODE) {
+          stack.push_back(c);
+        }
+      }
+    }
+  }
+
+  if (query_type_ == QueryAllStep::Type::AttributeExists) {
+    values.emplace_back("false");
+  } else if (required_) {
+    throw std::runtime_error("find_first(" + selector_->toString() +
+                             "): no match.");
+  }
+}
+
+ExtractFieldsStep::ExtractFieldsStep(std::vector<FieldSpec> specs,
+                                     InsertOptions opts)
+    : specs_(std::move(specs)), opts_(opts) {
+  for (auto &spec : specs_) {
+    spec.selector = SelectorParser::Create(spec.selector_str);
+    if (!spec.selector) {
+      throw std::runtime_error(
+          "extract_fields: failed to parse CSS selector for '" + spec.key +
+          "': " + spec.selector_str);
+    }
+  }
+}
+
+void ExtractFieldsStep::apply(Node node, std::vector<std::string> &,
+                              jsoncons::json &dict) {
+  if (!node.valid() || specs_.empty()) {
+    return;
+  }
+
+  const size_t n_fields = specs_.size();
+  std::vector<std::vector<std::string>> collected(n_fields);
+  std::vector<bool> exists_matched(n_fields, false);
+  std::vector<size_t> active_tree_fields;
+  std::vector<size_t> adjacent_fields;
+  active_tree_fields.reserve(n_fields);
+
+  for (size_t i = 0; i < n_fields; ++i) {
+    if (specs_[i].type == QueryAllStep::Type::AdjacentText) {
+      adjacent_fields.push_back(i);
+    } else {
+      active_tree_fields.push_back(i);
+    }
+  }
+
+  if (!active_tree_fields.empty()) {
+    std::vector<xmlNodePtr> stack;
+    stack.reserve(64);
+    stack.push_back(node.getRaw());
+
+    while (!stack.empty() && !active_tree_fields.empty()) {
+      xmlNodePtr cur = stack.back();
+      stack.pop_back();
+
+      for (size_t pos = 0; pos < active_tree_fields.size();) {
+        const size_t idx = active_tree_fields[pos];
+        const FieldSpec &spec = specs_[idx];
+        bool done = false;
+
+        if (spec.selector->matches(cur)) {
+          Node cur_node(cur);
+          if (spec.type == QueryAllStep::Type::ElementExists) {
+            exists_matched[idx] = true;
+            done = true;
+          } else if (spec.type == QueryAllStep::Type::AttributeExists) {
+            for (const auto &attr : spec.attrs) {
+              if (cur_node.HasAttribute(attr)) {
+                exists_matched[idx] = true;
+                done = true;
+                break;
+              }
+            }
+          } else {
+            std::string val = extract_node_value_opts(
+                cur_node, spec.type, spec.attrs, spec.squish, spec.trim);
+            if (has_non_whitespace(val)) {
+              collected[idx].push_back(std::move(val));
+              if (spec.first_only) {
+                done = true;
+              }
+            }
+          }
+        }
+
+        if (done) {
+          active_tree_fields[pos] = active_tree_fields.back();
+          active_tree_fields.pop_back();
+        } else {
+          ++pos;
+        }
+      }
+
+      if (cur->type == XML_ELEMENT_NODE ||
+          cur->type == XML_HTML_DOCUMENT_NODE ||
+          cur->type == XML_DOCUMENT_NODE) {
+        for (xmlNodePtr c = cur->last; c != nullptr; c = c->prev) {
+          if (c->type == XML_ELEMENT_NODE) {
+            stack.push_back(c);
+          }
+        }
+      }
+    }
+  }
+
+  for (size_t idx : adjacent_fields) {
+    const FieldSpec &spec = specs_[idx];
+    QueryResult selected = node.NextSiblings().Find(spec.selector);
+    for (const auto &m : selected) {
+      if (!m.valid()) {
+        continue;
+      }
+      std::string val = extract_node_value_opts(m, spec.type, spec.attrs,
+                                                spec.squish, spec.trim);
+      if (has_non_whitespace(val)) {
+        collected[idx].push_back(std::move(val));
+        if (spec.first_only) {
+          break;
+        }
+      }
+    }
+  }
+
+  for (size_t i = 0; i < n_fields; ++i) {
+    const FieldSpec &spec = specs_[i];
+    if (spec.type == QueryAllStep::Type::ElementExists ||
+        spec.type == QueryAllStep::Type::AttributeExists) {
+      jsoncons::json jval =
+          spec.cast_explicit
+              ? coerce_string_to_json(exists_matched[i] ? "true" : "false",
+                                      spec.cast)
+              : jsoncons::json(exists_matched[i]);
+      insert_into_json(dict, spec.key, std::move(jval), opts_);
+      continue;
+    }
+
+    auto &vals = collected[i];
+    if (vals.empty()) {
+      if (spec.default_val.has_value()) {
+        insert_into_json(dict, spec.key, jsoncons::json(*spec.default_val),
+                         opts_);
+      }
+      continue;
+    }
+
+    if (spec.join_delim.has_value()) {
+      std::string joined = absl::StrJoin(vals, *spec.join_delim);
+      insert_into_json(dict, spec.key, coerce_string_to_json(joined, spec.cast),
+                       opts_);
+    } else if (vals.size() == 1) {
+      insert_into_json(dict, spec.key,
+                       coerce_string_to_json(vals[0], spec.cast), opts_);
+    } else {
+      jsoncons::json arr = jsoncons::json::array();
+      for (const auto &v : vals) {
+        arr.push_back(coerce_string_to_json(v, spec.cast));
+      }
+      insert_into_json(dict, spec.key, std::move(arr), opts_);
+    }
+  }
+}
+
 void TextStep::apply(Node node, std::vector<std::string> &values,
                      jsoncons::json &) {
   if (node.valid()) {
@@ -148,11 +478,15 @@ void TextStep::apply(Node node, std::vector<std::string> &values,
 
 void AttrStep::apply(Node node, std::vector<std::string> &values,
                      jsoncons::json &) {
-  if (node.valid()) {
-    values.push_back(node.Attribute(attr_name_).value_or(""));
-  } else {
+  if (!node.valid() || attr_names_.empty()) {
     values.emplace_back("");
+    return;
   }
+  if (attr_names_.size() == 1) {
+    values.push_back(node.Attribute(attr_names_[0]).value_or(""));
+    return;
+  }
+  values.push_back(extract_first_attr(node, attr_names_));
 }
 
 void SetStep::apply(Node, std::vector<std::string> &values,
@@ -714,6 +1048,39 @@ void ExtractMetaStep::apply(Node node, std::vector<std::string> &,
 
   if (include_json_ld_) {
     jsoncons::json ld_array = jsoncons::json::array();
+    absl::flat_hash_map<std::string, std::vector<jsoncons::json>> ld_by_type;
+
+    auto index_ld_node = [&](auto &self, const jsoncons::json &item,
+                             int depth) -> void {
+      if (depth > 32) {
+        return;
+      }
+      if (item.is_array()) {
+        for (const auto &el : item.array_range()) {
+          self(self, el, depth + 1);
+        }
+        return;
+      }
+      if (!item.is_object()) {
+        return;
+      }
+      if (item.contains("@type")) {
+        const auto &t = item.at("@type");
+        if (t.is_string()) {
+          ld_by_type[t.as_string()].push_back(item);
+        } else if (t.is_array()) {
+          for (const auto &t_el : t.array_range()) {
+            if (t_el.is_string()) {
+              ld_by_type[t_el.as_string()].push_back(item);
+            }
+          }
+        }
+      }
+      if (item.contains("@graph")) {
+        self(self, item.at("@graph"), depth + 1);
+      }
+    };
+
     for (const auto &script :
          select_css(node, "script[type=\"application/ld+json\"]")) {
       if (auto text = script.Text()) {
@@ -722,7 +1089,11 @@ void ExtractMetaStep::apply(Node node, std::vector<std::string> &,
           continue;
         }
         try {
-          ld_array.push_back(jsoncons::json::parse(trimmed));
+          jsoncons::json parsed = jsoncons::json::parse(trimmed);
+          if (index_json_ld_) {
+            index_ld_node(index_ld_node, parsed, 0);
+          }
+          ld_array.push_back(std::move(parsed));
         } catch (const std::exception &) {
           // Skip malformed JSON-LD blocks gracefully.
         }
@@ -730,6 +1101,21 @@ void ExtractMetaStep::apply(Node node, std::vector<std::string> &,
     }
     if (!ld_array.empty()) {
       meta.insert_or_assign("json_ld", std::move(ld_array));
+    }
+    if (index_json_ld_ && !ld_by_type.empty()) {
+      jsoncons::json by_type_obj = jsoncons::json::object();
+      for (auto &[type_name, items] : ld_by_type) {
+        if (items.size() == 1) {
+          by_type_obj.insert_or_assign(type_name, std::move(items[0]));
+        } else {
+          jsoncons::json arr = jsoncons::json::array();
+          for (auto &it : items) {
+            arr.push_back(std::move(it));
+          }
+          by_type_obj.insert_or_assign(type_name, std::move(arr));
+        }
+      }
+      meta.insert_or_assign("json_ld_by_type", std::move(by_type_obj));
     }
   }
 
@@ -739,6 +1125,161 @@ void ExtractMetaStep::apply(Node node, std::vector<std::string> &,
     for (const auto &kv : meta.object_range()) {
       insert_into_json(dict, kv.key(), jsoncons::json(kv.value()), opts_);
     }
+  }
+}
+
+// ── Phase 2: SubExtractStep / ConditionalStep / GuardStep ────────────────────
+
+void SubExtractStep::apply(Node node, std::vector<std::string> &values,
+                           jsoncons::json &dict) {
+  ExecutionContext local_ctx;
+  apply(node, values, dict, local_ctx);
+}
+
+void SubExtractStep::apply(Node node, std::vector<std::string> &,
+                           jsoncons::json &dict, ExecutionContext &ctx) {
+  if (!node.valid() || !sub_extractor_) {
+    return;
+  }
+  QueryResult sub_sel(node);
+  ExtractionOptions opts;
+  opts.aborted = &ctx.abort_scraper;
+  sub_extractor_->extract(sub_sel, dict, "each", std::cerr, opts);
+}
+
+std::shared_ptr<ConditionalStep>
+ConditionalStep::make_exists(std::string_view sel, bool negate,
+                             std::vector<std::shared_ptr<Step>> steps) {
+  SelectorPtr parsed = SelectorParser::Create(std::string(sel));
+  if (!parsed) {
+    throw std::runtime_error(
+        std::string(negate ? "unless_exists" : "when_exists") +
+        ": failed to parse CSS selector: " + std::string(sel));
+  }
+  return std::shared_ptr<ConditionalStep>(
+      new ConditionalStep(Kind::Exists, std::move(parsed), nullptr, negate,
+                          std::move(steps)));
+}
+
+std::shared_ptr<ConditionalStep>
+ConditionalStep::make_match(std::string_view pattern, bool negate,
+                            const std::optional<std::string> &flags,
+                            std::vector<std::shared_ptr<Step>> steps) {
+  auto re = std::make_shared<re2::RE2>(std::string(pattern),
+                                       detail::get_re2_options(flags));
+  if (!re->ok()) {
+    throw std::invalid_argument("when_match: invalid regex '" +
+                                std::string(pattern) + "': " + re->error());
+  }
+  return std::shared_ptr<ConditionalStep>(
+      new ConditionalStep(Kind::Match, nullptr, std::move(re), negate,
+                          std::move(steps)));
+}
+
+void ConditionalStep::apply(Node node, std::vector<std::string> &values,
+                            jsoncons::json &dict) {
+  ExecutionContext local_ctx;
+  apply(node, values, dict, local_ctx);
+}
+
+void ConditionalStep::apply(Node node, std::vector<std::string> &values,
+                            jsoncons::json &dict, ExecutionContext &ctx) {
+  bool ok = false;
+  if (kind_ == Kind::Exists) {
+    const bool found =
+        node.valid() &&
+        detail::find_first_match(node.getRaw(), *selector_) != nullptr;
+    ok = negate_ ? !found : found;
+  } else {
+    bool matched = false;
+    for (const auto &v : values) {
+      if (re2::RE2::PartialMatch(v, *regex_)) {
+        matched = true;
+        break;
+      }
+    }
+    ok = negate_ ? !matched : matched;
+  }
+
+  if (!ok) {
+    return;
+  }
+
+  for (const auto &step : steps_) {
+    if (!step) {
+      continue;
+    }
+    if (step->is_postponable()) {
+      dict = step->execute_postponed(dict);
+    } else {
+      step->apply(node, values, dict, ctx);
+    }
+    if (ctx.skip_item || ctx.abort_scraper) {
+      break;
+    }
+  }
+}
+
+std::shared_ptr<GuardStep>
+GuardStep::make_skip_if_exists(std::string_view sel) {
+  SelectorPtr parsed = SelectorParser::Create(std::string(sel));
+  if (!parsed) {
+    throw std::runtime_error(
+        "skip_if_exists: failed to parse CSS selector: " + std::string(sel));
+  }
+  return std::shared_ptr<GuardStep>(
+      new GuardStep(Mode::SkipIfExists, std::move(parsed), "", ""));
+}
+
+std::shared_ptr<GuardStep> GuardStep::make_skip_if_empty() {
+  return std::shared_ptr<GuardStep>(
+      new GuardStep(Mode::SkipIfEmpty, nullptr, "", ""));
+}
+
+std::shared_ptr<GuardStep>
+GuardStep::make_abort_if_exists(std::string_view sel, std::string_view key,
+                                std::string_view reason) {
+  SelectorPtr parsed = SelectorParser::Create(std::string(sel));
+  if (!parsed) {
+    throw std::runtime_error(
+        "abort_if_exists: failed to parse CSS selector: " + std::string(sel));
+  }
+  return std::shared_ptr<GuardStep>(
+      new GuardStep(Mode::AbortIfExists, std::move(parsed), key, reason));
+}
+
+void GuardStep::apply(Node node, std::vector<std::string> &values,
+                      jsoncons::json &dict) {
+  ExecutionContext local_ctx;
+  apply(node, values, dict, local_ctx);
+}
+
+void GuardStep::apply(Node node, std::vector<std::string> &values,
+                      jsoncons::json &dict, ExecutionContext &ctx) {
+  switch (mode_) {
+  case Mode::SkipIfExists:
+    if (node.valid() &&
+        detail::find_first_match(node.getRaw(), *selector_) != nullptr) {
+      ctx.skip_item = true;
+    }
+    break;
+  case Mode::SkipIfEmpty:
+    if (std::none_of(values.begin(), values.end(), has_non_whitespace)) {
+      ctx.skip_item = true;
+    }
+    break;
+  case Mode::AbortIfExists:
+    if (node.valid() &&
+        detail::find_first_match(node.getRaw(), *selector_) != nullptr) {
+      if (!key_.empty()) {
+        jsoncons::json val = reason_.empty() ? jsoncons::json(true)
+                                             : jsoncons::json(reason_);
+        insert_into_json(dict, key_, std::move(val),
+                         InsertOptions{InsertMode::Overwrite, false, true});
+      }
+      ctx.abort_scraper = true;
+    }
+    break;
   }
 }
 

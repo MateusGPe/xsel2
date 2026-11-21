@@ -402,3 +402,236 @@ TEST_CASE("Hardening: DSL scientific notation and strict argument validation",
       parser.parse(R"(s = Scraper() | $("h1") { text -> "a" } | cast_keys({a: 123});)"),
       std::runtime_error);
 }
+
+TEST_CASE("Phase 1 DSL: fields, find_first, try_find, attr fallback, tee, save/restore, map_values, query_params, js_blocks aliases, coalesce_keys",
+          "[dsl][phase1]") {
+  const std::string dsl = R"DSL(
+    p1 := Scraper()
+      .select("html") {
+        fields({
+          title: "h1",
+          cover: { sel: "img.hero", attr: ["src", "data-src"] },
+          missing_opt: { sel: ".missing", default: "N/A" },
+          empty_fallback: { sel: ".missing-two", default: "default_val" },
+          is_hd: { sel: ".hd", type: exists },
+          views: { sel: ".views", cast: "int" },
+          tags: { sel: ".tag", first: false, join: ", " }
+        })
+        | try_find(".maybe-missing", Value.Text) | set("maybe")
+        | find_first(".subtitle") | set("subtitle")
+        | find_all(".rank-label", Value.Text) | squish
+            | map_values({"monthly rank": "ibox_rank_monthly", "weekly rank": "ibox_rank_weekly"})
+            | set("mapped_ranks")
+        | find_all("script", Value.Text) | strip_comments | squish
+            | js_blocks(["VIDEO_SHOW", "flashvars_*"])
+        | find_all("script", Value.Text) | filter(["ads_batch"]) | regex_extract("(https://[^\"']+)", 1) | first(1)
+            | save("ad_url")
+            | tee {
+                query_params({clientType: "client_type", "channel[info]": "info_raw"})
+              }
+            | restore("ad_url")
+            | query_param("channel[info]") | json_parse("info")
+      }
+      .select("a.thumb", "thumbs") {
+        @["data-src", "src"] | set("img_url")
+      }
+      .coalesce_keys({
+        final_title: ["VIDEO_SHOW.title", "title"],
+        cover_out: ["cover", "missing_opt"]
+      });
+  )DSL";
+
+  scraper::dsl::DslParser parser;
+  auto scrapers = parser.parse(dsl);
+  REQUIRE(scrapers.contains("p1"));
+
+  const std::string html = R"(
+    <html><body>
+      <h1>  Main   Title  </h1>
+      <p class="subtitle">  Sub   Title </p>
+      <img class="hero" data-src="https://cdn/hero.jpg" />
+      <span class="views">42</span>
+      <span class="hd"></span>
+      <span class="tag">t1</span>
+      <span class="tag">t2</span>
+      <span class="rank-label">monthly rank</span>
+      <span class="rank-label">weekly rank</span>
+      <a class="thumb" src="https://cdn/a.jpg"></a>
+      <script>
+        var VIDEO_SHOW = {"title": "Show Title"};
+        var flashvars_999 = {"id": 999};
+        var u = "https://ads.test/_xa/ads_batch?clientType=mobile&channel[info]=%7B%22ok%22%3Atrue%7D";
+      </script>
+    </body></html>
+  )";
+
+  const auto out = scrapers["p1"].scrape_from_string(html);
+  CHECK(out["final_title"].as<std::string>() == "Show Title");
+  CHECK(out["cover_out"].as<std::string>() == "https://cdn/hero.jpg");
+  CHECK_FALSE(out.contains("cover"));
+  CHECK_FALSE(out.contains("missing_opt"));
+  CHECK(out["empty_fallback"].as<std::string>() == "default_val");
+  CHECK(out["is_hd"].as<bool>() == true);
+  CHECK(out["views"].as<int>() == 42);
+  CHECK(out["tags"].as<std::string>() == "t1, t2");
+  CHECK(out["subtitle"].as<std::string>() == "Sub Title");
+  CHECK_FALSE(out.contains("maybe"));
+  REQUIRE(out["mapped_ranks"].is_array());
+  CHECK(out["mapped_ranks"][0].as<std::string>() == "ibox_rank_monthly");
+  CHECK(out["mapped_ranks"][1].as<std::string>() == "ibox_rank_weekly");
+  CHECK(out["flashvars"]["id"].as<int>() == 999);
+  CHECK(out["client_type"].as<std::string>() == "mobile");
+  CHECK(out["info"]["ok"].as<bool>() == true);
+  CHECK(out["thumbs"]["img_url"].as<std::string>() == "https://cdn/a.jpg");
+}
+
+TEST_CASE("Phase 2 DSL: pipe/use, include, each, when_exists/unless_exists/when_match, guards, finalize",
+          "[dsl][phase2]") {
+  const std::string dsl = R"DSL(
+    pipe link_map = {
+      text | squish -> "@key"
+      | @href | squish -> "@value"
+    };
+
+    base_meta := Scraper()
+      .select("html") {
+        find_first("h1") -> "page_title"
+        | abort_if_exists(".removed", "status", "removed")
+      };
+
+    catalog := Scraper()
+      .include(base_meta)
+      .select(".card", "items") {
+        skip_if_exists(".ad")
+        | find_first(".name") | skip_if_empty | set("name")
+        | when_exists(".price") {
+            find_first(".price") | when_match("\\$") { replace_exact("$", "") } -> "price"
+          }
+        | unless_exists(".price") {
+            default("free") -> "price"
+          }
+        | each(".links a", "links") { use(link_map) }
+        | each(".variants .v", "variants") {
+            find_first(".sku") -> "sku"
+            | each(".opts span", "opts") { text | squish -> "label" }
+          }
+      }
+      .select(".nonexistent-section") {
+        text -> "never"
+      }
+      .finalize {
+        coalesce_keys({heading: ["missing_heading", "page_title"]})
+      };
+  )DSL";
+
+  scraper::dsl::DslParser parser;
+  auto scrapers = parser.parse(dsl);
+  REQUIRE(scrapers.contains("catalog"));
+
+  const std::string html = R"(
+    <html><body>
+      <h1>  Store Catalog  </h1>
+      <div class="card ad"><span class="name">Buy Now Ad</span></div>
+      <div class="card">
+        <span class="name">Keyboard</span>
+        <span class="price">$99</span>
+        <div class="links"><a href="/docs">Docs</a><a href="/buy">Buy</a></div>
+        <div class="variants">
+          <div class="v"><span class="sku">K1</span><div class="opts"><span>Red</span><span>Blue</span></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <span class="name">Manual</span>
+      </div>
+    </body></html>
+  )";
+
+  const auto out = scrapers["catalog"].scrape_from_string(html);
+  // finalize ran even though final .nonexistent-section matched 0 nodes!
+  CHECK(out["heading"].as<std::string>() == "Store Catalog");
+  CHECK_FALSE(out.contains("page_title"));
+  REQUIRE(out["items"].is_array());
+  REQUIRE(out["items"].size() == 2);
+  CHECK(out["items"][0]["name"].as<std::string>() == "Keyboard");
+  CHECK(out["items"][0]["price"].as<std::string>() == "99");
+  CHECK(out["items"][0]["links"]["Docs"].as<std::string>() == "/docs");
+  CHECK(out["items"][0]["links"]["Buy"].as<std::string>() == "/buy");
+  CHECK(out["items"][0]["variants"]["sku"].as<std::string>() == "K1");
+  REQUIRE(out["items"][0]["variants"]["opts"].is_array());
+  CHECK(out["items"][0]["variants"]["opts"].size() == 2);
+  CHECK(out["items"][1]["name"].as<std::string>() == "Manual");
+  CHECK(out["items"][1]["price"].as<std::string>() == "free");
+
+  // abort_if_exists stops extraction early while preserving status & finalize
+  const std::string removed_html = R"(
+    <html><body>
+      <h1>Gone</h1>
+      <div class="removed"></div>
+      <div class="card"><span class="name">Hidden</span></div>
+    </body></html>
+  )";
+  const auto removed_out = scrapers["catalog"].scrape_from_string(removed_html);
+  CHECK(removed_out["status"].as<std::string>() == "removed");
+  CHECK_FALSE(removed_out.contains("items"));
+  CHECK(removed_out["heading"].as<std::string>() == "Gone");
+}
+
+TEST_CASE("Phase 3 DSL: regex_find_all, regex_groups, compact numbers, parse_duration, relative dates, media/url helpers, index_json_ld",
+          "[dsl][phase3]") {
+  const std::string dsl = R"DSL(
+    wild := Scraper()
+      .select("html") {
+        extract_meta(key="ld", include_json_ld=true, index_json_ld=true)
+        | find_first(".views") | parse_number(compact=true, key="views")
+        | find_first(".dur") | parse_duration(key="duration_sec")
+        | find_first(".ago") | parse_date(output="date", now="2026-11-20T12:00:00Z") -> "posted_date"
+        | find_first(".hero", Value.Attribute, "srcset") | parse_srcset("largest") -> "hero_img"
+        | find_first(".bg", Value.Attribute, "style") | css_url -> "bg_img"
+        | find_first(".sku") | regex_groups("(?P<cat>[a-z]+)-(?P<num>\\d+)", prefix="sku_", clear=true)
+        | find_first(".nums") | regex_find_all("\\d+") -> "all_nums"
+        | find_first(".enc") | unescape_html -> "decoded"
+        | find_all("a", Value.Attribute, "href")
+            | filter_urls(allowed_domains=["example.com"], blocked_domains=["track.example.com"])
+            | strip_query(drop_params=["utm_*", "fbclid"]) -> "clean_links"
+      };
+  )DSL";
+
+  scraper::dsl::DslParser parser;
+  auto scrapers = parser.parse(dsl);
+  REQUIRE(scrapers.contains("wild"));
+
+  const std::string html = R"HTML(
+    <html>
+      <head>
+        <script type="application/ld+json">{"@type": "Product", "name": "Widget"}</script>
+      </head>
+      <body>
+        <span class="views">2.5M</span>
+        <span class="dur">PT5M30S</span>
+        <span class="ago">2 days ago</span>
+        <img class="hero" srcset="/a.jpg 320w, /b.jpg 1080w" />
+        <div class="bg" style="background: url('/bg.webp')"></div>
+        <span class="sku">kbd-900</span>
+        <span class="nums">x1 y22 z333</span>
+        <span class="enc">A &amp; B</span>
+        <a href="https://shop.example.com/item?id=5&utm_source=ad&fbclid=99">Keep</a>
+        <a href="https://track.example.com/pixel?id=1">Blocked</a>
+        <a href="https://other.net/out">External</a>
+      </body>
+    </html>
+  )HTML";
+
+  const auto out = scrapers["wild"].scrape_from_string(html);
+  CHECK(out["ld"]["json_ld_by_type"]["Product"]["name"].as<std::string>() == "Widget");
+  CHECK(out["views"].as<int64_t>() == 2500000);
+  CHECK(out["duration_sec"].as<int64_t>() == 330);
+  CHECK(out["posted_date"].as<std::string>() == "2026-11-18");
+  CHECK(out["hero_img"].as<std::string>() == "/b.jpg");
+  CHECK(out["bg_img"].as<std::string>() == "/bg.webp");
+  CHECK(out["sku_cat"].as<std::string>() == "kbd");
+  CHECK(out["sku_num"].as<std::string>() == "900");
+  REQUIRE(out["all_nums"].is_array());
+  CHECK(out["all_nums"].size() == 3);
+  CHECK(out["decoded"].as<std::string>() == "A & B");
+  CHECK(out["clean_links"].as<std::string>() == "https://shop.example.com/item?id=5");
+}

@@ -4,6 +4,7 @@
 #include "scraper/step.hpp"
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace scraper {
@@ -42,14 +43,25 @@ private:
 
 class BlockParserStep final : public Step {
 public:
-  explicit BlockParserStep(std::vector<std::string> prefixes)
-      : prefixes_(std::move(prefixes)) {}
+  struct AliasedTag {};
+
+  explicit BlockParserStep(std::vector<std::string> prefixes) {
+    entries_.reserve(prefixes.size());
+    for (auto &p : prefixes) {
+      std::string key = p;
+      entries_.emplace_back(std::move(p), std::move(key));
+    }
+  }
+
+  BlockParserStep(AliasedTag,
+                  std::vector<std::pair<std::string, std::string>> entries)
+      : entries_(std::move(entries)) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
 
 private:
-  std::vector<std::string> prefixes_;
+  std::vector<std::pair<std::string, std::string>> entries_;
 };
 
 } // namespace scraper

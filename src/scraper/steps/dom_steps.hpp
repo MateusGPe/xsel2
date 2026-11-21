@@ -1,15 +1,23 @@
 #pragma once
 
+#include "scraper/extractor.hpp"
 #include "scraper/merge.hpp"
 #include "scraper/step.hpp"
 #include "scraper/steps/type_steps.hpp"
 #include <iostream>
 #include <lxml2-query.h>
+#include <memory>
 #include <optional>
+#include <re2/re2.h>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace scraper {
+
+namespace detail {
+[[nodiscard]] xmlNodePtr find_first_match(xmlNodePtr root, const Selector &sel);
+} // namespace detail
 
 class QueryAllStep : public Step {
 public:
@@ -22,7 +30,8 @@ public:
     AdjacentText
   };
 
-  QueryAllStep(std::string_view sel, Type type, std::string_view attr = "");
+  QueryAllStep(std::string_view sel, Type type, std::string_view attr = "",
+               bool optional = false);
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -31,6 +40,7 @@ protected:
   SelectorPtr selector_;
   Type query_type_;
   std::string attr_name_;
+  bool optional_;
 
   [[nodiscard]] QueryResult select_nodes(Node node) const;
   [[nodiscard]] bool handle_empty_selection(const QueryResult &selected,
@@ -46,7 +56,8 @@ public:
   enum class Number { All, Last, Nth };
 
   QueryStep(std::string_view sel, Type type, std::string_view attr = "",
-            Number number = Number::All, size_t nth_val = 0);
+            Number number = Number::All, size_t nth_val = 0,
+            bool optional = false);
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -54,6 +65,52 @@ public:
 private:
   Number number_;
   size_t nth_element_;
+};
+
+class FindFirstStep final : public Step {
+public:
+  FindFirstStep(std::string_view sel,
+                QueryAllStep::Type type = QueryAllStep::Type::Text,
+                std::vector<std::string> attrs = {}, bool squish = true,
+                bool required = false);
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  SelectorPtr selector_;
+  QueryAllStep::Type query_type_;
+  std::vector<std::string> attrs_;
+  bool squish_;
+  bool required_;
+};
+
+struct FieldSpec {
+  std::string key;
+  std::string selector_str;
+  SelectorPtr selector;
+  QueryAllStep::Type type = QueryAllStep::Type::Text;
+  std::vector<std::string> attrs;
+  bool squish = true;
+  bool trim = false;
+  bool first_only = true;
+  ValueType cast = ValueType::String;
+  bool cast_explicit = false;
+  std::optional<jsoncons::json> default_val;
+  std::optional<std::string> join_delim;
+};
+
+class ExtractFieldsStep final : public Step {
+public:
+  explicit ExtractFieldsStep(std::vector<FieldSpec> specs,
+                             InsertOptions opts = {});
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::vector<FieldSpec> specs_;
+  InsertOptions opts_;
 };
 
 class TextStep final : public Step {
@@ -69,13 +126,17 @@ private:
 
 class AttrStep final : public Step {
 public:
-  explicit AttrStep(std::string_view attr_name) : attr_name_(attr_name) {}
+  explicit AttrStep(std::string_view attr_name) {
+    attr_names_.emplace_back(attr_name);
+  }
+  explicit AttrStep(std::vector<std::string> attr_names)
+      : attr_names_(std::move(attr_names)) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
 
 private:
-  std::string attr_name_;
+  std::vector<std::string> attr_names_;
 };
 
 class SetStep final : public Step {
@@ -277,8 +338,9 @@ private:
 class ExtractMetaStep final : public Step {
 public:
   ExtractMetaStep(std::string_view key = "meta", bool include_json_ld = true,
-                  InsertOptions opts = {})
-      : key_(key), include_json_ld_(include_json_ld), opts_(opts) {}
+                  InsertOptions opts = {}, bool index_json_ld = false)
+      : key_(key), include_json_ld_(include_json_ld), opts_(opts),
+        index_json_ld_(index_json_ld) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -287,6 +349,83 @@ private:
   std::string key_;
   bool include_json_ld_;
   InsertOptions opts_;
+  bool index_json_ld_;
+};
+
+class SubExtractStep final : public Step {
+public:
+  explicit SubExtractStep(std::shared_ptr<Extractor> sub_extractor)
+      : sub_extractor_(std::move(sub_extractor)) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+  void apply(Node node, std::vector<std::string> &values, jsoncons::json &dict,
+             ExecutionContext &ctx) override;
+
+private:
+  std::shared_ptr<Extractor> sub_extractor_;
+};
+
+class ConditionalStep final : public Step {
+public:
+  static std::shared_ptr<ConditionalStep>
+  make_exists(std::string_view sel, bool negate,
+              std::vector<std::shared_ptr<Step>> steps);
+
+  static std::shared_ptr<ConditionalStep>
+  make_match(std::string_view pattern, bool negate,
+             const std::optional<std::string> &flags,
+             std::vector<std::shared_ptr<Step>> steps);
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+  void apply(Node node, std::vector<std::string> &values, jsoncons::json &dict,
+             ExecutionContext &ctx) override;
+
+private:
+  enum class Kind { Exists, Match };
+
+  Kind kind_;
+  SelectorPtr selector_;
+  std::shared_ptr<re2::RE2> regex_;
+  bool negate_;
+  std::vector<std::shared_ptr<Step>> steps_;
+
+  ConditionalStep(Kind kind, SelectorPtr selector,
+                  std::shared_ptr<re2::RE2> regex, bool negate,
+                  std::vector<std::shared_ptr<Step>> steps)
+      : kind_(kind), selector_(std::move(selector)), regex_(std::move(regex)),
+        negate_(negate), steps_(std::move(steps)) {}
+};
+
+class GuardStep final : public Step {
+public:
+  enum class Mode { SkipIfExists, SkipIfEmpty, AbortIfExists };
+
+  static std::shared_ptr<GuardStep> make_skip_if_exists(std::string_view sel);
+  static std::shared_ptr<GuardStep> make_skip_if_empty();
+  static std::shared_ptr<GuardStep>
+  make_abort_if_exists(std::string_view sel, std::string_view key = "",
+                       std::string_view reason = "");
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+  void apply(Node node, std::vector<std::string> &values, jsoncons::json &dict,
+             ExecutionContext &ctx) override;
+
+private:
+  Mode mode_;
+  SelectorPtr selector_;
+  std::string key_;
+  std::string reason_;
+
+  GuardStep(Mode mode, SelectorPtr selector, std::string_view key,
+            std::string_view reason)
+      : mode_(mode), selector_(std::move(selector)), key_(key),
+        reason_(reason) {}
 };
 
 } // namespace scraper

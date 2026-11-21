@@ -15,6 +15,7 @@
 #include <iterator>
 #include <lxml2-query.h>
 #include <memory>
+#include <re2/re2.h>
 #include <sstream>
 #include <stdexcept>
 #include <utf8proc.h>
@@ -624,6 +625,276 @@ void SimilarityStep::apply(Node, std::vector<std::string> &values,
       insert_into_json(dict, key_, std::move(arr));
     }
   }
+}
+
+void MapValuesStep::apply(Node, std::vector<std::string> &values,
+                          jsoncons::json &) {
+  for (auto &v : values) {
+    const auto it = mapping_.find(v);
+    if (it != mapping_.end()) {
+      v = it->second;
+    } else if (default_val_.has_value()) {
+      v = *default_val_;
+    }
+  }
+}
+
+namespace {
+
+void append_utf8_codepoint(uint32_t cp, std::string &out) {
+  if (cp == 0 || cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) {
+    return;
+  }
+  if (cp <= 0x7Fu) {
+    out.push_back(static_cast<char>(cp));
+  } else if (cp <= 0x7FFu) {
+    out.push_back(static_cast<char>(0xC0u | (cp >> 6)));
+    out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+  } else if (cp <= 0xFFFFu) {
+    out.push_back(static_cast<char>(0xE0u | (cp >> 12)));
+    out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+    out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+  } else {
+    out.push_back(static_cast<char>(0xF0u | (cp >> 18)));
+    out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+    out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+    out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+  }
+}
+
+std::string decode_html_entities_str(std::string_view input) {
+  static const absl::flat_hash_map<std::string_view, std::string_view>
+      kNamedEntities = {
+          {"amp", "&"},        {"lt", "<"},         {"gt", ">"},
+          {"quot", "\""},      {"apos", "'"},       {"#39", "'"},
+          {"nbsp", "\xC2\xA0"}, {"ndash", "\xE2\x80\x93"},
+          {"mdash", "\xE2\x80\x94"}, {"hellip", "\xE2\x80\xA6"},
+          {"copy", "\xC2\xA9"}, {"reg", "\xC2\xAE"},
+          {"trade", "\xE2\x84\xA2"}, {"laquo", "\xC2\xAB"},
+          {"raquo", "\xC2\xBB"}, {"lsquo", "\xE2\x80\x98"},
+          {"rsquo", "\xE2\x80\x99"}, {"ldquo", "\xE2\x80\x9C"},
+          {"rdquo", "\xE2\x80\x9D"}, {"bull", "\xE2\x80\xA2"},
+          {"middot", "\xC2\xB7"}, {"euro", "\xE2\x82\xAC"},
+          {"pound", "\xC2\xA3"}, {"yen", "\xC2\xA5"},
+          {"cent", "\xC2\xA2"}, {"times", "\xC3\x97"},
+          {"divide", "\xC3\xB7"}, {"plusmn", "\xC2\xB1"},
+      };
+
+  std::string out;
+  out.reserve(input.size());
+  for (size_t i = 0; i < input.size(); ++i) {
+    if (input[i] != '&') {
+      out.push_back(input[i]);
+      continue;
+    }
+    const size_t semi = input.find(';', i + 1);
+    if (semi == std::string_view::npos || semi - i > 16) {
+      out.push_back('&');
+      continue;
+    }
+    const std::string_view entity = input.substr(i + 1, semi - (i + 1));
+    if (entity.empty()) {
+      out.push_back('&');
+      continue;
+    }
+    if (entity[0] == '#') {
+      uint32_t cp = 0;
+      bool valid = false;
+      if (entity.size() > 2 && (entity[1] == 'x' || entity[1] == 'X')) {
+        valid = true;
+        for (size_t k = 2; k < entity.size(); ++k) {
+          const char c = entity[k];
+          uint32_t digit = 0;
+          if (c >= '0' && c <= '9') {
+            digit = static_cast<uint32_t>(c - '0');
+          } else if (c >= 'a' && c <= 'f') {
+            digit = static_cast<uint32_t>(c - 'a' + 10);
+          } else if (c >= 'A' && c <= 'F') {
+            digit = static_cast<uint32_t>(c - 'A' + 10);
+          } else {
+            valid = false;
+            break;
+          }
+          if (cp > 0x10FFFFu / 16u) {
+            valid = false;
+            break;
+          }
+          cp = (cp << 4) | digit;
+        }
+      } else if (entity.size() > 1) {
+        valid = true;
+        for (size_t k = 1; k < entity.size(); ++k) {
+          const char c = entity[k];
+          if (c < '0' || c > '9') {
+            valid = false;
+            break;
+          }
+          cp = cp * 10u + static_cast<uint32_t>(c - '0');
+          if (cp > 0x10FFFFu) {
+            valid = false;
+            break;
+          }
+        }
+      }
+      if (valid && cp > 0 && cp <= 0x10FFFFu &&
+          !(cp >= 0xD800u && cp <= 0xDFFFu)) {
+        append_utf8_codepoint(cp, out);
+        i = semi;
+        continue;
+      }
+    } else {
+      const auto it = kNamedEntities.find(entity);
+      if (it != kNamedEntities.end()) {
+        out.append(it->second);
+        i = semi;
+        continue;
+      }
+    }
+    out.push_back('&');
+  }
+  return out;
+}
+
+struct SrcsetCandidate {
+  std::string url;
+  double weight = 1.0;
+};
+
+std::vector<SrcsetCandidate> parse_srcset_candidates(std::string_view input) {
+  std::vector<SrcsetCandidate> candidates;
+  size_t i = 0;
+  const size_t n = input.size();
+  while (i < n) {
+    while (i < n && (std::isspace(static_cast<unsigned char>(input[i])) ||
+                     input[i] == ',')) {
+      ++i;
+    }
+    if (i >= n) {
+      break;
+    }
+    const size_t url_start = i;
+    while (i < n && !std::isspace(static_cast<unsigned char>(input[i]))) {
+      ++i;
+    }
+    std::string_view url = input.substr(url_start, i - url_start);
+    bool trailing_comma = false;
+    if (!url.empty() && url.back() == ',') {
+      url.remove_suffix(1);
+      trailing_comma = true;
+    }
+
+    double weight = 1.0;
+    if (!trailing_comma) {
+      while (i < n && std::isspace(static_cast<unsigned char>(input[i]))) {
+        ++i;
+      }
+      const size_t desc_start = i;
+      while (i < n && input[i] != ',') {
+        ++i;
+      }
+      std::string_view desc =
+          absl::StripAsciiWhitespace(input.substr(desc_start, i - desc_start));
+      if (i < n && input[i] == ',') {
+        ++i;
+      }
+      if (desc.size() >= 2) {
+        const char unit = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(desc.back())));
+        if (unit == 'w' || unit == 'x') {
+          double val = 0.0;
+          std::string num_str(desc.substr(0, desc.size() - 1));
+          char *end_ptr = nullptr;
+          val = std::strtod(num_str.c_str(), &end_ptr);
+          if (end_ptr == num_str.c_str() + num_str.size() && val > 0.0) {
+            weight = val;
+          }
+        }
+      }
+    }
+
+    if (!url.empty()) {
+      candidates.push_back({std::string(url), weight});
+    }
+  }
+  return candidates;
+}
+
+} // namespace
+
+void UnescapeHtmlStep::apply(Node, std::vector<std::string> &values,
+                             jsoncons::json &) {
+  for (auto &v : values) {
+    if (v.find('&') != std::string::npos) {
+      v = decode_html_entities_str(v);
+    }
+  }
+}
+
+ParseSrcsetStep::ParseSrcsetStep(std::string_view mode) {
+  const std::string lower = absl::AsciiStrToLower(mode);
+  if (lower == "largest" || lower == "best") {
+    mode_ = Mode::Largest;
+  } else if (lower == "smallest") {
+    mode_ = Mode::Smallest;
+  } else if (lower == "all") {
+    mode_ = Mode::All;
+  } else {
+    throw std::invalid_argument(
+        "parse_srcset: unknown mode '" + std::string(mode) +
+        "' (expected 'largest', 'best', 'smallest', or 'all')");
+  }
+}
+
+void ParseSrcsetStep::apply(Node, std::vector<std::string> &values,
+                            jsoncons::json &) {
+  std::vector<std::string> out;
+  for (const auto &v : values) {
+    auto candidates = parse_srcset_candidates(v);
+    if (candidates.empty()) {
+      continue;
+    }
+    if (mode_ == Mode::All) {
+      for (auto &c : candidates) {
+        out.push_back(std::move(c.url));
+      }
+    } else if (mode_ == Mode::Largest) {
+      auto best = std::max_element(
+          candidates.begin(), candidates.end(),
+          [](const SrcsetCandidate &a, const SrcsetCandidate &b) {
+            return a.weight < b.weight;
+          });
+      out.push_back(std::move(best->url));
+    } else {
+      auto best = std::min_element(
+          candidates.begin(), candidates.end(),
+          [](const SrcsetCandidate &a, const SrcsetCandidate &b) {
+            return a.weight < b.weight;
+          });
+      out.push_back(std::move(best->url));
+    }
+  }
+  values = std::move(out);
+}
+
+void CssUrlStep::apply(Node, std::vector<std::string> &values,
+                       jsoncons::json &) {
+  static const re2::RE2 kCssUrlRe(
+      R"re((?i)url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s'"]+))\s*\))re");
+  std::vector<std::string> out;
+  for (const auto &v : values) {
+    re2::StringPiece input(v);
+    re2::StringPiece q1, q2, q3;
+    while (re2::RE2::FindAndConsume(&input, kCssUrlRe, &q1, &q2, &q3)) {
+      if (q1.data() != nullptr && !q1.empty()) {
+        out.emplace_back(q1.data(), q1.size());
+      } else if (q2.data() != nullptr && !q2.empty()) {
+        out.emplace_back(q2.data(), q2.size());
+      } else if (q3.data() != nullptr && !q3.empty()) {
+        out.emplace_back(q3.data(), q3.size());
+      }
+    }
+  }
+  values = std::move(out);
 }
 
 } // namespace scraper

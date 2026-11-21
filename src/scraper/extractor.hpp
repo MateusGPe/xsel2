@@ -20,6 +20,7 @@ enum class ErrorPolicy {
 struct ExtractionOptions {
   ErrorPolicy error_policy = ErrorPolicy::LogAndContinue;
   std::vector<std::string> *errors = nullptr;
+  bool *aborted = nullptr;
 };
 
 class Extractor {
@@ -32,6 +33,11 @@ public:
                                      : split_dict_path(name_, true)) {}
 
   void append_step(std::shared_ptr<Step> step);
+
+  [[nodiscard]] const std::vector<std::shared_ptr<Step>> &
+  steps() const noexcept {
+    return steps_;
+  }
 
   void extract(QueryResult &selection, jsoncons::json &dest,
                std::string_view err_prefix, std::ostream &stream = std::cerr);

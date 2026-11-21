@@ -176,3 +176,27 @@ TEST_CASE("Hardening: copied ScraperBuilder does not share mutable Extractor sta
   CHECK(r1["title"].as<std::string>() == "hello");
   CHECK(r2["title"].as<std::string>() == "HELLO");
 }
+
+TEST_CASE("Phase 2 Scraper: finalize always runs even on 0-match last select, and Include composes scrapers",
+          "[scraper][phase2]") {
+  scraper::ScraperBuilder base;
+  base.Select("h1").Text().Squish().Set("title");
+
+  scraper::ScraperBuilder child;
+  child.Include(base)
+      .Select(".optional-missing")
+      .Text()
+      .Set("opt")
+      .Finalize({
+          std::make_shared<scraper::CoalesceKeysStep>(
+              std::vector<scraper::CoalesceKeysStep::Rule>{
+                  {"final_title", {"opt", "title"}}},
+              true, true),
+      });
+
+  // Copy constructor preserves finalize_steps_
+  scraper::ScraperBuilder copy = child;
+  const auto out = copy.scrape_from_string("<h1>  Hello   World </h1>");
+  CHECK(out["final_title"].as<std::string>() == "Hello World");
+  CHECK_FALSE(out.contains("title"));
+}

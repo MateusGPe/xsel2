@@ -14,6 +14,25 @@ namespace py = pybind11;
 
 namespace {
 
+class DocumentPy {
+public:
+  Document doc;
+
+  static std::shared_ptr<DocumentPy> from_string(const std::string &html) {
+    auto d = std::make_shared<DocumentPy>();
+    d->doc.parseMemory(html);
+    return d;
+  }
+
+  static std::shared_ptr<DocumentPy> from_file(const std::string &path) {
+    auto d = std::make_shared<DocumentPy>();
+    if (!d->doc.parse(path)) {
+      throw std::runtime_error("Failed to open or parse HTML file: " + path);
+    }
+    return d;
+  }
+};
+
 class ScraperPy final : public scraper::ScraperBuilderBase<ScraperPy> {
 public:
   using scraper::ScraperBuilderBase<ScraperPy>::ScraperBuilderBase;
@@ -25,7 +44,147 @@ public:
   py::object from_file_py(const std::string &filename) {
     return xsel::python::json_to_python(scrape_from_file(filename));
   }
+
+  py::object from_document_py(DocumentPy &doc_py) {
+    jsoncons::json result = jsoncons::json::object();
+    if (doc_py.doc.isValid()) {
+      scrape_document(doc_py.doc, result, "document");
+    }
+    return xsel::python::json_to_python(result);
+  }
 };
+
+std::vector<std::string> py_str_or_list(const py::object &obj) {
+  if (obj.is_none()) {
+    return {};
+  }
+  if (py::isinstance<py::str>(obj)) {
+    return {obj.cast<std::string>()};
+  }
+  return obj.cast<std::vector<std::string>>();
+}
+
+scraper::QueryAllStep::Type py_parse_value_type(const py::object &obj) {
+  if (py::isinstance<scraper::QueryAllStep::Type>(obj)) {
+    return obj.cast<scraper::QueryAllStep::Type>();
+  }
+  const std::string s = obj.cast<std::string>();
+  if (s == "Value.Text" || s == "Text" || s == "text") {
+    return scraper::QueryAllStep::Type::Text;
+  }
+  if (s == "Value.OwnText" || s == "OwnText" || s == "own_text") {
+    return scraper::QueryAllStep::Type::OwnText;
+  }
+  if (s == "Value.Attribute" || s == "Attribute" || s == "attr") {
+    return scraper::QueryAllStep::Type::Attribute;
+  }
+  if (s == "Value.ElementExists" || s == "ElementExists" || s == "exists") {
+    return scraper::QueryAllStep::Type::ElementExists;
+  }
+  if (s == "Value.AttributeExists" || s == "AttributeExists" ||
+      s == "attr_exists") {
+    return scraper::QueryAllStep::Type::AttributeExists;
+  }
+  if (s == "Value.Adjacent" || s == "Adjacent" || s == "adjacent") {
+    return scraper::QueryAllStep::Type::AdjacentText;
+  }
+  throw std::runtime_error("Unknown Value type: " + s);
+}
+
+ScraperPy &py_apply_extract_fields(ScraperPy &self, const py::dict &spec,
+                                   bool allow_empty) {
+  std::vector<scraper::FieldSpec> specs;
+  specs.reserve(spec.size());
+  for (const auto &item : spec) {
+    scraper::FieldSpec fs;
+    fs.key = item.first.cast<std::string>();
+    if (!py::isinstance<py::dict>(item.second)) {
+      fs.selector_str = item.second.cast<std::string>();
+      specs.push_back(std::move(fs));
+      continue;
+    }
+    py::dict d = item.second.cast<py::dict>();
+    bool has_sel = false;
+    bool has_type = false;
+    bool has_attr = false;
+    for (const auto &kv : d) {
+      const std::string fk = kv.first.cast<std::string>();
+      py::object fv = py::reinterpret_borrow<py::object>(kv.second);
+      if (fk == "sel" || fk == "selector") {
+        fs.selector_str = fv.cast<std::string>();
+        has_sel = true;
+      } else if (fk == "type") {
+        fs.type = py_parse_value_type(fv);
+        has_type = true;
+      } else if (fk == "attr") {
+        if (!fv.is_none()) {
+          fs.attrs = py_str_or_list(fv);
+          has_attr = true;
+        }
+      } else if (fk == "squish") {
+        fs.squish = fv.cast<bool>();
+      } else if (fk == "trim") {
+        fs.trim = fv.cast<bool>();
+      } else if (fk == "first") {
+        fs.first_only = fv.cast<bool>();
+      } else if (fk == "cast" || fk == "as" || fk == "to") {
+        fs.cast = scraper::parse_value_type_name(fv.cast<std::string>());
+        fs.cast_explicit = true;
+      } else if (fk == "default") {
+        fs.default_val = xsel::python::python_to_json(fv);
+      } else if (fk == "join") {
+        if (!fv.is_none()) {
+          fs.join_delim = fv.cast<std::string>();
+        }
+      } else {
+        throw std::runtime_error("extract_fields: unknown field option '" + fk +
+                                 "' for '" + fs.key + "'");
+      }
+    }
+    if (!has_sel) {
+      throw std::runtime_error(
+          "extract_fields: missing 'sel' in field spec for '" + fs.key + "'");
+    }
+    if (!has_type && has_attr) {
+      fs.type = scraper::QueryAllStep::Type::Attribute;
+    }
+    specs.push_back(std::move(fs));
+  }
+  scraper::InsertOptions opts;
+  opts.allow_empty = allow_empty;
+  return self.ExtractFields(std::move(specs), opts);
+}
+
+ScraperPy &py_apply_js_blocks(ScraperPy &self, const py::object &prefixes,
+                              const py::object &aliases) {
+  std::vector<std::pair<std::string, std::string>> entries;
+  if (py::isinstance<py::dict>(prefixes)) {
+    for (const auto &item : prefixes.cast<py::dict>()) {
+      entries.emplace_back(item.first.cast<std::string>(),
+                           item.second.cast<std::string>());
+    }
+  } else {
+    for (const auto &p : py_str_or_list(prefixes)) {
+      if (p.size() > 1 && p.back() == '*') {
+        std::string prefix = p.substr(0, p.size() - 1);
+        std::string key = prefix;
+        if (key.size() > 1 && key.back() == '_') {
+          key.pop_back();
+        }
+        entries.emplace_back(std::move(prefix), std::move(key));
+      } else {
+        entries.emplace_back(p, p);
+      }
+    }
+  }
+  if (!aliases.is_none()) {
+    for (const auto &item : aliases.cast<py::dict>()) {
+      entries.emplace_back(item.first.cast<std::string>(),
+                           item.second.cast<std::string>());
+    }
+  }
+  return self.JsBlocksAliased(std::move(entries));
+}
 
 py::dict scrapers_to_py_dict(
     absl::flat_hash_map<std::string, scraper::ScraperBuilder> &parsed) {
@@ -33,6 +192,7 @@ py::dict scrapers_to_py_dict(
   for (auto &[name, builder] : parsed) {
     ScraperPy py_scraper;
     py_scraper.set_extractors(builder.get_extractors());
+    py_scraper.set_finalize_steps(builder.get_finalize_steps());
     out[py::str(name)] = py::cast(std::move(py_scraper));
   }
   return out;
@@ -62,7 +222,7 @@ PYBIND11_MODULE(_scraperpy, m) {
 #ifdef SCRAPERPY_VERSION_INFO
   m.attr("__version__") = SCRAPERPY_VERSION_INFO;
 #else
-  m.attr("__version__") = "0.4.0-dev";
+  m.attr("__version__") = "0.5.0-dev";
 #endif
 
   py::enum_<scraper::QueryAllStep::Type>(m, "Value")
@@ -107,30 +267,74 @@ PYBIND11_MODULE(_scraperpy, m) {
         ac.Find(text, matches);
         py::list out;
         for (const auto &match : matches) {
-          out.append(py::make_tuple(
-              match.start, match.start + match.length,
-              text.substr(match.start, match.length), match.pattern_id));
+          out.append(py::make_tuple(match.start, match.start + match.length,
+                                    text.substr(match.start, match.length),
+                                    match.pattern_id));
         }
         return out;
       });
+
+  py::class_<DocumentPy, std::shared_ptr<DocumentPy>>(m, "Document")
+      .def_static("from_string", &DocumentPy::from_string, py::arg("content"))
+      .def_static("from_file", &DocumentPy::from_file, py::arg("filename"));
 
   py::class_<ScraperPy>(m, "ScraperPy")
       .def(py::init<>())
       .def("from_string", &ScraperPy::from_string_py, py::arg("content"))
       .def("from_file", &ScraperPy::from_file_py, py::arg("filename"))
-      .def("select", &ScraperPy::Select, py::arg("selector"), py::arg("key") = "",
-           py::return_value_policy::reference_internal)
+      .def("from_document", &ScraperPy::from_document_py, py::arg("document"))
+      .def("select", &ScraperPy::Select, py::arg("selector"),
+           py::arg("key") = "", py::return_value_policy::reference_internal)
       .def("text", &ScraperPy::Text, py::arg("own_text") = false,
            py::return_value_policy::reference_internal)
-      .def("attr", &ScraperPy::Attr, py::arg("attr_name"),
-           py::return_value_policy::reference_internal)
+      .def(
+          "attr",
+          [](ScraperPy &self, const py::object &attr_name) -> ScraperPy & {
+            if (py::isinstance<py::str>(attr_name)) {
+              return self.Attr(attr_name.cast<std::string>());
+            }
+            return self.AttrFallback(py_str_or_list(attr_name));
+          },
+          py::arg("attr_name"), py::return_value_policy::reference_internal)
       .def("find_all", &ScraperPy::FindAll, py::arg("sel"), py::arg("type"),
-           py::arg("attr") = "", py::return_value_policy::reference_internal)
+           py::arg("attr") = "", py::arg("optional") = false,
+           py::return_value_policy::reference_internal)
       .def("find", &ScraperPy::Find, py::arg("sel"), py::arg("type"),
            py::arg("attr") = "",
            py::arg("number") = scraper::QueryStep::Number::All,
-           py::arg("nth_val") = 0, py::return_value_policy::reference_internal)
-      .def("trim", &ScraperPy::Trim, py::return_value_policy::reference_internal)
+           py::arg("nth_val") = 0, py::arg("optional") = false,
+           py::return_value_policy::reference_internal)
+      .def(
+          "try_find",
+          [](ScraperPy &self, const std::string &sel,
+             scraper::QueryAllStep::Type type, const std::string &attr,
+             scraper::QueryStep::Number number,
+             size_t nth_val) -> ScraperPy & {
+            return self.Find(sel, type, attr, number, nth_val, true);
+          },
+          py::arg("sel"), py::arg("type"), py::arg("attr") = "",
+          py::arg("number") = scraper::QueryStep::Number::All,
+          py::arg("nth_val") = 0, py::return_value_policy::reference_internal)
+      .def(
+          "find_first",
+          [](ScraperPy &self, const std::string &sel,
+             scraper::QueryAllStep::Type type, const py::object &attr,
+             bool squish, bool required) -> ScraperPy & {
+            return self.FindFirst(sel, type, py_str_or_list(attr), squish,
+                                  required);
+          },
+          py::arg("sel"), py::arg("type") = scraper::QueryAllStep::Type::Text,
+          py::arg("attr") = py::str(""), py::arg("squish") = true,
+          py::arg("required") = false,
+          py::return_value_policy::reference_internal)
+      .def("extract_fields", &py_apply_extract_fields, py::arg("spec"),
+           py::arg("allow_empty") = false,
+           py::return_value_policy::reference_internal)
+      .def("fields", &py_apply_extract_fields, py::arg("spec"),
+           py::arg("allow_empty") = false,
+           py::return_value_policy::reference_internal)
+      .def("trim", &ScraperPy::Trim,
+           py::return_value_policy::reference_internal)
       .def("squish", &ScraperPy::Squish,
            py::return_value_policy::reference_internal)
       .def("normalize_whitespace", &ScraperPy::Squish,
@@ -171,6 +375,13 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def("regex_extract", &ScraperPy::RegexExtract, py::arg("pattern"),
            py::arg("group_index") = 0, py::arg("flags") = std::nullopt,
            py::return_value_policy::reference_internal)
+      .def("regex_find_all", &ScraperPy::RegexFindAll, py::arg("pattern"),
+           py::arg("group_index") = 0, py::arg("flags") = std::nullopt,
+           py::return_value_policy::reference_internal)
+      .def("regex_groups", &ScraperPy::RegexGroups, py::arg("pattern"),
+           py::arg("flags") = std::nullopt, py::arg("prefix") = "",
+           py::arg("clear") = false, py::arg("opts") = scraper::InsertOptions{},
+           py::return_value_policy::reference_internal)
       .def("filter", &ScraperPy::Filter, py::arg("patterns"),
            py::return_value_policy::reference_internal)
       .def(
@@ -200,22 +411,23 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("unique", &ScraperPy::Unique, py::arg("preserve_order") = true,
            py::return_value_policy::reference_internal)
-      .def("default", &ScraperPy::Default,
-           py::arg("default_value"), py::return_value_policy::reference_internal)
+      .def("default", &ScraperPy::Default, py::arg("default_value"),
+           py::return_value_policy::reference_internal)
       .def("js_block", &ScraperPy::JsBlock, py::arg("prefix") = "",
            py::return_value_policy::reference_internal)
       .def("extract_js_block", &ScraperPy::JsBlock, py::arg("prefix") = "",
            py::return_value_policy::reference_internal)
-      .def("js_blocks", &ScraperPy::JsBlocks, py::arg("prefixes"),
+      .def("js_blocks", &py_apply_js_blocks, py::arg("prefixes"),
+           py::arg("aliases") = py::none(),
            py::return_value_policy::reference_internal)
-      .def("extract_js_blocks", &ScraperPy::JsBlocks, py::arg("prefixes"),
+      .def("extract_js_blocks", &py_apply_js_blocks, py::arg("prefixes"),
+           py::arg("aliases") = py::none(),
            py::return_value_policy::reference_internal)
       .def("parse_js", &ScraperPy::ParseJs, py::arg("objname"),
            py::arg("simplify") = true,
            py::arg("opts") = scraper::InsertOptions{},
            py::return_value_policy::reference_internal)
-      .def("flatten", &ScraperPy::Flatten,
-           py::arg("postponable") = true,
+      .def("flatten", &ScraperPy::Flatten, py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("flatten_local", &ScraperPy::FlattenLocal,
            py::return_value_policy::reference_internal)
@@ -284,8 +496,7 @@ PYBIND11_MODULE(_scraperpy, m) {
           },
           py::arg("objname") = "", py::arg("assume_header") = true,
           py::arg("delimiter") = ",", py::arg("trim") = true,
-          py::arg("strict") = true,
-          py::return_value_policy::reference_internal)
+          py::arg("strict") = true, py::return_value_policy::reference_internal)
       .def(
           "csv_dump",
           [](ScraperPy &self, bool assume_header, const std::string &delimiter,
@@ -306,7 +517,8 @@ PYBIND11_MODULE(_scraperpy, m) {
             return self.JsonPathReplace(
                 expr, xsel::python::python_to_json(replacement), postponable);
           },
-          py::arg("expr"), py::arg("replacement"), py::arg("postponable") = true,
+          py::arg("expr"), py::arg("replacement"),
+          py::arg("postponable") = true,
           py::return_value_policy::reference_internal)
       .def("json_flatten", &ScraperPy::JsonFlatten,
            py::arg("postponable") = true,
@@ -431,6 +643,11 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def("parse_number", &ScraperPy::ParseNumber, py::arg("decimal") = ".",
            py::arg("thousands") = ",", py::arg("allow_float") = true,
            py::arg("key") = "", py::arg("opts") = scraper::InsertOptions{},
+           py::arg("compact") = false,
+           py::return_value_policy::reference_internal)
+      .def("parse_duration", &ScraperPy::ParseDuration, py::arg("key") = "",
+           py::arg("unit") = "seconds",
+           py::arg("opts") = scraper::InsertOptions{},
            py::return_value_policy::reference_internal)
       .def(
           "to_int",
@@ -470,7 +687,8 @@ PYBIND11_MODULE(_scraperpy, m) {
           py::return_value_policy::reference_internal)
       .def(
           "cast_keys",
-          [](ScraperPy &self, const std::unordered_map<std::string, std::string> &schema,
+          [](ScraperPy &self,
+             const std::unordered_map<std::string, std::string> &schema,
              bool postponable) -> ScraperPy & {
             absl::flat_hash_map<std::string, scraper::ValueType> typed;
             for (const auto &[k, v] : schema) {
@@ -489,6 +707,14 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("strip_query", &ScraperPy::StripQuery,
            py::arg("keep_params") = std::vector<std::string>{},
+           py::arg("drop_params") = std::vector<std::string>{},
+           py::return_value_policy::reference_internal)
+      .def("filter_urls", &ScraperPy::FilterUrls,
+           py::arg("allowed_domains") = std::vector<std::string>{},
+           py::arg("blocked_domains") = std::vector<std::string>{},
+           py::arg("allowed_schemes") =
+               std::vector<std::string>{"http", "https"},
+           py::arg("same_origin_of") = "",
            py::return_value_policy::reference_internal)
       .def("slugify", &ScraperPy::Slugify, py::arg("separator") = "-",
            py::arg("max_len") = std::nullopt,
@@ -546,14 +772,14 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def("extract_meta", &ScraperPy::ExtractMeta, py::arg("key") = "meta",
            py::arg("include_json_ld") = true,
            py::arg("opts") = scraper::InsertOptions{},
+           py::arg("index_json_ld") = false,
            py::return_value_policy::reference_internal)
       .def("parse_date", &ScraperPy::ParseDate, py::arg("fmt") = "",
            py::arg("output") = "iso", py::arg("key") = "",
            py::arg("tz") = "UTC", py::arg("opts") = scraper::InsertOptions{},
-           py::return_value_policy::reference_internal)
+           py::arg("now") = "", py::return_value_policy::reference_internal)
       .def("unicode_normalize", &ScraperPy::UnicodeNormalize,
-           py::arg("form") = "NFC",
-           py::return_value_policy::reference_internal)
+           py::arg("form") = "NFC", py::return_value_policy::reference_internal)
       .def("strip_accents", &ScraperPy::StripAccents,
            py::return_value_policy::reference_internal)
       .def("fuzzy_filter", &ScraperPy::FuzzyFilter, py::arg("query"),
@@ -562,7 +788,79 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("similarity", &ScraperPy::Similarity, py::arg("query"),
            py::arg("algo") = "jaro_winkler", py::arg("case_sensitive") = false,
-           py::arg("key") = "", py::return_value_policy::reference_internal);
+           py::arg("key") = "", py::return_value_policy::reference_internal)
+      .def("save", &ScraperPy::Save, py::arg("name"),
+           py::return_value_policy::reference_internal)
+      .def("restore", &ScraperPy::Restore, py::arg("name"),
+           py::return_value_policy::reference_internal)
+      .def(
+          "coalesce_keys",
+          [](ScraperPy &self, const py::dict &mapping, bool drop_sources,
+             bool postponable) -> ScraperPy & {
+            std::vector<scraper::CoalesceKeysStep::Rule> rules;
+            rules.reserve(mapping.size());
+            for (const auto &item : mapping) {
+              rules.emplace_back(
+                  item.first.cast<std::string>(),
+                  py_str_or_list(
+                      py::reinterpret_borrow<py::object>(item.second)));
+            }
+            return self.CoalesceKeys(std::move(rules), drop_sources,
+                                     postponable);
+          },
+          py::arg("mapping"), py::arg("drop_sources") = true,
+          py::arg("postponable") = true,
+          py::return_value_policy::reference_internal)
+      .def(
+          "query_params",
+          [](ScraperPy &self, const py::object &mapping,
+             const std::string &default_val, bool clear) -> ScraperPy & {
+            std::vector<scraper::QueryParamsStep::ParamMapping> pairs;
+            if (py::isinstance<py::dict>(mapping)) {
+              for (const auto &item : mapping.cast<py::dict>()) {
+                pairs.emplace_back(item.first.cast<std::string>(),
+                                   item.second.cast<std::string>());
+              }
+            } else {
+              for (const auto &p : py_str_or_list(mapping)) {
+                pairs.emplace_back(p, p);
+              }
+            }
+            return self.QueryParams(std::move(pairs), default_val, clear);
+          },
+          py::arg("mapping"), py::arg("default_val") = "",
+          py::arg("clear") = false, py::return_value_policy::reference_internal)
+      .def(
+          "map_values",
+          [](ScraperPy &self,
+             const std::unordered_map<std::string, std::string> &mapping,
+             std::optional<std::string> default_val) -> ScraperPy & {
+            absl::flat_hash_map<std::string, std::string> map(mapping.begin(),
+                                                              mapping.end());
+            return self.MapValues(std::move(map), std::move(default_val));
+          },
+          py::arg("mapping"), py::arg("default_val") = std::nullopt,
+          py::return_value_policy::reference_internal)
+      .def("skip_if_exists", &ScraperPy::SkipIfExists, py::arg("selector"),
+           py::return_value_policy::reference_internal)
+      .def("skip_if_empty", &ScraperPy::SkipIfEmpty,
+           py::return_value_policy::reference_internal)
+      .def("abort_if_exists", &ScraperPy::AbortIfExists, py::arg("selector"),
+           py::arg("key") = "", py::arg("reason") = "",
+           py::return_value_policy::reference_internal)
+      .def(
+          "include",
+          [](ScraperPy &self, const ScraperPy &other) -> ScraperPy & {
+            return self.Include(other);
+          },
+          py::arg("other"), py::return_value_policy::reference_internal)
+      .def("unescape_html", &ScraperPy::UnescapeHtml,
+           py::return_value_policy::reference_internal)
+      .def("parse_srcset", &ScraperPy::ParseSrcset,
+           py::arg("mode") = "largest",
+           py::return_value_policy::reference_internal)
+      .def("css_url", &ScraperPy::CssUrl,
+           py::return_value_policy::reference_internal);
 
   m.def(
       "parse_js",
@@ -588,7 +886,8 @@ PYBIND11_MODULE(_scraperpy, m) {
         opts.allow_inf_and_nan = allow_inf_and_nan;
         opts.lossless_number = lossless_number;
         opts.max_nesting_depth = max_nesting_depth;
-        return xsel::python::json_to_python(xsel::query::parse_json(text, opts));
+        return xsel::python::json_to_python(
+            xsel::query::parse_json(text, opts));
       },
       py::arg("text"), py::arg("allow_comments") = false,
       py::arg("allow_trailing_comma") = false,
@@ -655,4 +954,22 @@ PYBIND11_MODULE(_scraperpy, m) {
     auto parsed = parser.parse_file(filepath);
     return scrapers_to_py_dict(parsed);
   });
+
+  m.def(
+      "scrape_many",
+      [](const py::dict &scrapers, const std::string &html) {
+        Document doc;
+        doc.parseMemory(html);
+        py::dict out;
+        for (const auto &item : scrapers) {
+          ScraperPy &s = item.second.cast<ScraperPy &>();
+          jsoncons::json res = jsoncons::json::object();
+          if (doc.isValid()) {
+            s.scrape_document(doc, res, item.first.cast<std::string>());
+          }
+          out[item.first] = xsel::python::json_to_python(res);
+        }
+        return out;
+      },
+      py::arg("scrapers"), py::arg("html"));
 }

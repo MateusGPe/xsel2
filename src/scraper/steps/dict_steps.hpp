@@ -4,8 +4,10 @@
 #include "scraper/step.hpp"
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace scraper {
@@ -149,6 +151,67 @@ private:
   std::string keys_key_;
   std::string values_key_;
   std::string target_key_;
+};
+
+class TeeStep final : public Step {
+public:
+  explicit TeeStep(std::vector<std::shared_ptr<Step>> steps)
+      : steps_(std::move(steps)) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+  void apply(Node node, std::vector<std::string> &values, jsoncons::json &dict,
+             ExecutionContext &ctx) override;
+
+private:
+  std::vector<std::shared_ptr<Step>> steps_;
+};
+
+class SaveValuesStep final : public Step {
+public:
+  explicit SaveValuesStep(std::string_view name) : name_(name) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+  void apply(Node node, std::vector<std::string> &values, jsoncons::json &dict,
+             ExecutionContext &ctx) override;
+
+private:
+  std::string name_;
+};
+
+class RestoreValuesStep final : public Step {
+public:
+  explicit RestoreValuesStep(std::string_view name) : name_(name) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+  void apply(Node node, std::vector<std::string> &values, jsoncons::json &dict,
+             ExecutionContext &ctx) override;
+
+private:
+  std::string name_;
+};
+
+class CoalesceKeysStep final : public PostponableJsonStep {
+public:
+  using Rule = std::pair<std::string, std::vector<std::string>>;
+
+  explicit CoalesceKeysStep(std::vector<Rule> rules, bool drop_sources = true,
+                            bool postponable = true)
+      : PostponableJsonStep(postponable), rules_(std::move(rules)),
+        drop_sources_(drop_sources) {}
+
+protected:
+  [[nodiscard]] jsoncons::json
+  transform(const jsoncons::json &input) const override;
+
+private:
+  std::vector<Rule> rules_;
+  bool drop_sources_;
 };
 
 } // namespace scraper

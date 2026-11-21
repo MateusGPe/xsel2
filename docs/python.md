@@ -15,6 +15,8 @@ PYTHONPATH=build:. python3 examples/scrape_example.py
 | Symbol | Kind | Purpose |
 | --- | --- | --- |
 | `ScraperPy` | Class | Fluent HTML/XML scraping & transformation pipeline |
+| `Document` | Class | Parsed HTML/XML DOM (`Document.from_string`, `Document.from_file`) for single-parse reuse |
+| `scrape_many(scrapers, html)` | Function | Parses `html` once and executes every `ScraperPy` in `scrapers` on the shared `Document` |
 | `Value` | Enum | Extraction target for `find` / `find_all` (`Text`, `OwnText`, `Attribute`, `ElementExists`, `AttributeExists`, `Adjacent`) |
 | `Number` | Enum | Match selection for `find` (`All`, `Last`, `Nth`) |
 | `InsertMode` | Enum | Collision handling when writing keys (`Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`) |
@@ -94,6 +96,14 @@ result = scrapers["summary"].from_file("examples/sample.html")
 # Or parse a DSL string directly:
 inline = scraperpy.parse_dsl_string('title = Scraper().select("h1").text().trim().set("title")')
 print(inline["title"].from_string("<h1>  Hi  </h1>"))
+
+# Parse once and run multiple scrapers on the same DOM:
+all_scrapers = scraperpy.load_scrapers("scrapers.dsl")
+results = scraperpy.scrape_many(all_scrapers, open("page.html").read())
+
+# Or reuse an explicit Document across calls:
+doc = scraperpy.Document.from_file("examples/sample.html")
+summary = all_scrapers["video_page"].from_document(doc)
 ```
 
 ---

@@ -6,7 +6,8 @@
 namespace scraper {
 
 Scraper::Scraper(const Scraper &other)
-    : error_policy_(other.error_policy_), errors_(other.errors_) {
+    : finalize_steps_(other.finalize_steps_), error_policy_(other.error_policy_),
+      errors_(other.errors_) {
   extractors_.reserve(other.extractors_.size());
   for (const auto &ext : other.extractors_) {
     extractors_.push_back(ext ? std::make_shared<Extractor>(*ext) : nullptr);
@@ -21,6 +22,7 @@ Scraper &Scraper::operator=(const Scraper &other) {
       cloned.push_back(ext ? std::make_shared<Extractor>(*ext) : nullptr);
     }
     extractors_ = std::move(cloned);
+    finalize_steps_ = other.finalize_steps_;
     error_policy_ = other.error_policy_;
     errors_ = other.errors_;
   }
@@ -63,10 +65,55 @@ void Scraper::perform_extraction(QueryResult &selection, jsoncons::json &data,
   if (opts.errors == &errors_) {
     errors_.clear();
   }
+  bool aborted = false;
+  ExtractionOptions local_opts = opts;
+  local_opts.aborted = &aborted;
   for (auto &ext : extractors_) {
-    ext->extract(selection, data, error_prefix, error_stream, opts);
+    ext->extract(selection, data, error_prefix, error_stream, local_opts);
+    if (aborted) {
+      break;
+    }
   }
   preprocess_key_value(data);
+
+  if (!finalize_steps_.empty()) {
+    Node root_node = selection.front().value_or(Node(nullptr));
+    ExecutionContext ctx;
+    std::vector<std::string> empty_vals;
+    for (const auto &step : finalize_steps_) {
+      if (!step) {
+        continue;
+      }
+      try {
+        if (step->is_postponable()) {
+          data = step->execute_postponed(data);
+        } else {
+          step->apply(root_node, empty_vals, data, ctx);
+        }
+      } catch (const std::exception &e) {
+        if (local_opts.error_policy == ErrorPolicy::ThrowOnError) {
+          throw;
+        }
+        std::string msg;
+        if (!error_prefix.empty()) {
+          msg = "[" + std::string(error_prefix) + "] ";
+        }
+        msg += "Extractor error (finalize): " + std::string(e.what());
+        if (local_opts.error_policy == ErrorPolicy::CollectErrors) {
+          if (local_opts.errors != nullptr) {
+            local_opts.errors->push_back(std::move(msg));
+          }
+        } else {
+          error_stream << msg << '\n';
+        }
+        empty_vals.clear();
+      }
+      if (ctx.abort_scraper) {
+        break;
+      }
+    }
+    preprocess_key_value(data);
+  }
 }
 
 jsoncons::json Scraper::scrape_from_string(std::string_view content) {

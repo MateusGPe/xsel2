@@ -1,6 +1,7 @@
 #pragma once
 
 #include "scraper/step.hpp"
+#include <absl/container/flat_hash_map.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -248,6 +249,44 @@ private:
   std::string algo_;
   bool case_sensitive_;
   std::string key_;
+};
+
+class MapValuesStep final : public Step {
+public:
+  explicit MapValuesStep(absl::flat_hash_map<std::string, std::string> mapping,
+                         std::optional<std::string> default_val = std::nullopt)
+      : mapping_(std::move(mapping)), default_val_(std::move(default_val)) {}
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  absl::flat_hash_map<std::string, std::string> mapping_;
+  std::optional<std::string> default_val_;
+};
+
+class UnescapeHtmlStep final : public Step {
+public:
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+};
+
+class ParseSrcsetStep final : public Step {
+public:
+  explicit ParseSrcsetStep(std::string_view mode = "largest");
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  enum class Mode { Largest, Smallest, All };
+  Mode mode_;
+};
+
+class CssUrlStep final : public Step {
+public:
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
 };
 
 } // namespace scraper

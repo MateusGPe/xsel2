@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   xsel2
-  VERSION 0.4.0
+  VERSION 0.5.0
   DESCRIPTION "High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine"
   LANGUAGES C CXX)
 
@@ -16,8 +16,12 @@ include(GNUInstallDirs)
 include(CTest)
 include(cmake/CPM.cmake)
 
+if(SKBUILD AND NOT DEFINED SCRAPERPY_VERSION_INFO AND DEFINED SKBUILD_PROJECT_VERSION)
+  set(SCRAPERPY_VERSION_INFO "${SKBUILD_PROJECT_VERSION}")
+endif()
+
 if(DEFINED SCRAPERPY_VERSION_INFO)
-  message(STATUS "Project version (from setup.py): ${SCRAPERPY_VERSION_INFO}")
+  message(STATUS "Project version (from Python packaging): ${SCRAPERPY_VERSION_INFO}")
 endif()
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
@@ -192,6 +196,11 @@ target_link_libraries(_scraperpy PRIVATE scraper)
 if(DEFINED SCRAPERPY_VERSION_INFO)
   target_compile_definitions(_scraperpy
     PRIVATE SCRAPERPY_VERSION_INFO="${SCRAPERPY_VERSION_INFO}")
+endif()
+
+if(SKBUILD)
+  install(TARGETS _scraperpy LIBRARY DESTINATION scraperpy)
+  install(FILES scraperpy-stubs/_scraperpy.pyi DESTINATION scraperpy)
 endif()
 
 # ── Executables & Tests ──────────────────────────────────────────────────────

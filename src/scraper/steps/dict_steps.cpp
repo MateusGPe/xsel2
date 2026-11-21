@@ -1,6 +1,8 @@
 #include "scraper/steps/dict_steps.hpp"
 #include "common/json_utils.hpp"
+#include "scraper/merge.hpp"
 #include <algorithm>
+#include <stdexcept>
 
 namespace scraper {
 
@@ -307,6 +309,121 @@ jsoncons::json ZipKeysStep::transform(const jsoncons::json &input) const {
     }
   } else {
     out.insert_or_assign(target_key_, std::move(zipped));
+  }
+  return out;
+}
+
+// ── TeeStep / SaveValuesStep / RestoreValuesStep / CoalesceKeysStep ──────────
+
+void TeeStep::apply(Node node, std::vector<std::string> &values,
+                    jsoncons::json &dict) {
+  ExecutionContext local_ctx;
+  apply(node, values, dict, local_ctx);
+}
+
+void TeeStep::apply(Node node, std::vector<std::string> &values,
+                    jsoncons::json &dict, ExecutionContext &ctx) {
+  std::vector<std::string> local_values = values;
+  for (const auto &step : steps_) {
+    if (!step) {
+      continue;
+    }
+    if (step->is_postponable()) {
+      dict = step->execute_postponed(dict);
+    } else {
+      step->apply(node, local_values, dict, ctx);
+    }
+    if (ctx.skip_item || ctx.abort_scraper) {
+      break;
+    }
+  }
+}
+
+void SaveValuesStep::apply(Node, std::vector<std::string> &, jsoncons::json &) {
+  throw std::runtime_error(
+      "save: requires an Extractor execution context");
+}
+
+void SaveValuesStep::apply(Node, std::vector<std::string> &values,
+                           jsoncons::json &, ExecutionContext &ctx) {
+  ctx.slots[name_] = values;
+}
+
+void RestoreValuesStep::apply(Node, std::vector<std::string> &values,
+                              jsoncons::json &) {
+  values.clear();
+}
+
+void RestoreValuesStep::apply(Node, std::vector<std::string> &values,
+                              jsoncons::json &, ExecutionContext &ctx) {
+  const auto it = ctx.slots.find(name_);
+  if (it != ctx.slots.end()) {
+    values = it->second;
+  } else {
+    values.clear();
+  }
+}
+
+namespace {
+
+const jsoncons::json *resolve_dot_path(const jsoncons::json &root,
+                                       std::string_view path) {
+  const auto parts = split_dict_path(path, true);
+  if (parts.empty()) {
+    return nullptr;
+  }
+  const jsoncons::json *cur = &root;
+  for (const auto &seg : parts) {
+    if (!cur->is_object() || !cur->contains(seg)) {
+      return nullptr;
+    }
+    cur = &cur->at(seg);
+  }
+  return cur;
+}
+
+} // namespace
+
+jsoncons::json
+CoalesceKeysStep::transform(const jsoncons::json &input) const {
+  if (!input.is_object()) {
+    return input;
+  }
+  jsoncons::json out = input;
+  absl::flat_hash_set<std::string> targets;
+  absl::flat_hash_set<std::string> to_drop;
+  targets.reserve(rules_.size());
+
+  for (const auto &[target, sources] : rules_) {
+    targets.insert(target);
+    const jsoncons::json *chosen = nullptr;
+    for (const auto &src : sources) {
+      const jsoncons::json *val = resolve_dot_path(input, src);
+      if (val && !val->is_null() && !xsel::common::is_empty_json(*val)) {
+        chosen = val;
+        break;
+      }
+    }
+    if (chosen) {
+      insert_into_json(out, target, jsoncons::json(*chosen),
+                       InsertOptions{InsertMode::Overwrite, false, true});
+    }
+    if (drop_sources_) {
+      for (const auto &src : sources) {
+        const auto parts = split_dict_path(src, true);
+        if (parts.size() == 1) {
+          to_drop.insert(parts[0]);
+        }
+      }
+    }
+  }
+
+  if (drop_sources_) {
+    for (const auto &src : to_drop) {
+      if (!targets.contains(src)) {
+        out.erase(src);
+      }
+    }
   }
   return out;
 }

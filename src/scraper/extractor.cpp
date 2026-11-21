@@ -76,20 +76,35 @@ void Extractor::extract(QueryResult &selection, jsoncons::json &dest,
   for (const auto &sel_node : sel) {
     jsoncons::json item = jsoncons::json::null();
     std::vector<std::string> values;
+    ExecutionContext ctx;
 
     for (const auto &step : steps_) {
       if (step->is_postponable()) {
         continue;
       }
       try {
-        step->apply(sel_node, values, item);
+        step->apply(sel_node, values, item, ctx);
       } catch (const std::exception &e) {
         handle_step_error(e, err_prefix, name_, stream, opts);
         values.clear();
       }
+      if (ctx.abort_scraper) {
+        if (opts.aborted != nullptr) {
+          *opts.aborted = true;
+        }
+        break;
+      }
+      if (ctx.skip_item) {
+        break;
+      }
     }
 
-    merge_item_at_path(dest, name_segments_, std::move(item));
+    if (!ctx.skip_item) {
+      merge_item_at_path(dest, name_segments_, std::move(item));
+    }
+    if (ctx.abort_scraper) {
+      return;
+    }
   }
 
   for (const auto &postponed : postponed_steps) {

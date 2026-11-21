@@ -155,14 +155,14 @@ void BlockParserStep::apply(Node, std::vector<std::string> &values,
   jsoncons::json combined = jsoncons::json::object();
 
   for (const auto &v : values) {
-    for (const auto &prefix : prefixes_) {
+    for (const auto &[prefix, target_key] : entries_) {
       std::string block = detail::block_seeker_extract(v, prefix);
       if (block.empty()) {
         continue;
       }
       jsoncons::json parsed = digger::parse_object(block, true);
       if (!xsel::common::is_empty_json(parsed)) {
-        insert_into_json(combined, prefix, std::move(parsed),
+        insert_into_json(combined, target_key, std::move(parsed),
                          InsertOptions{InsertMode::Merge, false, true});
       }
     }

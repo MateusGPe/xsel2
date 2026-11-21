@@ -19,20 +19,22 @@ enum class ValueType { String, Int, Float, Number, Bool, Auto };
 [[nodiscard]] jsoncons::json coerce_string_to_json(std::string_view s,
                                                    ValueType type);
 
-/// Normalizes a messy numeric string (e.g., "$1,299.90", "(42.5)") into a
-/// canonical ASCII number string, or returns std::nullopt if no number found.
+/// Normalizes a messy numeric string (e.g., "$1,299.90", "(42.5)", or
+/// "1.2M" with compact=true) into a canonical ASCII number string, or returns
+/// std::nullopt if no number found.
 [[nodiscard]] std::optional<std::string>
 extract_number_string(std::string_view input, std::string_view decimal = ".",
                       std::string_view thousands = ",",
-                      bool allow_float = true);
+                      bool allow_float = true, bool compact = false);
 
 class ParseNumberStep final : public Step {
 public:
   ParseNumberStep(std::string_view decimal = ".",
                   std::string_view thousands = ",", bool allow_float = true,
-                  std::string_view key = "", InsertOptions opts = {})
+                  std::string_view key = "", InsertOptions opts = {},
+                  bool compact = false)
       : decimal_(decimal), thousands_(thousands), allow_float_(allow_float),
-        key_(key), opts_(opts) {}
+        key_(key), opts_(opts), compact_(compact) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -42,6 +44,22 @@ private:
   std::string thousands_;
   bool allow_float_;
   std::string key_;
+  InsertOptions opts_;
+  bool compact_;
+};
+
+class ParseDurationStep final : public Step {
+public:
+  ParseDurationStep(std::string_view key = "",
+                    std::string_view unit = "seconds", InsertOptions opts = {});
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  enum class Unit { Seconds, Milliseconds, Minutes };
+  std::string key_;
+  Unit unit_;
   InsertOptions opts_;
 };
 
@@ -83,8 +101,9 @@ class ParseDateStep final : public Step {
 public:
   ParseDateStep(std::string_view fmt = "", std::string_view output = "iso",
                 std::string_view key = "", std::string_view tz = "UTC",
-                InsertOptions opts = {})
-      : fmt_(fmt), output_(output), key_(key), tz_(tz), opts_(opts) {}
+                InsertOptions opts = {}, std::string_view now = "")
+      : fmt_(fmt), output_(output), key_(key), tz_(tz), opts_(opts),
+        now_(now) {}
 
   void apply(Node node, std::vector<std::string> &values,
              jsoncons::json &dict) override;
@@ -95,6 +114,7 @@ private:
   std::string key_;
   std::string tz_;
   InsertOptions opts_;
+  std::string now_;
 };
 
 } // namespace scraper
