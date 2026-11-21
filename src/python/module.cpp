@@ -222,7 +222,7 @@ PYBIND11_MODULE(_scraperpy, m) {
 #ifdef SCRAPERPY_VERSION_INFO
   m.attr("__version__") = SCRAPERPY_VERSION_INFO;
 #else
-  m.attr("__version__") = "0.5.0-dev";
+  m.attr("__version__") = "0.5.1-dev";
 #endif
 
   py::enum_<scraper::QueryAllStep::Type>(m, "Value")
@@ -308,8 +308,7 @@ PYBIND11_MODULE(_scraperpy, m) {
           "try_find",
           [](ScraperPy &self, const std::string &sel,
              scraper::QueryAllStep::Type type, const std::string &attr,
-             scraper::QueryStep::Number number,
-             size_t nth_val) -> ScraperPy & {
+             scraper::QueryStep::Number number, size_t nth_val) -> ScraperPy & {
             return self.Find(sel, type, attr, number, nth_val, true);
           },
           py::arg("sel"), py::arg("type"), py::arg("attr") = "",
@@ -430,6 +429,42 @@ PYBIND11_MODULE(_scraperpy, m) {
       .def("flatten", &ScraperPy::Flatten, py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("flatten_local", &ScraperPy::FlattenLocal,
+           py::return_value_policy::reference_internal)
+      .def("rename_keys",
+           [](ScraperPy &self, const py::object &pairs,
+              bool postponable) -> ScraperPy & {
+             absl::flat_hash_map<std::string, std::string> rename_map;
+             if (py::isinstance<py::dict>(pairs)) {
+               py::dict d = pairs.cast<py::dict>();
+               rename_map.reserve(d.size());
+               for (const auto &kv : d) {
+                 rename_map.emplace(kv.first.cast<std::string>(),
+                                    kv.second.cast<std::string>());
+               }
+             } else {
+               const auto list = py_str_or_list(pairs);
+               if (list.size() % 2 != 0) {
+                 throw std::runtime_error(
+                     "rename_keys() requires a dict {old: new} or even-length "
+                     "list [old, new, ...]");
+               }
+               rename_map.reserve(list.size() / 2);
+               for (size_t i = 0; i < list.size(); i += 2) {
+                 rename_map.emplace(list[i], list[i + 1]);
+               }
+             }
+             return self.RenameKeys(std::move(rename_map), postponable);
+           },
+           py::arg("pairs"), py::arg("postponable") = true,
+           py::return_value_policy::reference_internal)
+      .def("merge_keys",
+           [](ScraperPy &self, const py::object &source_keys,
+              const std::string &target_key, bool postponable) -> ScraperPy & {
+             return self.MergeKeys(py_str_or_list(source_keys), target_key,
+                                   postponable);
+           },
+           py::arg("source_keys"), py::arg("target_key"),
+           py::arg("postponable") = true,
            py::return_value_policy::reference_internal)
       .def("pick_keys", &ScraperPy::PickKeys, py::arg("keys_to_keep"),
            py::arg("postponable") = true,
@@ -721,6 +756,10 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("html", &ScraperPy::Html, py::arg("outer") = false,
            py::return_value_policy::reference_internal)
+      .def(
+          "outer_html",
+          [](ScraperPy &self) -> ScraperPy & { return self.Html(true); },
+          py::return_value_policy::reference_internal)
       .def("tag_name", &ScraperPy::TagName,
            py::return_value_policy::reference_internal)
       .def("classes", &ScraperPy::Classes,
@@ -856,8 +895,7 @@ PYBIND11_MODULE(_scraperpy, m) {
           py::arg("other"), py::return_value_policy::reference_internal)
       .def("unescape_html", &ScraperPy::UnescapeHtml,
            py::return_value_policy::reference_internal)
-      .def("parse_srcset", &ScraperPy::ParseSrcset,
-           py::arg("mode") = "largest",
+      .def("parse_srcset", &ScraperPy::ParseSrcset, py::arg("mode") = "largest",
            py::return_value_policy::reference_internal)
       .def("css_url", &ScraperPy::CssUrl,
            py::return_value_policy::reference_internal);

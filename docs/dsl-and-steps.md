@@ -17,7 +17,8 @@ This manual documents **100%** of the DSL grammar, syntax sugar, execution & mer
 - [2. Syntax Sugar & Aliases](#2-syntax-sugar--aliases)
   - [Chaining & Grouping](#chaining--grouping)
   - [Shorthand Operators](#shorthand-operators)
-  - [Complete Alias Table (15 Aliases)](#complete-alias-table-15-aliases)
+  - [Complete Alias Table (17 Aliases)](#complete-alias-table-17-aliases)
+  - [Composition, Branching & Control Flow](#composition-branching--control-flow)
 - [3. Execution, State & Merge Model](#3-execution-state--merge-model)
   - [Pipeline Architecture](#pipeline-architecture)
   - [Per-Node State: `values` vs. `dict`](#per-node-state-values-vs-dict)
@@ -37,6 +38,7 @@ This manual documents **100%** of the DSL grammar, syntax sugar, execution & mer
   - [6.7 Dictionary, Typed Casting, JSON/CSV/Binary & Query Steps](#67-dictionary-typed-casting-jsoncsvbinary--query-steps)
   - [6.8 XPath, Tables, Metadata, Dates, Unicode & Fuzzy Matching](#68-xpath-tables-metadata-dates-unicode--fuzzy-matching)
   - [6.9 Debugging](#69-debugging)
+  - [6.10 Control Flow, Branching, Slots & Composition](#610-control-flow-branching-slots--composition)
 
 ---
 
@@ -164,13 +166,13 @@ Strict validation rules (`src/scraper/dsl/value.cpp`):
 | Shorthand | Equivalent Canonical Call | Notes & Caveats |
 | --- | --- | --- |
 | `$("sel")` or `$ "sel"` | `select("sel")` | Supports `{ ... }` block immediately after. `$("sel", "key")` also works. |
-| `@href` or `@"href"` or `@("href")` | `attr("href")` | `@ident` parses `ident` as the attribute name. |
+| `@href`, `@"href"`, `@("href")`, `@["data-src", "src"]` | `attr(...)` | `@ident` parses `ident` as attribute name; list form tries fallback attributes in order. |
 | `?? "fallback"` | `default("fallback")` | Coerces argument via `as_str()`. |
 | `[i]` (e.g. `[0]`, `[2]`) | `nth(i)` | Non-negative integer index. |
 | `[-1]` | `last(1)` | **Caveat**: Any negative index other than `-1` (e.g., `[-2]`) throws at parse time. |
 | `-> "key"`, `>> "key"`, `as "key"` | `set("key")` | Always uses default `type="string"`. For typed `set`, call `set("key", "int")` or `as("key", "int")`. |
 
-### Complete Alias Table (15 Aliases)
+### Complete Alias Table (17 Aliases)
 
 | Alias | Canonical Step | Notes |
 | --- | --- | --- |
@@ -210,6 +212,8 @@ Strict validation rules (`src/scraper/dsl/value.cpp`):
   - `abort_if_exists(selector, key="", reason="")`: optionally record `reason` (or `true`) under `key` and stop subsequent extractors immediately.
 - **Scraper-level post-processing (`finalize { ... }`)**: Always runs once after all extractors finish (even if the final `select(...)` matched 0 nodes).
 
+See [Section 6.10](#610-control-flow-branching-slots--composition) for full signatures, caveats, and examples of every control-flow and composition step.
+
 ---
 
 ## 3. Execution, State & Merge Model
@@ -221,34 +225,43 @@ flowchart LR
   Doc["HTML / XML Document"] --> Ext["Extractor Group: select(selector, key)"]
   Ext -->|"0 matches"| Skip["Skip Extractor (no postponed steps run!)"]
   Ext -->|"N >= 1 matches"| Loop["For each matched Node"]
-  Loop --> State["Init values=[], item=null"]
+  Loop --> State["Init values=[], item=null, ctx"]
   State --> Steps["Run non-postponable steps in order"]
   Steps -->|"Step throws"| Err["ErrorPolicy: log/collect/throw + values.clear()"]
+  Steps -->|"skip_item"| NextNode["Drop item, continue next Node"]
+  Steps -->|"abort_scraper"| Fin["Run finalize { ... } (always runs once)"]
   Steps --> Merge["merge_item_at_path(dest, key_segments, item)"]
   Merge --> Post["Run postponable steps once on dest"]
   Post --> KV["preprocess_key_value(dest) (@key/@value)"]
-  KV --> Out["Final JSON Output"]
+  KV --> Fin
+  Fin --> Out["Final JSON Output"]
 ```
 
 ### Per-Node State: `values` vs. `dict`
 
-Inside each `Extractor` match, two mutable state objects exist:
+Inside each `Extractor` match, two mutable state objects exist (alongside a per-node `ExecutionContext` holding `save`/`restore` slots and `skip_item`/`abort_scraper` guard flags):
 1. **`values`** (`std::vector<std::string>`): The working list of extracted/transformed strings.
-   - Extraction steps (`text`, `attr`, `html`, `tag_name`, `classes`, `find`, `find_all`, `xpath`) **append** to `values`.
-   - Transform steps (`trim`, `squish`, `lower`, `upper`, `replace`, `replace_exact`, `regex_replace`, `prepend`, `append`, `substring`, `unescape`, `strip_comments`, `strip_tags`, `base64_*`, `hash`, `slugify`, `resolve_url`, `url_part`, `query_param`, `strip_query`, `unicode_normalize`, `strip_accents`) mutate `values` **in place**.
-   - Filtering/slicing steps (`drop_empty`, `regex_filter`, `filter`, `fuzzy_filter`, `first`, `last`, `nth`, `slice`, `unique`, `sort`, `reverse`, `default`, `coalesce`) prune, reorder, or fallback `values`.
-   - Expansion/reduction steps (`split`, `join`, `regex_extract`, `extract_many`, `js_block`, `similarity`) replace `values` with a new vector.
-   - **Sink steps** (`set`, `append_to`, `js_blocks`, `parse_js`, `json_parse`, `csv_parse`, `from_cbor`/`from_msgpack`/`from_bson`/`from_ubjson`) consume `values`, write to `dict`, and **clear `values`** (`values.clear()`).
-   - **Dual-mode steps** (`parse_number`, `to_int`, `to_float`, `to_bool`, `similarity`, `table`, `parse_date`): check each step's documentation carefully—some clear `values` when `key != ""` (`parse_number`, `to_int`, `to_float`, `to_bool`), while others keep `values` populated (`parse_date`, `similarity`), and `table` writes to `dict[key]` when `key != ""` or pushes JSON into `values` when `key == ""`.
+   - Extraction steps (`text`, `attr`, `html`, `outer_html`, `tag_name`, `classes`, `find`, `try_find`, `find_all`, `find_first`, `xpath`) **append** to `values`.
+   - Transform steps (`trim`, `squish`, `lower`, `upper`, `replace`, `replace_exact`, `regex_replace`, `prepend`, `append`, `substring`, `unescape`, `unescape_html`, `strip_comments`, `strip_tags`, `base64_*`, `hash`, `slugify`, `resolve_url`, `url_part`, `query_param`, `strip_query`, `unicode_normalize`, `strip_accents`, `map_values`) mutate `values` **in place**.
+   - Filtering/slicing steps (`drop_empty`, `regex_filter`, `filter`, `filter_urls`, `fuzzy_filter`, `first`, `last`, `nth`, `slice`, `unique`, `sort`, `reverse`, `default`, `coalesce`) prune, reorder, or fallback `values`.
+   - Expansion/reduction steps (`split`, `join`, `regex_extract`, `regex_find_all`, `extract_many`, `js_block`, `parse_srcset`, `css_url`, `similarity`) replace `values` with a new vector.
+   - **Sink steps**:
+     - Consume `values`, write to `dict`, and **clear `values`**: `set`, `append_to`, `js_blocks`, `parse_js`, `json_parse`, `csv_parse`, `from_cbor`/`from_msgpack`/`from_bson`/`from_ubjson`.
+     - Direct DOM-to-`dict` steps (write to `dict` without reading or modifying `values`): `attrs`, `extract_meta`, `extract_fields` (`fields`), `each`.
+     - Conditional-clear sinks (write to `dict`; keep `values` by default, clear if `clear=true`): `regex_groups`, `query_params`.
+   - **Dual-mode steps** (`parse_number`, `parse_duration`, `to_int`, `to_float`, `to_bool`, `similarity`, `table`, `parse_date`):
+     - `parse_number`, `parse_duration`, `to_int`, `to_float`, `to_bool`: replace `values` when `key == ""`, or write native JSON values to `dict[key]` and **clear `values`** when `key != ""`.
+     - `parse_date`, `similarity`: replace `values` and, when `key != ""`, also write native JSON values to `dict[key]` without clearing `values`.
+     - `table`: writes native JSON rows to `dict[key]` when `key != ""` (leaving `values` intact), or pushes serialized JSON string into `values` when `key == ""`.
 2. **`dict`** (`jsoncons::json`, initially `null`): The local JSON object for the current matched node.
 
-> **Important**: If an extractor's `select(selector)` matches **0 nodes**, the entire `Extractor` returns immediately—meaning **neither** its per-node steps **nor** its `postponable` steps run!
+> **Important**: If an extractor's `select(selector)` matches **0 nodes**, the entire `Extractor` returns immediately—meaning **neither** its per-node steps **nor** its `postponable` steps run! However, any `finalize { ... }` block attached to the scraper **always** runs once after all extractors finish.
 
 ### Immediate vs. Postponed Steps (`postponable`)
 
-19 steps inherit from `PostponableJsonStep` and accept `postponable=true` (default):
+20 step classes inherit from `PostponableJsonStep` and accept `postponable=true` (default):
 
-`flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `sort_keys`, `deduplicate`, `jmespath`, `jsonpath`, `jsonpath_replace`, `json_flatten`, `json_unflatten`, `jsonpointer_get`, `jsonpointer_set`, `jsonpointer_remove`, `json_patch`, `merge_patch`, `json_schema`, `cast_keys`, `zip_keys`. *(20 methods total, plus `flatten_local` which is `flatten(false)`.)*
+`flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `sort_keys`, `deduplicate`, `jmespath`, `jsonpath`, `jsonpath_replace`, `json_flatten`, `json_unflatten`, `jsonpointer_get`, `jsonpointer_set`, `jsonpointer_remove`, `json_patch`, `merge_patch`, `json_schema`, `cast_keys`, `zip_keys`, `coalesce_keys`. *(21 methods total, plus `flatten_local` which is `flatten(false)`.)*
 
 - When **`postponable=true`** (default): The step is skipped during the per-node loop and executed **once** at the end of that `Extractor` on the accumulated `dest` JSON document (`dest = step.transform(dest)`).
 - When **`postponable=false`** (or `flatten_local()`): The step runs **immediately** in-order on the current node's local `dict` (`dict = step.transform(dict)`).
@@ -290,8 +303,8 @@ Inside each `Extractor` match, two mutable state objects exist:
 
 | Engine / Library | Used By | Key Caveats & Limits |
 | --- | --- | --- |
-| **`lxml2-query` + `libxml2`** | `select`, `find`, `find_all`, `xpath`, `resolve_url`, `url_part`, `query_param`, `strip_query`, `table`, `extract_meta` | `libxml2` HTML parser is lenient; CSS selectors support standard CSS3 (`>`, `+`, `~`, `[attr=val]`, `:nth-child`, etc.). `xpath` evaluates XPath 1.0 relative to the current node. |
-| **RE2** | `regex_replace` (`sub`), `regex_filter` (`grep`), `regex_extract` (`extract`) | Linear-time, guaranteed no catastrophic backtracking (no lookahead/lookbehind/backreferences). **Default is case-insensitive**; passing `flags` without `"icase"` makes it case-sensitive! |
+| **`lxml2-query` + `libxml2`** | `select`, `find`, `try_find`, `find_all`, `find_first`, `extract_fields`, `xpath`, `resolve_url`, `url_part`, `query_param`, `query_params`, `strip_query`, `filter_urls`, `table`, `extract_meta`, `each`, `when_exists`, `unless_exists`, `skip_if_exists`, `abort_if_exists` | `libxml2` HTML parser is lenient; CSS selectors support standard CSS3 (`>`, `+`, `~`, `[attr=val]`, `:nth-child`, etc.). `xpath` evaluates XPath 1.0 relative to the current node. `query_params` and `strip_query` also tolerate unencoded `[` / `]` in query strings. |
+| **RE2** | `regex_replace` (`sub`), `regex_filter` (`grep`), `regex_extract` (`extract`), `regex_find_all`, `regex_groups`, `when_match`, `css_url` | Linear-time, guaranteed no catastrophic backtracking (no lookahead/lookbehind/backreferences). **Default is case-insensitive**; passing `flags` without `"icase"` makes it case-sensitive! |
 | **Compressed-DFA Aho-Corasick** | `filter`, `replace_many`, `extract_many` | Single-pass $O(n + m)$ literal matching. `replace_many` resolves overlapping matches by leftmost-longest. |
 | **Heuristic JS/JSON Digger** | `js_block`, `js_blocks`, `parse_js`, `json_parse(..., lenient=true)` | Does **not** execute JavaScript; heuristically extracts object/array literals, strips `//` and `/* */` comments, folds `+`-joined strings, expands `JSON.parse("...")`, and maps `undefined` → `null`. |
 | **`jsoncons`** | `jmespath`, `jsonpath`, `jsonpath_replace`, `jsonpointer_*`, `json_patch`, `merge_patch`, `json_schema`, `json_flatten`, `json_unflatten`, `json_parse`, `json_dump`, `csv_*`, `from_*`/`to_*` | `MAX_JSON_DEPTH = 512` in `xsel::common`; `json_parse` defaults `max_nesting_depth = 1024`. |
@@ -335,9 +348,12 @@ Inside each `Extractor` match, two mutable state objects exist:
 | --- | --- | --- | --- |
 | `select` | `(selector, key="")` | `$("...")`, `$ "..."`, `select(...) { ... }` | Starts new `Extractor` |
 | `text` | `(own_text=false)` | — | Appends to `values` |
-| `attr` | `(attr_name)` | `@attr`, `@"attr"`, `@("attr")` | Appends to `values` |
-| `find_all` | `(selector, type, attr="")` | — | Appends to `values` |
-| `find` | `(selector, type, attr="", number=Number.All, nth_val=0)` | — | Appends to `values` |
+| `attr` | `(attr_name)` | `@attr`, `@"attr"`, `@("attr")`, `@[...]` | Appends to `values` |
+| `find_all` | `(selector, type, attr="", optional=false)` | — | Appends to `values` |
+| `find` | `(selector, type, attr="", number=Number.All, nth_val=0, optional=false)` | — | Appends to `values` |
+| `try_find` | `(selector, type, attr="", number=Number.All, nth_val=0)` | — | Appends to `values` |
+| `find_first` | `(selector, type=Value.Text, attr="", squish=true, required=false)` | — | Appends to `values` |
+| `extract_fields` | `(spec, allow_empty=false)` | `fields` | Writes directly to `dict` |
 | `html` | `(outer=false)` | `inner_html` | Appends to `values` |
 | `outer_html` | `()` | — | Appends to `values` |
 | `tag_name` | `()` | — | Appends to `values` |
@@ -361,28 +377,73 @@ Inside each `Extractor` match, two mutable state objects exist:
 - **Example**: `$("p.summary") { text(own_text=true) | squish -> "summary" }`
 
 #### `attr(attr_name)`
-- **Sugar**: `@href`, `@"data-id"`, `@("data-id")`
-- **Behavior**: Extracts attribute `attr_name` (`string`, required) from the current `Node` and appends it to `values` (appends `""` if missing).
-- **Example**: `$("a.buy") { @href | resolve_url("https://shop.example") -> "buy_url" }`
+- **Sugar**: `@href`, `@"data-id"`, `@("data-id")`, `@["data-src", "src"]`
+- **Behavior**: Extracts attribute `attr_name` (`string` or `list<string>`) from the current `Node` and appends it to `values`.
+  - When `attr_name` is a single string, appends `node.Attribute(attr_name).value_or("")`.
+  - When `attr_name` is a list of strings (fallback mode), checks each attribute name in order and appends the **first non-empty** attribute value (or `""` if none match).
+- **Example**: `$("img.hero") { @["data-src", "src"] | resolve_url("https://shop.example") -> "hero_img" }`
 
-#### `find_all(selector, type, attr="")`
+#### `find_all(selector, type, attr="", optional=false)`
 - **Parameters**:
   - `selector` (`string`, required): CSS selector run relative to the current `Node` (or `NextSiblings()` when `type` is `Value.Adjacent`).
   - `type` (`Value` enum, required): `Value.Text` (`Text`/`text`), `Value.OwnText` (`OwnText`/`own_text`), `Value.Attribute` (`Attribute`/`attr`), `Value.ElementExists` (`ElementExists`/`exists`), `Value.AttributeExists` (`AttributeExists`/`attr_exists`), `Value.Adjacent` (`Adjacent`/`adjacent`).
   - `attr` (`string`, default `""`): Attribute name for `Attribute` / `AttributeExists`.
+  - `optional` (`bool`, default `false`): When `true`, 0 matches for non-existence types returns silently without throwing or clearing `values`.
 - **Caveats**:
-  - For non-existence types (`Text`, `OwnText`, `Attribute`, `Adjacent`), **0 matches throws `std::runtime_error`** (which clears `values` under `LogAndContinue`).
+  - For non-existence types (`Text`, `OwnText`, `Attribute`, `Adjacent`) with `optional=false`, **0 matches throws `std::runtime_error`** (which clears `values` under `LogAndContinue`).
   - Empty extracted strings are skipped for non-existence types, whereas `ElementExists` and `AttributeExists` always push `"true"` or `"false"`.
-- **Example**: `$("body") { find_all("a.tag", Value.Text) | trim -> "tags" }`
+- **Example**: `$("body") { find_all("a.tag", Value.Text, optional=true) | trim -> "tags" }`
 
-#### `find(selector, type, attr="", number=Number.All, nth_val=0)`
+#### `find(selector, type, attr="", number=Number.All, nth_val=0, optional=false)`
 - **Parameters**: Same as `find_all`, plus:
   - `number` (`Number` enum, default `Number.All`): `Number.All` (`All`/`all`), `Number.Last` (`Last`/`last`), `Number.Nth` (`Nth`/`nth`).
   - `nth_val` (`non-negative int`, default `0`): Index when `number=Number.Nth`.
+  - `optional` (`bool`, default `false`): When `true`, suppresses the empty-match exception (same as `try_find`).
 - **Caveats**:
   - When `number=Number.Nth` and `nth_val >= match_count`, it **clamps to the last match** rather than returning empty or throwing.
-  - Same empty-match throw behavior as `find_all`.
+  - Same empty-match throw behavior as `find_all` when `optional=false`.
 - **Example**: `$("ul.specs") { find("li", Value.Text, number=Number.Nth, nth_val=1) -> "second_spec" }`
+
+#### `try_find(selector, type, attr="", number=Number.All, nth_val=0)`
+- **Behavior**: Non-throwing shorthand for `find(selector, type, attr, number, nth_val, optional=true)`. When `selector` matches 0 nodes, leaves existing `values` untouched and does not emit an error under `ThrowOnError` or `LogAndContinue`.
+- **Example**: `$("div.card") { try_find(".subtitle", Text) ?? "N/A" -> "subtitle" }`
+
+#### `find_first(selector, type=Value.Text, attr="", squish=true, required=false)`
+- **Parameters**:
+  - `selector` (`string`, required): CSS selector matched via zero-allocation pre-order DFS from the current `Node` (or `NextSiblings()` when `type` is `Value.Adjacent`).
+  - `type` (`Value` enum, default `Value.Text`): Any `Value` enum value.
+  - `attr` (`string | list<string>`, default `""`): Attribute name or fallback list for `Value.Attribute` / `Value.AttributeExists`.
+  - `squish` (`bool`, default `true`): Normalizes extracted whitespace inline (`TextNormalized` / `OwnTextNormalized` / `normalizeHtmlText`).
+  - `required` (`bool`, default `false`): When `true`, throws `std::runtime_error` if no match yields a non-empty value (ignored for `ElementExists` / `AttributeExists`, which always push `"true"`/`"false"`).
+- **Behavior**: Stops traversal immediately upon finding the first matching descendant that produces a non-empty value and appends that single value to `values`.
+- **Example**: `$("article") { find_first("img.thumb", Attribute, ["data-src", "src"]) -> "thumb" }`
+
+#### `extract_fields(spec, allow_empty=false)` / `fields`
+- **Parameters**:
+  - `spec` (`object`, required): Map of `{output_key: selector_string_or_field_spec}` where each value is either a CSS selector string (`"h1"`) or an options object `{sel|selector, type, attr, squish, trim, first, cast|as|to, default, join}`:
+    - `sel` / `selector` (`string`, required): CSS selector.
+    - `type` (`Value`, default `Value.Text`, or `Value.Attribute` automatically if `attr` is specified without `type`).
+    - `attr` (`string | list<string>`): Attribute name or fallback list.
+    - `squish` (`bool`, default `true`): Normalize whitespace runs.
+    - `trim` (`bool`, default `false`): Trim leading/trailing ASCII whitespace when `squish=false`.
+    - `first` (`bool`, default `true`): Stop after the first matching element (`true`) or collect all matches (`false`).
+    - `cast` / `as` / `to` (`string`, default `"string"`): Type coercion (`"string"`, `"int"`, `"float"`, `"number"`, `"bool"`, `"auto"`).
+    - `default` (any DSL/JSON value): Fallback written when no match is found.
+    - `join` (`string`): Join multiple matches into a single string before coercing and writing.
+  - `allow_empty` (`bool`, default `false`): Passed via `InsertOptions` when writing fields into `dict`.
+- **Behavior**: Walks the current node's subtree once in a single pre-order traversal, retiring each `first=true` field as soon as it matches, and writes all extracted fields directly into `dict` (without modifying `values`).
+- **Caveats**: For `ElementExists` and `AttributeExists`, writes native JSON booleans (`true`/`false`) unless `cast`/`as`/`to` is explicitly set.
+- **Example**:
+  ```text
+  $("html") {
+    fields({
+      title: "h1",
+      views: { sel: ".views", squish: true, cast: "int" },
+      cover: { sel: "img.pic", attr: ["data-src", "src"] },
+      has_badge: { sel: ".badge", type: exists }
+    })
+  }
+  ```
 
 #### `html(outer=false)` / `inner_html` & `outer_html()`
 - **Behavior**: Serializes the current node's HTML via `libxml2` `htmlNodeDump` and appends it to `values`.
@@ -431,6 +492,10 @@ All steps in this section operate in-place on `values` (except `split`, which ex
 | `base64_decode` | `(urlsafe=false)` | — | Standard or URL-safe Base64 decode |
 | `hash` | `(algo="fnv1a64")` | — | `"fnv1a64"` or `"sha256"` hex digest |
 | `slugify` | `(separator="-", max_len=null)` | — | Lowercase ASCII URL slug |
+| `map_values` | `(mapping, default_val=null)` | — | $O(1)$ exact-string lookup replacement |
+| `unescape_html` | `()` | — | Decodes HTML entities to UTF-8 |
+| `parse_srcset` | `(mode="largest")` | — | Picks `"largest"`/`"best"`, `"smallest"`, or `"all"` URLs |
+| `css_url` | `()` | — | Extracts URLs from CSS `url(...)` declarations |
 
 #### `trim()` / `strip`
 - **Behavior**: Strips leading and trailing ASCII whitespace (`" \t\n\r\f\v"`) from each string in `values`.
@@ -503,18 +568,42 @@ All steps in this section operate in-place on `values` (except `split`, which ex
 - **Caveat**: Non-ASCII characters are treated as separators; pair with `strip_accents()` first for accented Latin text!
 - **Example**: `$("h1") { text | strip_accents | slugify(max_len=40) -> "slug" }`
 
+#### `map_values(mapping, default_val=null)`
+- **Parameters**:
+  - `mapping` (`object | JSON string`, required): Exact-match string mapping `{old: new}`. Non-string values are coerced via `json_to_string`.
+  - `default_val` (`string | null`, default `null`): Replacement string when a value is not in `mapping`. When `null`, unmatched values remain unchanged.
+- **Behavior**: Performs an $O(1)$ hash-table lookup on each string in `values`.
+- **Example**: `$(".status") { text | lower | map_values({"in stock": "available", "sold out": "unavailable"}, default_val="unknown") -> "status" }`
+
+#### `unescape_html()`
+- **Behavior**: Decodes named HTML entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`, `&nbsp;`, `&ndash;`, `&mdash;`, `&hellip;`, `&copy;`, `&reg;`, `&trade;`, `&laquo;`, `&raquo;`, `&lsquo;`, `&rsquo;`, `&ldquo;`, `&rdquo;`, `&bull;`, `&middot;`, `&euro;`, `&pound;`, `&yen;`, `&cent;`, `&times;`, `&divide;`, `&plusmn;`) and decimal/hex numeric character references (`&#NNN;`, `&#xHHH;`) to UTF-8 in `values`.
+- **Caveat**: Unknown entities and invalid codepoints (`0`, surrogates, `> 0x10FFFF`) are preserved literally.
+- **Example**: `$("script") { text | unescape_html -> "decoded" }`
+
+#### `parse_srcset(mode="largest")`
+- **Parameters**:
+  - `mode` (`string`, default `"largest"`): `"largest"` (or `"best"`), `"smallest"`, or `"all"` (case-insensitive; unknown value throws `std::invalid_argument`).
+- **Behavior**: Parses HTML `srcset` attributes (`url 2x`, `url 1080w`, or bare `url` weighted as `1.0`) and replaces `values` with the selected candidate URL(s). Drops items with no valid candidates.
+- **Example**: `$("img.cover") { @srcset | parse_srcset("largest") -> "cover_hd" }`
+
+#### `css_url()`
+- **Behavior**: Runs a case-insensitive RE2 scan for `url(...)` declarations (double-quoted, single-quoted, or unquoted) across every string in `values` and replaces `values` with all extracted non-empty URLs.
+- **Example**: `$("div.hero") { @style | css_url | first -> "bg_image" }`
+
 ---
 
 ### 6.3 URL & Web Normalization
 
-All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xmlBuildURI`, `xmlParseURI`, `xmlSaveUri`).
+URL steps process `values` (and `dict` for `query_params`) via `libxml2`'s RFC 3986 URI parser (`xmlBuildURI`, `xmlParseURI`, `xmlSaveUri`). `query_params`, `strip_query`, and `filter_urls` also include fallbacks for URLs with unencoded `[` or `]` in query strings.
 
 | Step | Parameters & Defaults | Aliases | Notes |
 | --- | --- | --- | --- |
 | `resolve_url` | `(base_url)` | `url_join` | Resolves relative URLs against `base_url` |
 | `url_part` | `(part)` | — | Extracts `scheme`, `host`, `port`, `path`, `query`, or `fragment` |
 | `query_param` | `(name, default_val="")` | — | Extracts & URL-decodes query param (`+` → space) |
-| `strip_query` | `(keep_params=[])` | — | Strips all or non-whitelisted query params |
+| `query_params` | `(mapping, default_val="", clear=false)` | — | Single-pass multi-param query extraction into `dict` |
+| `strip_query` | `(keep_params=[], drop_params=[])` | — | Strips all, non-whitelisted, or blacklisted query params (supports `*` globs) |
+| `filter_urls` | `(allowed_domains=[], blocked_domains=[], allowed_schemes=["http", "https"], same_origin_of="")` | — | Filters `values` by scheme, domain suffix, and origin |
 
 #### `resolve_url(base_url)` / `url_join`
 - **Behavior**: Resolves each non-empty string in `values` against `base_url`. No-op if `base_url` is `""` or value is `""`.
@@ -528,9 +617,30 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 - **Behavior**: Extracts the first query parameter matching `name` (after URL-decoding keys and values, with `+` → space). Replaces the value with `default_val` if the URL has no query or `name` is absent.
 - **Example**: `$("a") { @href | query_param("utm_source", "direct") -> "source" }`
 
-#### `strip_query(keep_params=[])`
-- **Behavior**: Removes all query parameters from each URL in `values`, or retains only those whose decoded key is in `keep_params` (list or single string). Preserves scheme, host, path, and fragment.
-- **Example**: `$("a") { @href | strip_query(["id", "page"]) -> "clean_url" }`
+#### `query_params(mapping, default_val="", clear=false)`
+- **Parameters**:
+  - `mapping` (`list<string> | string | object`, required): Either a list `["id", "page"]` (writes to `dict["id"]`, `dict["page"]`) or an object `{"utm_source": "meta.source"}` mapping query parameter names to dot-path target keys.
+  - `default_val` (`string`, default `""`): Fallback written for missing parameters when `default_val != ""`.
+  - `clear` (`bool`, default `false`): Keeps `values` intact by default; clears `values` when `true`.
+- **Behavior**: Parses the query string of each URL in `values` once (URL-decoding keys/values with `+` → space; tolerating unencoded `[`/`]`) and inserts extracted parameters into `dict`.
+- **Example**: `$("a.track") { @href | query_params({"id": "item_id", "utm_source": "source"}) }`
+
+#### `strip_query(keep_params=[], drop_params=[])`
+- **Behavior**: Filters query parameters on each URL in `values` while preserving scheme, host, path, and fragment:
+  - If both `keep_params` and `drop_params` are empty: removes the entire query string.
+  - If `keep_params` is non-empty: retains only parameters whose decoded key matches any pattern in `keep_params`.
+  - If `drop_params` is non-empty: drops parameters whose decoded key matches any pattern in `drop_params` (applied after `keep_params`).
+  - Both lists accept `*` wildcards (e.g., `drop_params=["utm_*", "fbclid"]`) or a single scalar string.
+- **Example**: `$("a") { @href | strip_query(drop_params=["utm_*", "ref"]) -> "clean_url" }`
+
+#### `filter_urls(allowed_domains=[], blocked_domains=[], allowed_schemes=["http", "https"], same_origin_of="")`
+- **Parameters**:
+  - `allowed_domains` (`list<string> | string`, default `[]`): Allowed hostnames (exact or `.subdomain` suffix match, case-insensitive). Empty allows any domain.
+  - `blocked_domains` (`list<string> | string`, default `[]`): Blocked hostnames (exact or `.subdomain` suffix match).
+  - `allowed_schemes` (`list<string> | string`, default `["http", "https"]`): Permitted URL schemes (case-insensitive). Pass `[]` to disable scheme filtering.
+  - `same_origin_of` (`string`, default `""`): Reference URL whose `(scheme, host, port)` must match. Throws `std::invalid_argument` if non-empty and invalid.
+- **Behavior**: Retains only non-empty URLs in `values` passing all configured scheme, origin, allowlist, and blocklist checks.
+- **Example**: `$("body") { find_all("a", Attribute, "href") | resolve_url("https://shop.example/p") | filter_urls(same_origin_of="https://shop.example") -> "internal_links" }`
 
 ---
 
@@ -541,6 +651,8 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 | `regex_replace` | `(pattern, replacement, flags=null)` | `sub` | RE2 |
 | `regex_filter` | `(pattern, negate=false, flags=null)` | `grep` | RE2 |
 | `regex_extract` | `(pattern, group_index=0, flags=null)` | `extract` | RE2 |
+| `regex_find_all` | `(pattern, group_index=0, flags=null)` | — | RE2 |
+| `regex_groups` | `(pattern, flags=null, prefix="", clear=false)` | — | RE2 |
 | `filter` | `(patterns)` | — | Aho-Corasick |
 | `replace_many` | `(mapping)` | — | Aho-Corasick |
 | `extract_many` | `(patterns, unique=true)` | — | Aho-Corasick |
@@ -565,6 +677,23 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
   - `group_index < 0` (e.g., `-1`): emits capturing groups `abs(group_index)..N` (skipping group `0`). Emits nothing on non-match.
   - `group_index > 0`: emits only capturing group `group_index`, or `""` if unmatched / optional group didn't participate.
 - **Example**: `$(".price") { text | extract("([0-9]+\\.[0-9]+)", 1) -> "price" }`
+
+#### `regex_find_all(pattern, group_index=0, flags=null)`
+- **Behavior**: Repeatedly runs unanchored non-overlapping `RE2::Match` across every string in `values` and replaces `values` with all extracted matches:
+  - `group_index == 0`: emits non-empty captures `0..N` per match.
+  - `group_index < 0`: emits non-empty captures `abs(group_index)..N` per match.
+  - `group_index > 0`: emits capturing group `group_index` per match (or `""` if optional group didn't participate).
+- **Caveat**: Advances cursor by `1` byte on zero-length matches to avoid infinite loops.
+- **Example**: `$("p.tags") { text | regex_find_all("#([a-z0-9_]+)", 1) -> "hashtags" }`
+
+#### `regex_groups(pattern, flags=null, prefix="", clear=false)`
+- **Parameters**:
+  - `pattern` (`string`, required): RE2 regex containing named capturing groups `(?P<name>...)`.
+  - `flags` (`string | null`, default `null`): RE2 flags.
+  - `prefix` (`string`, default `""`): Prefix prepended to each named group when writing to `dict`.
+  - `clear` (`bool`, default `false`): Keeps `values` intact by default; clears `values` when `true`.
+- **Behavior**: Matches `pattern` once per item in `values` and inserts each non-empty named capture into `dict[prefix + name]`.
+- **Example**: `$(".dim") { text | regex_groups("(?P<w>\\d+)x(?P<h>\\d+)", prefix="size_", clear=true) }`
 
 #### `filter(patterns)`
 - **Behavior**: Multi-pattern literal filter using two compiled Aho-Corasick DFAs.
@@ -630,16 +759,21 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 | Step | Parameters & Defaults | Aliases | Mutates |
 | --- | --- | --- | --- |
 | `js_block` | `(prefix="")` | `extract_js_block` | Replaces `values` |
-| `js_blocks` | `(prefixes)` | `extract_js_blocks` | Writes to `dict`, clears `values` |
+| `js_blocks` | `(prefixes, aliases=null)` | `extract_js_blocks` | Writes to `dict`, clears `values` |
 | `parse_js` | `(objname, simplify=true)` | — | Writes to `dict`, clears `values` |
 
 #### `js_block(prefix="")` / `extract_js_block`
 - **Behavior**: For each string in `values`, searches after `prefix` (if non-empty) for the first `{`, `[`, or `(` outside comments/strings and extracts the balanced block. Drops items where no balanced block is found.
 - **Example**: `$("script#state") { text | js_block("window.__STATE__ =") | parse_js("state") }`
 
-#### `js_blocks(prefixes)` / `extract_js_blocks`
-- **Behavior**: For each string in `values` and each `prefix` in `prefixes` (`list<string>` or `string`), extracts the balanced block after `prefix`, **parses it via `digger::parse_object(..., simplify=true)`**, and inserts it into `dict` using `prefix` as a dot-path (`InsertMode::Merge`), then clears `values`.
-- **Example**: `$("script") { text | js_blocks(["app.config", "app.user"]) }`
+#### `js_blocks(prefixes, aliases=null)` / `extract_js_blocks`
+- **Parameters**:
+  - `prefixes` (`list<string> | string | object`, required):
+    - List or string: each entry searches for `entry` and stores under `entry` as dot-path. Entries ending in `"*"` (length > 1, e.g. `"varObj_*"`) search for `"varObj_"` and store under `"varObj"` (stripping `*` and trailing `_`).
+    - Object `{prefix: target_key}`: searches for `prefix` and stores under `target_key`.
+  - `aliases` (`object | null`, default `null`): Optional extra `{prefix: target_key}` mappings merged into the search list.
+- **Behavior**: For each string in `values` and each `(prefix, target_key)` entry, extracts the balanced block after `prefix`, parses it via `digger::parse_object(..., simplify=true)`, inserts into `dict` at dot-path `target_key` (`InsertMode::Merge`), and clears `values`.
+- **Example**: `$("script") { text | js_blocks(["app.config", "varObj_*"], aliases={"window.__USER__": "user"}) }`
 
 #### `parse_js(objname, simplify=true)`
 - **Behavior**: Joins `values` with `\n`, clears `values`, and parses with `digger::parse_object(combined, simplify)`.
@@ -658,12 +792,14 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 | `set` | `(name, type="string")` | `as`, `->`, `>>` | Writes `dict`, clears `values` | No |
 | `append_to` | `(key, allow_empty=false)` | — | Appends `dict[key]`, clears `values` | No |
 | `count` | `(dict_key)` | — | Writes `dict`, keeps `values` | No |
-| `parse_number` | `(decimal=".", thousands=",", allow_float=true, key="")` | `to_number` | `values` (or `dict[key]`) | No |
+| `parse_number` | `(decimal=".", thousands=",", allow_float=true, key="", compact=false)` | `to_number` | `values` (or `dict[key]`) | No |
+| `parse_duration` | `(key="", unit="seconds")` | — | `values` (or `dict[key]`) | No |
 | `to_int` | `(key="", default_val=null)` | — | `values` (or `dict[key]`) | No |
 | `to_float` | `(key="", default_val=null)` | — | `values` (or `dict[key]`) | No |
 | `to_bool` | `(key="", default_val=null)` | — | `values` (or `dict[key]`) | No |
 | `cast_keys` | `(schema, postponable=true)` | — | `dict` / `dest` | Yes (`true`) |
 | `zip_keys` | `(keys_key, values_key, target_key="", postponable=true)` | — | `dict` / `dest` | Yes (`true`) |
+| `coalesce_keys` | `(mapping, drop_sources=true, postponable=true)` | — | `dict` / `dest` | Yes (`true`) |
 | `flatten` | `(postponable=true)` | — | `dict` / `dest` | Yes (`true`) |
 | `flatten_local` | `()` | — | `dict` | No (`false`) |
 | `pick_keys` | `(keys_to_keep, postponable=true)` | — | `dict` / `dest` | Yes (`true`) |
@@ -707,11 +843,21 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 - **Behavior**: Writes `values.size()` (as integer) to `dict[dict_key]`. **Does not clear `values`**, so you can still `set(...)` afterwards!
 - **Example**: `$("ul") { find_all("li", Text) | count("item_count") -> "items" }`
 
-#### `parse_number(decimal=".", thousands=",", allow_float=true, key="")` / `to_number`
+#### `parse_number(decimal=".", thousands=",", allow_float=true, key="", compact=false)` / `to_number`
 - **Behavior**: Extracts the first numeric token from each string in `values`, stripping currency symbols/text and `thousands`, converting `decimal` to `.`, and supporting accounting parentheses `($12.50)` → `"-12.50"`.
+  - `compact` (`bool`, default `false`): When `true`, expands `K` (`1e3`), `M` (`1e6`), `B` (`1e9`), `T` (`1e12`) suffixes (case-insensitive, not followed by another letter)—e.g., `"1.2M"` → `"1200000"`.
   - If `key == ""`: replaces `values` with the normalized numeric strings.
   - If `key != ""`: writes native JSON numbers to `dict[key]` and **clears `values`**.
-- **Example**: `$(".price") { text | to_number(decimal=",", thousands=".", key="price") }`
+- **Example**: `$(".views") { text | to_number(key="views", compact=true) }`
+
+#### `parse_duration(key="", unit="seconds")`
+- **Parameters**:
+  - `key` (`string`, default `""`): Target dot-path in `dict`.
+  - `unit` (`string`, default `"seconds"`): Output unit—`"seconds"` (`"sec"`, `"s"`), `"ms"` (`"millisecond"`, `"milliseconds"`), or `"minutes"` (`"min"`, `"m"`). Unknown unit throws `std::invalid_argument`.
+- **Behavior**: Parses ISO-8601 (`PT1H5M20S`, `P2DT3H`), colon (`MM:SS`, `HH:MM:SS` with optional fractional seconds), and prose (`"1h 5m 20s"`, `"12 min 30 sec"`, `"2 hours"`) durations, dropping unparseable items.
+  - If `key == ""`: replaces `values` with formatted numeric strings.
+  - If `key != ""`: writes native JSON ints/floats to `dict[key]` and **clears `values`**.
+- **Example**: `$(".duration") { text | parse_duration(key="duration_sec", unit="seconds") }`
 
 #### `to_int(key="", default_val=null)`, `to_float(key="", default_val=null)`, `to_bool(key="", default_val=null)`
 - **Behavior**: Coerces each string in `values`. Unparseable items are dropped unless `default_val` is non-null.
@@ -726,6 +872,14 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 #### `zip_keys(keys_key, values_key, target_key="", postponable=true)`
 - **Behavior**: Zips two parallel arrays `input[keys_key]` and `input[values_key]` (up to `min(len1, len2)`) into an object. If `target_key == ""`, merges pairs into the root object; otherwise writes to `out[target_key]`. No-op if either key is missing or not an array.
 - **Example**: `zip_keys("spec_names", "spec_values", target_key="specs")`
+
+#### `coalesce_keys(mapping, drop_sources=true, postponable=true)`
+- **Parameters**:
+  - `mapping` (`object`, required): `{target_key: [source_path1, source_path2, ...]}` (each value may be a list or single string dot-path).
+  - `drop_sources` (`bool`, default `true`): Removes single-segment (top-level) source keys from the output object unless they also appear as a `target_key`.
+  - `postponable` (`bool`, default `true`): Runs once on `dest` when `true`, or immediately on local `dict` when `false`.
+- **Behavior**: For each `target_key`, resolves candidate `source_path` dot-paths in order and writes the first non-null, non-empty value into `target_key` (overwriting with `nested_path=true`).
+- **Example**: `coalesce_keys({"title": ["og_title", "h1_title", "meta.title"]}, drop_sources=true)`
 
 #### `flatten(postponable=true)` & `flatten_local()`
 - **Behavior**: Flattens nested objects by joining keys with **`_`** (underscore, e.g., `meta_author`), and unwraps nested arrays by appending scalar values into arrays under the parent key. `flatten_local()` is shorthand for `flatten(false)`.
@@ -813,8 +967,8 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 | --- | --- | --- | --- |
 | `xpath` | `(expr, attr="")` | Appends to `values` | `libxml2` XPath 1.0 |
 | `table` | `(key="", header=true, normalize_headers=false, trim_cells=true)` | `dict[key]` or `values` | `colspan` up to 64 |
-| `extract_meta` | `(key="meta", include_json_ld=true)` | Writes to `dict` | `<title>`, `<meta>`, canonical, JSON-LD |
-| `parse_date` | `(fmt="", output="iso", key="", tz="UTC")` | `values` (+ optional `dict[key]`) | `absl::Time` |
+| `extract_meta` | `(key="meta", include_json_ld=true, index_json_ld=false)` | Writes to `dict` | `<title>`, `<meta>`, canonical, JSON-LD (`+ json_ld_by_type`) |
+| `parse_date` | `(fmt="", output="iso", key="", tz="UTC", now="")` | `values` (+ optional `dict[key]`) | `absl::Time` + relative dates |
 | `unicode_normalize` | `(form="NFC")` | `values` | `NFC`, `NFD`, `NFKC`, `NFKD` |
 | `strip_accents` | `()` | `values` | Strips combining marks (`Mn`) |
 | `fuzzy_filter` | `(query, threshold=0.8, algo="jaro_winkler", case_sensitive=false, sort_by_score=false)` | Filters `values` | `jaro_winkler` (`jw`), `levenshtein` (`lev`, `edit`) |
@@ -834,17 +988,19 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
   - If `key == ""`: pushes serialized JSON string into `values`.
 - **Example**: `$("table.specs") { table(key="specs", normalize_headers=true) }`
 
-#### `extract_meta(key="meta", include_json_ld=true)`
+#### `extract_meta(key="meta", include_json_ld=true, index_json_ld=false)`
 - **Behavior**: Searches the current node for `<title>`, `<link rel="canonical" href="...">`, `<meta name|property|http-equiv="..." content="...">` (first occurrence wins per key), and `<script type="application/ld+json">` (parsed into `json_ld` array; malformed JSON-LD blocks are skipped silently).
+  - `index_json_ld` (`bool`, default `false`): When `true` (and `include_json_ld=true`), recursively indexes JSON-LD objects and `@graph` entries by `@type` under `json_ld_by_type` (a single object for one match, or an array for multiple).
   - Writes into `dict[key]` (or directly into `dict` root if `key == ""`).
-- **Example**: `Scraper().extract_meta()`
+- **Example**: `Scraper().extract_meta(index_json_ld=true)`
 
-#### `parse_date(fmt="", output="iso", key="", tz="UTC")`
-- **Behavior**: Parses each trimmed non-empty string in `values` via `absl::Time` (using `fmt` if provided, or auto-detecting 15 common ISO/RFC/slash/month-name formats). Unparseable strings are dropped.
+#### `parse_date(fmt="", output="iso", key="", tz="UTC", now="")`
+- **Behavior**: Parses each trimmed non-empty string in `values` via `absl::Time` (using `fmt` if provided, or auto-detecting 15 common ISO/RFC/slash/month-name formats). When `fmt == ""` and auto-formats fail, falls back to relative expressions (`"just now"`, `"now"`, `"today"`, `"yesterday"`, `"tomorrow"`, `"last/next <unit>"`, `"<N|a|an> <unit> ago"`, `"in <N|a|an> <unit>"`). Unparseable strings are dropped.
   - `output`: `"iso"` (`%Y-%m-%dT%H:%M:%SZ` for UTC, `%Y-%m-%dT%H:%M:%S%Ez` otherwise), `"date"` (`%Y-%m-%d`), `"unix"` (integer seconds), `"unix_ms"` (integer milliseconds), or any custom `absl::FormatTime` format string.
+  - `now` (`string`, default `""`): Optional anchor timestamp (auto-parsed in `tz`) used for relative expressions instead of `absl::Now()`.
   - Replaces `values` with formatted strings, **and** if `key != ""` (and at least one date parsed), writes native ints/strings to `dict[key]` without clearing `values`.
-- **Caveat**: Unknown `tz` throws `std::invalid_argument`.
-- **Example**: `$("time") { text | parse_date(output="unix", key="ts") }`
+- **Caveat**: Unknown `tz` or invalid `now` throws `std::invalid_argument`.
+- **Example**: `$("time") { text | parse_date(output="date", now="2026-11-20T12:00:00Z", key="posted_date") }`
 
 #### `unicode_normalize(form="NFC")` & `strip_accents()`
 - **Behavior**:
@@ -874,28 +1030,86 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 
 ---
 
-### 6.10 Fast Extraction, Wild-Web Normalizers & Crawler Helpers
+### 6.10 Control Flow, Branching, Slots & Composition
 
-| Step | Parameters & Defaults | Aliases | Mutates / Behavior |
+| Construct / Step | Syntax / Parameters | Aliases | Scope / Behavior |
 | --- | --- | --- | --- |
-| `find_first` | `(selector, type=Value.Text, attr="", squish=true, required=false)` | — | Zero-alloc early-exit first match; `attr` accepts `str` or `list<str>` |
-| `try_find` | `(selector, type, attr="", number=Number.All, nth_val=0)` | — | Non-throwing alias for `find(..., optional=true)` |
-| `extract_fields` | `(spec, allow_empty=false)` | `fields` | Single-pass zero-alloc DOM walk writing directly to `dict` |
-| `attr` (fallback) | `(attr_name_or_list)` | `@[...]` | First non-empty attribute when given a list |
-| `map_values` | `(mapping, default_val=null)` | — | $O(1)$ exact-string lookup replacement on `values` |
-| `save` / `restore` | `(name)` | — | Save/restore `values` in per-node `ExecutionContext` |
-| `coalesce_keys` | `(mapping, drop_sources=true, postponable=true)` | — | Picks first non-empty dot-path per target key (`PostponableJsonStep`) |
-| `query_params` | `(mapping, default_val="", clear=false)` | — | Single-pass multi-param URL query extraction into `dict` (tolerates `[`/`]`) |
-| `js_blocks` (aliases) | `(prefixes_or_map, aliases=null)` | `extract_js_blocks` | Supports `"prefix_*"` wildcards, `{prefix: key}`, and `aliases` map |
-| `regex_find_all` | `(pattern, group_index=0, flags=null)` | — | Global non-overlapping RE2 matches across `values` |
-| `regex_groups` | `(pattern, flags=null, prefix="", clear=false)` | — | Writes RE2 named captures `(?P<name>...)` to `dict[prefix + name]` |
-| `parse_number` (compact) | `(..., compact=false)` | `to_number` | Expands `K`, `M`, `B`, `T` suffixes (`"1.2M"` -> `"1200000"`) when `compact=true` |
-| `parse_duration` | `(key="", unit="seconds")` | — | Parses `MM:SS`, `HH:MM:SS`, ISO-8601 `PT...`, and prose durations (`1h 5m`) |
-| `parse_date` (relative) | `(..., now="")` | — | Supports `"yesterday"`, `"3 days ago"`, `"in 2 hours"`, `"last week"`, etc. |
-| `unescape_html` | `()` | — | Decodes named and numeric (`&#NNN;`, `&#xHHH;`) HTML entities to UTF-8 |
-| `parse_srcset` | `(mode="largest")` | — | Picks `"largest"`/`"best"`, `"smallest"`, or `"all"` URLs from `srcset` |
-| `css_url` | `()` | — | Extracts URLs from CSS `url(...)` declarations |
-| `strip_query` (glob) | `(keep_params=[], drop_params=[])` | — | Supports glob patterns (e.g. `drop_params=["utm_*", "fbclid"]`) |
-| `filter_urls` | `(allowed_domains=[], blocked_domains=[], allowed_schemes=["http", "https"], same_origin_of="")` | — | Filters `values` by scheme, domain suffix, and origin |
-| `extract_meta` (indexed) | `(key="meta", include_json_ld=true, index_json_ld=false)` | — | When `index_json_ld=true`, indexes JSON-LD / `@graph` by `@type` under `json_ld_by_type` |
-| `skip_if_exists` / `skip_if_empty` / `abort_if_exists` | `(selector)` / `()` / `(selector, key="", reason="")` | — | Item skip / early scraper abort guards |
+| `save` / `restore` | `save(name)` / `restore(name)` | — | Save/recall `values` in per-node `ExecutionContext` slots |
+| `tee` | `tee { ... }` | `branch` | Runs block on a copy of `values`, sharing `dict` |
+| `each` | `each(selector, key="") { ... }` | — | Relative nested sub-extractor on current `Node` |
+| `when_exists` / `unless_exists` | `when_exists(selector) { ... }` / `unless_exists(selector) { ... }` | — | Conditional block on CSS selector match inside current `Node` |
+| `when_match` | `when_match(pattern, negate=false, flags=null) { ... }` | — | Conditional block if any item in `values` matches RE2 `pattern` |
+| `skip_if_exists` | `skip_if_exists(selector)` | — | Drops current item before merge if `selector` matches inside `Node` |
+| `skip_if_empty` | `skip_if_empty()` | — | Drops current item before merge if `values` has no non-whitespace items |
+| `abort_if_exists` | `abort_if_exists(selector, key="", reason="")` | — | Optionally sets `dict[key]`, then aborts remaining extractors |
+| `finalize` | `finalize { ... }` | — | Scraper-level post-processing block (always runs once at end) |
+| `pipe` / `use` | `pipe name = { ... }` / `use(name)` | — | Defines and splices reusable step sequences |
+| `include` | `include(scraper_name)` | — | Appends extractors and `finalize` steps from another scraper |
+
+#### `save(name)` & `restore(name)`
+- **Behavior**: `save(name)` snapshots `values` into `ctx.slots[name]` for the current node; `restore(name)` restores `values` from `ctx.slots[name]` (or clears `values` if `name` was never saved).
+- **Caveats**:
+  - Slots belong to the current `Extractor` match's `ExecutionContext`; they are shared with nested `tee`, `when_*`, and `unless_exists` blocks on the same node, but **not** across different matched nodes or `each(...)` sub-extractors.
+  - Calling `SaveValuesStep` directly in C++ without an `ExecutionContext` throws `std::runtime_error`.
+- **Example**: `$("a.profile") { text | squish | save("label") | @href -> "url" | restore("label") -> "name" }`
+
+#### `tee { ... }` / `branch { ... }`
+- **Behavior**: Clones `values` into `local_values` and executes the steps inside `{ ... }` against `(node, local_values, dict, ctx)`. Postponable steps inside `tee` run immediately against `dict`. When the block exits, outer `values` remains unmodified.
+- **Caveats**: Shares `dict` and `ctx` (`save`/`restore`, `skip_item`, `abort_scraper`) with the outer node pass.
+- **Example**: `$("a.item") { @href | tee { url_part("host") -> "domain" } | strip_query -> "url" }`
+
+#### `each(selector, key="") { ... }`
+- **Parameters**:
+  - `selector` (`string`, required): CSS selector evaluated relative to the current `Node` (pass `""` to target the current `Node` itself).
+  - `key` (`string`, default `""`): Optional dot-path in `dict` under which matched sub-items are merged.
+- **Behavior**: Runs a nested `Extractor` inside the current `Node`, supporting arbitrary nesting, overlapping-key array grouping, and `@key` / `@value` collapsing.
+- **Caveats**: Does not read or modify the outer `values` vector. If `abort_if_exists` triggers inside `each`, `ctx.abort_scraper` propagates to abort the outer scraper too.
+- **Example**:
+  ```text
+  $("div.product") {
+    each("ul.specs li", "specs") {
+      find_first(".k") -> "@key"
+      | find_first(".v") -> "@value"
+    }
+  }
+  ```
+
+#### `when_exists(selector) { ... }`, `unless_exists(selector) { ... }` & `when_match(pattern, negate=false, flags=null) { ... }`
+- **Behavior**:
+  - `when_exists(selector)` / `unless_exists(selector)`: Runs `{ ... }` on the shared `(node, values, dict, ctx)` if `selector` matches (or does not match, for `unless_exists`) any node inside the current `Node`.
+  - `when_match(pattern, negate=false, flags=null)`: Runs `{ ... }` if any string in `values` matches RE2 `pattern` (`RE2::PartialMatch`; inverted when `negate=true`). Uses the same RE2 `flags` rules as Section 6.4 (`null`/`""` = case-insensitive).
+- **Caveats**: Postponable steps placed inside these blocks execute immediately on `dict` when the condition passes.
+- **Example**: `$(".price") { text | when_match("free", negate=true) { to_number(key="price") } }`
+
+#### `skip_if_exists(selector)`, `skip_if_empty()` & `abort_if_exists(selector, key="", reason="")`
+- **Behavior**:
+  - `skip_if_exists(selector)`: Sets `ctx.skip_item = true` if `selector` matches inside the current `Node`, discarding the current item before merging into `dest`.
+  - `skip_if_empty()`: Sets `ctx.skip_item = true` if `values` contains no non-whitespace strings.
+  - `abort_if_exists(selector, key="", reason="")`: If `selector` matches inside the current `Node`, optionally writes `reason` (or `true` when `reason == ""`) to `dict[key]` (using `Overwrite`, `nested_path=true`) if `key != ""`, sets `ctx.abort_scraper = true` (leaving the current item to merge), and stops all remaining extractors.
+- **Caveats**: Even when `abort_if_exists` fires, `finalize { ... }` still executes afterwards.
+- **Example**:
+  ```text
+  page = Scraper()
+    | $("html") { abort_if_exists(".geo-blocked", key="blocked_reason", reason="geo") }
+    | $("div.card", "cards") { skip_if_exists(".ad-banner") | find_first("h2") -> "title" }
+  ```
+
+#### `finalize { ... }`
+- **Behavior**: Attaches post-processing steps to the scraper that execute **once** after all extractors finish (and after the first `preprocess_key_value` pass), even if preceding extractors matched 0 nodes or `abort_if_exists` aborted early. Postponable steps run on the full accumulated `dest`; non-postponable steps run with `root_node`, an empty `values` vector, and `dest` as `dict`. Runs `preprocess_key_value` again upon completion.
+- **Example**:
+  ```text
+  product = Scraper()
+    | $("h1") { text | clean -> "title" }
+    | finalize { coalesce_keys({"heading": ["og_title", "title"]}) | omit_keys(["_tmp"]) }
+  ```
+
+#### `pipe <name> = { ... }` / `use(name)` & `include(scraper_name)`
+- **Behavior**:
+  - `pipe <name> = { ... }` (top-level declaration; `=`, `:`, `:=`, or space accepted before `{`): Compiles a reusable step sequence. `use(<name>)` splices those steps into the current chain at parse time (unknown `<name>` throws).
+  - `include(<scraper_name>)`: Appends all extractors and `finalize` steps from a previously declared scraper into the current scraper (unknown `<scraper_name>` throws).
+- **Example**:
+  ```text
+  pipe link_kv = { text | squish -> "@key" | @href | squish -> "@value" };
+  base = Scraper().select("head") { extract_meta("meta") };
+  full = Scraper().include(base).select(".social a", "social") { use(link_kv) };
+  ```

@@ -8,7 +8,7 @@ Get `xsel2` built, tested, and running in a few minutes.
 - **CMake**: 3.24 or newer
 - **libxml2 development headers (optional)**: e.g. `libxml2-dev` (Debian/Ubuntu) or `libxml2-devel` (Fedora/RHEL). If not installed on the system, CMake automatically falls back to fetching and building `GNOME/libxml2` via CPM (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`, default `AUTO`).
 - **Python 3 development headers**: e.g. `python3-dev` (Debian/Ubuntu) or `python3-devel` (Fedora/RHEL), for `_scraperpy` / `scraperpy`
-- **Internet access on first configure**: `cmake/CPM.cmake` automatically fetches `jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `Catch2`, and `libxml2` (when not found on the system).
+- **Internet access on first configure**: `cmake/CPM.cmake` automatically fetches `jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `utf8proc`, `Catch2`, and `libxml2` (when not found on the system).
 
 ## Build & Test
 
@@ -43,6 +43,26 @@ Each preset sets `CMAKE_INSTALL_PREFIX` to `install/` in the repository root. To
 ```bash
 cmake --install build-release
 ```
+
+### Helper Scripts (`scripts/`)
+
+Convenience scripts wrap CMake presets, CTest filtering, and Python wheel packaging:
+
+```bash
+# Configure and build (presets: debug [default], release, asan-ubsan)
+./scripts/build.sh -p debug -j 8 [-c|--clean]
+
+# Run tests (optionally build first and/or filter CTest regex)
+./scripts/test.sh -p debug [-b|--build] [-R <regex>] [-j 8]
+
+# Build and test in one command
+./scripts/build_and_test.sh [-p debug|release|asan-ubsan] [-c|--clean] [-R <regex>] [-j 8]
+
+# Build and verify Python sdist/wheels in dist/
+./scripts/pack_python.sh [--wheel-only|--sdist-only] [-p "3.13 3.14"] [-t|--test] [-c|--clean]
+```
+
+> **Note:** When `uv` is found during CMake configuration, `ctest` also registers and runs `python_pytest` (`tests/test_python.py`) and `cli_pytest` (`tests/test_cli.py`) alongside the Catch2 C++ tests and `cli_integration_tests`.
 
 ## 5-Minute Walkthrough
 

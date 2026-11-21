@@ -10,10 +10,29 @@ When running from a local CMake build (without installing into site-packages), i
 PYTHONPATH=build:. python3 examples/scrape_example.py
 ```
 
+## Building & Installing (`pip` / `uv` / Wheel Packaging)
+
+`scraperpy` uses `pyproject.toml` with `scikit-build-core` to compile the `_scraperpy` C++20 extension and bundle `_scraperpy.pyi` type stubs plus `py.typed` directly inside the wheel:
+
+```bash
+# Install directly into the active Python environment
+pip install .
+# Or with uv:
+uv pip install .
+
+# Build sdist + wheels into dist/ and verify them with pytest
+./scripts/pack_python.sh --clean --test
+# Or build with uv / python -m build directly:
+uv build
+```
+
+See `./scripts/pack_python.sh --help` for options (`--wheel-only`, `--sdist-only`, `-p "3.13 3.14"`, `-o <dir>`).
+
 ## Exported Symbols
 
 | Symbol | Kind | Purpose |
 | --- | --- | --- |
+| `__version__` | String | Installed `scraperpy` / `_scraperpy` package version |
 | `ScraperPy` | Class | Fluent HTML/XML scraping & transformation pipeline |
 | `Document` | Class | Parsed HTML/XML DOM (`Document.from_string`, `Document.from_file`) for single-parse reuse |
 | `scrape_many(scrapers, html)` | Function | Parses `html` once and executes every `ScraperPy` in `scrapers` on the shared `Document` |
@@ -55,7 +74,11 @@ data = s.from_file("examples/sample.html")
 # data = s.from_string(html_string)
 ```
 
-For the full list of pipeline methods and their parameters, see the [DSL & Pipeline Steps Reference](dsl-and-steps.md) (every DSL method maps 1:1 to a `ScraperPy` method).
+For the full list of pipeline steps and their parameters, see the [DSL & Pipeline Steps Reference](dsl-and-steps.md). Keep these Python-specific notes in mind:
+
+- **Full step coverage**: All 118 registry pipeline steps (including `outer_html`, `rename_keys`, `merge_keys`, `find_first`, `try_find`, `extract_fields`, etc.) plus `include(other_scraper)` and the Python aliases `normalize_whitespace`, `extract_js_block`, `extract_js_blocks`, and `fields` are exposed as methods on `ScraperPy`.
+- **DSL-only syntax & block constructs**: Top-level `let` / `pipe` + `use(...)`, shorthand operators (`$`, `@`, `??`, `[i]`, `->`, `>>`, `as`), block-scoped control flow (`tee { ... }` / `branch { ... }`, `each(...) { ... }`, `when_exists(...) { ... }`, `unless_exists(...) { ... }`, `when_match(...) { ... }`, `finalize { ... }`), and short DSL aliases (`strip`, `clean`, `sub`, `grep`, `extract`, `limit`, `dedup`, `json`, `to_number`, `url_join`, `inner_html`) are `.dsl` parser features. Use `parse_dsl_string` / `load_scrapers` to run block-scoped DSL constructs from Python, or call canonical method names directly on `ScraperPy`.
+- **`InsertOptions` parameter order**: On `ScraperPy`, `set`, `count`, `parse_js`, `regex_groups`, `parse_number`, `parse_duration`, `attrs`, `table`, `extract_meta`, and `parse_date` accept an `opts: InsertOptions` parameter. Note that `ScraperPy.set(name, opts=..., type="string")` puts `opts` second, so pass `type` as a keyword argument in Python (e.g., `s.set("qty", type="int")`).
 
 ---
 

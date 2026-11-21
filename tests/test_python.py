@@ -488,3 +488,43 @@ def test_python_phase1_to_3_and_single_parse_document():
     prod_scrapers = sp.load_scrapers(str(repo_root / "scrapers.dsl"))
     assert {"shared_page_data", "user_profile", "video_page", "next_video",
             "script_data", "video_block", "preload_ad", "video_categories_tags"} <= set(prod_scrapers.keys())
+
+
+def test_python_outer_html_rename_and_merge_keys():
+    html = """
+    <div class="card">
+      <h1>Item</h1>
+      <span class="t1">alpha</span>
+      <span class="t2">beta</span>
+    </div>
+    """
+    s = (
+        sp.ScraperPy()
+        .select("div.card")
+        .outer_html()
+        .set("markup")
+        .find_all(".t1", sp.Value.Text)
+        .set("tags_a")
+        .find_all(".t2", sp.Value.Text)
+        .set("tags_b")
+        .rename_keys({"markup": "card_html"})
+        .merge_keys(["tags_a", "tags_b"], "all_tags")
+    )
+    out = s.from_string(html)
+    assert out["card_html"].startswith('<div class="card">')
+    assert out["card_html"].endswith("</div>")
+    assert out["all_tags"] == ["alpha", "beta"]
+    assert "tags_a" not in out and "tags_b" not in out
+
+    # Even-length list form for rename_keys
+    s_list = (
+        sp.ScraperPy()
+        .select("div.card h1")
+        .text()
+        .set("old_name")
+        .rename_keys(["old_name", "new_name"])
+    )
+    assert s_list.from_string(html) == {"new_name": "Item"}
+
+    with pytest.raises(RuntimeError):
+        sp.ScraperPy().rename_keys(["unpaired"])
