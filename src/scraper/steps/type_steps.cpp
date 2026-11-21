@@ -2,11 +2,14 @@
 #include "common/json_utils.hpp"
 #include "digger/scalar_parser.hpp"
 #include <absl/strings/ascii.h>
+#include <absl/time/clock.h>
 #include <absl/time/time.h>
 #include <array>
 #include <charconv>
 #include <cmath>
 #include <cctype>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 
 namespace scraper {
@@ -102,7 +105,8 @@ ValueType parse_value_type_name(std::string_view type_name) {
 std::optional<std::string> extract_number_string(std::string_view input,
                                                  std::string_view decimal,
                                                  std::string_view thousands,
-                                                 bool allow_float) {
+                                                 bool allow_float,
+                                                 bool compact) {
   const std::string_view trimmed = absl::StripAsciiWhitespace(input);
   if (trimmed.empty()) {
     return std::nullopt;
@@ -176,9 +180,62 @@ std::optional<std::string> extract_number_string(std::string_view input,
   if (digits_out.back() == '.') {
     digits_out.pop_back();
   }
+
+  double compact_mult = 1.0;
+  size_t paren_search_start = i;
+  if (compact) {
+    size_t j = i;
+    while (j < trimmed.size() && trimmed[j] == ' ') {
+      ++j;
+    }
+    if (j < trimmed.size()) {
+      const char suffix = static_cast<char>(
+          std::tolower(static_cast<unsigned char>(trimmed[j])));
+      double mult = 1.0;
+      if (suffix == 'k') {
+        mult = 1e3;
+      } else if (suffix == 'm') {
+        mult = 1e6;
+      } else if (suffix == 'b') {
+        mult = 1e9;
+      } else if (suffix == 't') {
+        mult = 1e12;
+      }
+      const bool next_is_alpha =
+          (j + 1 < trimmed.size()) &&
+          std::isalpha(static_cast<unsigned char>(trimmed[j + 1]));
+      if (mult > 1.0 && !next_is_alpha) {
+        compact_mult = mult;
+        paren_search_start = j + 1;
+      }
+    }
+  }
+
   const bool is_neg =
       negative ||
-      (accounting_parens && trimmed.find(')', i) != std::string_view::npos);
+      (accounting_parens &&
+       trimmed.find(')', paren_search_start) != std::string_view::npos);
+
+  if (compact_mult > 1.0) {
+    double val = 0.0;
+    const auto [ptr, ec] = std::from_chars(
+        digits_out.data(), digits_out.data() + digits_out.size(), val);
+    if (ec == std::errc{} && ptr == digits_out.data() + digits_out.size()) {
+      val *= compact_mult;
+      if (is_neg) {
+        val = -val;
+      }
+      double intpart = 0.0;
+      if (std::isfinite(val) && std::modf(val, &intpart) == 0.0 &&
+          val >= -9007199254740992.0 && val <= 9007199254740992.0) {
+        return std::to_string(static_cast<int64_t>(intpart));
+      }
+      std::ostringstream oss;
+      oss << std::setprecision(15) << val;
+      return oss.str();
+    }
+  }
+
   if (is_neg) {
     return "-" + digits_out;
   }
@@ -247,7 +304,8 @@ void ParseNumberStep::apply(Node, std::vector<std::string> &values,
   std::vector<std::string> normalized;
   normalized.reserve(values.size());
   for (const auto &v : values) {
-    if (auto num = extract_number_string(v, decimal_, thousands_, allow_float_)) {
+    if (auto num = extract_number_string(v, decimal_, thousands_, allow_float_,
+                                         compact_)) {
       normalized.push_back(std::move(*num));
     }
   }
@@ -367,7 +425,311 @@ bool parse_with_auto_formats(std::string_view text, absl::TimeZone tz,
   return false;
 }
 
+std::optional<double> parse_unit_multiplier_seconds(std::string_view unit) {
+  if (unit == "s" || unit == "sec" || unit == "secs" || unit == "second" ||
+      unit == "seconds") {
+    return 1.0;
+  }
+  if (unit == "m" || unit == "min" || unit == "mins" || unit == "minute" ||
+      unit == "minutes") {
+    return 60.0;
+  }
+  if (unit == "h" || unit == "hr" || unit == "hrs" || unit == "hour" ||
+      unit == "hours") {
+    return 3600.0;
+  }
+  if (unit == "d" || unit == "day" || unit == "days") {
+    return 86400.0;
+  }
+  if (unit == "w" || unit == "wk" || unit == "wks" || unit == "week" ||
+      unit == "weeks") {
+    return 7.0 * 86400.0;
+  }
+  if (unit == "mo" || unit == "mos" || unit == "month" || unit == "months") {
+    return 30.0 * 86400.0;
+  }
+  if (unit == "y" || unit == "yr" || unit == "yrs" || unit == "year" ||
+      unit == "years") {
+    return 365.0 * 86400.0;
+  }
+  return std::nullopt;
+}
+
+bool parse_relative_date(std::string_view text, absl::Time base_time,
+                         absl::Time *out) {
+  const std::string lower =
+      absl::AsciiStrToLower(absl::StripAsciiWhitespace(text));
+  if (lower == "just now" || lower == "now" || lower == "today") {
+    *out = base_time;
+    return true;
+  }
+  if (lower == "yesterday") {
+    *out = base_time - absl::Hours(24);
+    return true;
+  }
+  if (lower == "tomorrow") {
+    *out = base_time + absl::Hours(24);
+    return true;
+  }
+
+  std::vector<std::string_view> tokens;
+  size_t i = 0;
+  while (i < lower.size()) {
+    while (i < lower.size() &&
+           std::isspace(static_cast<unsigned char>(lower[i]))) {
+      ++i;
+    }
+    if (i >= lower.size()) {
+      break;
+    }
+    const size_t start = i;
+    while (i < lower.size() &&
+           !std::isspace(static_cast<unsigned char>(lower[i]))) {
+      ++i;
+    }
+    tokens.push_back(std::string_view(lower).substr(start, i - start));
+  }
+
+  if (tokens.size() == 2 && (tokens[0] == "last" || tokens[0] == "next")) {
+    if (auto mult = parse_unit_multiplier_seconds(tokens[1])) {
+      const double sign = (tokens[0] == "last") ? -1.0 : 1.0;
+      *out = base_time + absl::Seconds(sign * (*mult));
+      return true;
+    }
+  }
+
+  double sign = 0.0;
+  size_t num_idx = 0;
+  size_t unit_idx = 0;
+  if (tokens.size() == 3 && tokens[2] == "ago") {
+    sign = -1.0;
+    num_idx = 0;
+    unit_idx = 1;
+  } else if (tokens.size() == 3 && tokens[0] == "in") {
+    sign = 1.0;
+    num_idx = 1;
+    unit_idx = 2;
+  } else {
+    return false;
+  }
+
+  double qty = 0.0;
+  if (tokens[num_idx] == "a" || tokens[num_idx] == "an") {
+    qty = 1.0;
+  } else {
+    const auto [ptr, ec] = std::from_chars(
+        tokens[num_idx].data(), tokens[num_idx].data() + tokens[num_idx].size(),
+        qty);
+    if (ec != std::errc{} || ptr != tokens[num_idx].data() + tokens[num_idx].size() ||
+        !std::isfinite(qty)) {
+      return false;
+    }
+  }
+
+  if (auto mult = parse_unit_multiplier_seconds(tokens[unit_idx])) {
+    *out = base_time + absl::Seconds(sign * qty * (*mult));
+    return true;
+  }
+  return false;
+}
+
+std::optional<double> parse_duration_seconds(std::string_view raw) {
+  const std::string lower =
+      absl::AsciiStrToLower(absl::StripAsciiWhitespace(raw));
+  if (lower.empty()) {
+    return std::nullopt;
+  }
+
+  // 1. ISO-8601 duration: P[n]DT[n]H[n]M[n]S or PT...
+  if (lower[0] == 'p') {
+    size_t i = 1;
+    bool in_time = false;
+    bool matched_any = false;
+    double total = 0.0;
+    while (i < lower.size()) {
+      if (lower[i] == 't') {
+        in_time = true;
+        ++i;
+        continue;
+      }
+      const size_t num_start = i;
+      while (i < lower.size() &&
+             (is_digit_char(lower[i]) || lower[i] == '.')) {
+        ++i;
+      }
+      if (i == num_start || i >= lower.size()) {
+        return std::nullopt;
+      }
+      double num = 0.0;
+      const auto [ptr, ec] =
+          std::from_chars(lower.data() + num_start, lower.data() + i, num);
+      if (ec != std::errc{} || ptr != lower.data() + i || !std::isfinite(num)) {
+        return std::nullopt;
+      }
+      const char designator = lower[i++];
+      matched_any = true;
+      if (designator == 'd' && !in_time) {
+        total += num * 86400.0;
+      } else if (designator == 'h' && in_time) {
+        total += num * 3600.0;
+      } else if (designator == 'm') {
+        total += num * (in_time ? 60.0 : 30.0 * 86400.0);
+      } else if (designator == 's' && in_time) {
+        total += num;
+      } else {
+        return std::nullopt;
+      }
+    }
+    return matched_any ? std::optional<double>(total) : std::nullopt;
+  }
+
+  // 2. Colon format: MM:SS or HH:MM:SS (with optional fractional seconds)
+  if (lower.find(':') != std::string::npos) {
+    std::vector<double> parts;
+    size_t pos = 0;
+    while (pos <= lower.size()) {
+      const size_t colon = lower.find(':', pos);
+      const std::string_view part =
+          (colon == std::string::npos)
+              ? std::string_view(lower).substr(pos)
+              : std::string_view(lower).substr(pos, colon - pos);
+      if (part.empty()) {
+        return std::nullopt;
+      }
+      double v = 0.0;
+      const auto [ptr, ec] =
+          std::from_chars(part.data(), part.data() + part.size(), v);
+      if (ec != std::errc{} || ptr != part.data() + part.size() ||
+          !std::isfinite(v) || v < 0.0) {
+        return std::nullopt;
+      }
+      parts.push_back(v);
+      if (colon == std::string::npos) {
+        break;
+      }
+      pos = colon + 1;
+    }
+    if (parts.size() == 2) {
+      return parts[0] * 60.0 + parts[1];
+    }
+    if (parts.size() == 3) {
+      return parts[0] * 3600.0 + parts[1] * 60.0 + parts[2];
+    }
+    return std::nullopt;
+  }
+
+  // 3. Prose duration: e.g. "1h 5m 20s", "12 min 30 sec", "2 hours"
+  size_t i = 0;
+  double total = 0.0;
+  bool matched_any = false;
+  while (i < lower.size()) {
+    while (i < lower.size() &&
+           (std::isspace(static_cast<unsigned char>(lower[i])) ||
+            lower[i] == ',')) {
+      ++i;
+    }
+    if (i >= lower.size()) {
+      break;
+    }
+    if (std::string_view(lower).substr(i).starts_with("and") &&
+        (i + 3 == lower.size() ||
+         std::isspace(static_cast<unsigned char>(lower[i + 3])))) {
+      i += 3;
+      continue;
+    }
+    const size_t num_start = i;
+    while (i < lower.size() && (is_digit_char(lower[i]) || lower[i] == '.')) {
+      ++i;
+    }
+    if (i == num_start) {
+      return std::nullopt;
+    }
+    double num = 0.0;
+    const auto [ptr, ec] =
+        std::from_chars(lower.data() + num_start, lower.data() + i, num);
+    if (ec != std::errc{} || ptr != lower.data() + i || !std::isfinite(num)) {
+      return std::nullopt;
+    }
+    while (i < lower.size() &&
+           std::isspace(static_cast<unsigned char>(lower[i]))) {
+      ++i;
+    }
+    const size_t unit_start = i;
+    while (i < lower.size() &&
+           std::isalpha(static_cast<unsigned char>(lower[i]))) {
+      ++i;
+    }
+    const std::string_view unit =
+        std::string_view(lower).substr(unit_start, i - unit_start);
+    auto mult = parse_unit_multiplier_seconds(unit);
+    if (!mult.has_value() || *mult > 86400.0) {
+      return std::nullopt;
+    }
+    total += num * (*mult);
+    matched_any = true;
+  }
+  return matched_any ? std::optional<double>(total) : std::nullopt;
+}
+
 } // namespace
+
+ParseDurationStep::ParseDurationStep(std::string_view key,
+                                     std::string_view unit, InsertOptions opts)
+    : key_(key), opts_(opts) {
+  const std::string lower = absl::AsciiStrToLower(unit);
+  if (lower == "seconds" || lower == "sec" || lower == "s") {
+    unit_ = Unit::Seconds;
+  } else if (lower == "ms" || lower == "millisecond" ||
+             lower == "milliseconds") {
+    unit_ = Unit::Milliseconds;
+  } else if (lower == "minutes" || lower == "min" || lower == "m") {
+    unit_ = Unit::Minutes;
+  } else {
+    throw std::invalid_argument(
+        "parse_duration: unknown unit '" + std::string(unit) +
+        "' (expected 'seconds', 'ms', or 'minutes')");
+  }
+}
+
+void ParseDurationStep::apply(Node, std::vector<std::string> &values,
+                              jsoncons::json &dict) {
+  std::vector<std::string> out_str;
+  std::vector<jsoncons::json> out_json;
+  out_str.reserve(values.size());
+  out_json.reserve(values.size());
+
+  for (const auto &v : values) {
+    auto sec = parse_duration_seconds(v);
+    if (!sec.has_value()) {
+      continue;
+    }
+    double scaled = *sec;
+    if (unit_ == Unit::Milliseconds) {
+      scaled *= 1000.0;
+    } else if (unit_ == Unit::Minutes) {
+      scaled /= 60.0;
+    }
+    double intpart = 0.0;
+    if (std::isfinite(scaled) && std::modf(scaled, &intpart) == 0.0 &&
+        scaled >= -9007199254740992.0 && scaled <= 9007199254740992.0) {
+      const int64_t iv = static_cast<int64_t>(intpart);
+      out_str.push_back(std::to_string(iv));
+      out_json.emplace_back(iv);
+    } else {
+      std::ostringstream oss;
+      oss << std::setprecision(12) << scaled;
+      out_str.push_back(oss.str());
+      out_json.emplace_back(scaled);
+    }
+  }
+
+  if (!key_.empty()) {
+    write_typed_values_to_dict(dict, key_, std::move(out_json), opts_);
+    values.clear();
+  } else {
+    values = std::move(out_str);
+  }
+}
 
 void ParseDateStep::apply(Node, std::vector<std::string> &values,
                           jsoncons::json &dict) {
@@ -375,6 +737,14 @@ void ParseDateStep::apply(Node, std::vector<std::string> &values,
   if (!tz_.empty() && tz_ != "UTC") {
     if (!absl::LoadTimeZone(tz_, &tz)) {
       throw std::invalid_argument("parse_date: unknown timezone '" + tz_ + "'");
+    }
+  }
+
+  absl::Time base_time = absl::Now();
+  if (!now_.empty()) {
+    if (!parse_with_auto_formats(now_, tz, "", &base_time)) {
+      throw std::invalid_argument("parse_date: invalid 'now' timestamp '" +
+                                  now_ + "'");
     }
   }
 
@@ -390,7 +760,9 @@ void ParseDateStep::apply(Node, std::vector<std::string> &values,
     }
     absl::Time parsed;
     if (!parse_with_auto_formats(trimmed, tz, fmt_, &parsed)) {
-      continue;
+      if (!fmt_.empty() || !parse_relative_date(trimmed, base_time, &parsed)) {
+        continue;
+      }
     }
     if (output_ == "unix") {
       const int64_t sec = absl::ToUnixSeconds(parsed);

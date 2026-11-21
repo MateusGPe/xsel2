@@ -433,3 +433,58 @@ def test_python_module_parse_js_and_json_parse():
     assert sp.parse_js("   ") is None
     assert sp.json_parse("", lenient=True) is None
     assert sp.json_parse(";;;", lenient=True) is None
+
+
+def test_python_phase1_to_3_and_single_parse_document():
+    html = """
+    <html>
+      <head>
+        <script type="application/ld+json">{"@type": "VideoObject", "name": "Demo"}</script>
+      </head>
+      <body>
+        <h1>  Fast   Scraper  </h1>
+        <img class="pic" data-src="https://cdn.test/img.jpg" srcset="a.jpg 200w, b.jpg 800w" />
+        <span class="views">1.2K</span>
+        <span class="dur">01:30</span>
+        <span class="dt">yesterday</span>
+        <a class="lnk" href="https://example.com/v?id=1&utm_source=x">Go</a>
+      </body>
+    </html>
+    """
+    doc = sp.Document.from_string(html)
+    s1 = (
+        sp.ScraperPy()
+        .select("html")
+        .fields({
+            "title": "h1",
+            "cover": {"sel": "img.pic", "attr": ["src", "data-src"]},
+            "has_pic": {"sel": "img.pic", "type": "exists"},
+        })
+        .find_first(".views").parse_number(compact=True, key="views")
+        .find_first(".dur").parse_duration(key="dur_s")
+        .find_first(".dt").parse_date(output="date", now="2026-11-20T12:00:00Z").set("posted")
+        .find_first("img.pic", sp.Value.Attribute, "srcset").parse_srcset("largest").set("best_img")
+        .find_first("a.lnk", sp.Value.Attribute, "href").strip_query(drop_params=["utm_*"]).set("clean_url")
+        .extract_meta("meta", index_json_ld=True)
+    )
+    out1 = s1.from_document(doc)
+    assert out1["title"] == "Fast Scraper"
+    assert out1["cover"] == "https://cdn.test/img.jpg"
+    assert out1["has_pic"] is True
+    assert out1["views"] == 1200
+    assert out1["dur_s"] == 90
+    assert out1["posted"] == "2026-11-19"
+    assert out1["best_img"] == "b.jpg"
+    assert out1["clean_url"] == "https://example.com/v?id=1"
+    assert out1["meta"]["json_ld_by_type"]["VideoObject"]["name"] == "Demo"
+
+    s2 = sp.ScraperPy().select("h1").text().squish().set("heading")
+    many = sp.scrape_many({"s1": s1, "s2": s2}, html)
+    assert many["s1"] == out1
+    assert many["s2"] == {"heading": "Fast Scraper"}
+
+    # Ensure refactored scrapers.dsl loads cleanly in Python
+    repo_root = Path(__file__).resolve().parent.parent
+    prod_scrapers = sp.load_scrapers(str(repo_root / "scrapers.dsl"))
+    assert {"shared_page_data", "user_profile", "video_page", "next_video",
+            "script_data", "video_block", "preload_ad", "video_categories_tags"} <= set(prod_scrapers.keys())

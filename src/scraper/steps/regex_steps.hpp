@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/ahocorasick.hpp"
+#include "scraper/merge.hpp"
 #include "scraper/step.hpp"
 #include <absl/container/flat_hash_map.h>
 #include <optional>
@@ -95,6 +96,38 @@ private:
   AhoCorasick ac_;
   std::vector<std::string> patterns_;
   bool unique_;
+};
+
+class RegexFindAllStep final : public Step {
+public:
+  RegexFindAllStep(std::string_view pattern, int group_index = 0,
+                   const std::optional<std::string> &flags = std::nullopt);
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string pattern_str_;
+  re2::RE2 regex_;
+  int group_index_;
+};
+
+class RegexGroupsStep final : public Step {
+public:
+  RegexGroupsStep(std::string_view pattern,
+                  const std::optional<std::string> &flags = std::nullopt,
+                  std::string_view prefix = "", bool clear = false,
+                  InsertOptions opts = {});
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string pattern_str_;
+  re2::RE2 regex_;
+  std::string prefix_;
+  bool clear_;
+  InsertOptions opts_;
 };
 
 } // namespace scraper

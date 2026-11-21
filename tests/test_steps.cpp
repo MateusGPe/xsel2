@@ -752,3 +752,372 @@ TEST_CASE("Hardening: SortValuesStep NaN/prefix, StripQuery UAF, XPath namespace
       scraper::insert_into_json(deep_dest, deep_key, jsoncons::json(1)),
       std::runtime_error);
 }
+
+TEST_CASE("Phase 1 steps: MapValues, QueryParams, Save/Restore, Tee, CoalesceKeys, FindFirst, ExtractFields",
+          "[steps][phase1]") {
+  // 1. MapValuesStep
+  {
+    std::vector<std::string> vals = {"monthly rank", "unknown", "weekly rank"};
+    jsoncons::json dict = jsoncons::json::object();
+    scraper::MapValuesStep mapper(
+        {{"monthly rank", "ibox_rank_monthly"},
+         {"weekly rank", "ibox_rank_weekly"}});
+    mapper.apply(dummy_node(), vals, dict);
+    CHECK(vals == std::vector<std::string>{"ibox_rank_monthly", "unknown",
+                                           "ibox_rank_weekly"});
+
+    scraper::MapValuesStep mapper_def({{"a", "A"}}, "fallback");
+    std::vector<std::string> vals2 = {"a", "b"};
+    mapper_def.apply(dummy_node(), vals2, dict);
+    CHECK(vals2 == std::vector<std::string>{"A", "fallback"});
+  }
+
+  // 2. QueryParamStep & QueryParamsStep tolerating raw '[' and ']'
+  {
+    std::vector<std::string> vals = {
+        "https://example.com/_xa/ads_batch?clientType=desktop&channel[context_page_type]=video&channel[info]=%7B%22id%22%3A42%7D"};
+    jsoncons::json dict = jsoncons::json::object();
+
+    scraper::QueryParamsStep qps({
+        {"clientType", "client_type"},
+        {"channel[context_page_type]", "context_page_type"},
+        {"missing", "missing_key"},
+    });
+    qps.apply(dummy_node(), vals, dict);
+    CHECK(dict["client_type"].as<std::string>() == "desktop");
+    CHECK(dict["context_page_type"].as<std::string>() == "video");
+    CHECK_FALSE(dict.contains("missing_key"));
+    // values preserved when clear=false
+    REQUIRE(vals.size() == 1);
+
+    scraper::QueryParamStep qp("channel[info]");
+    qp.apply(dummy_node(), vals, dict);
+    CHECK(vals[0] == R"({"id":42})");
+  }
+
+  // 3. Save/Restore & TeeStep via ExecutionContext
+  {
+    scraper::ExecutionContext ctx;
+    std::vector<std::string> vals = {"one", "two"};
+    jsoncons::json dict = jsoncons::json::object();
+    scraper::SaveValuesStep("orig").apply(dummy_node(), vals, dict, ctx);
+
+    std::vector<std::shared_ptr<scraper::Step>> branch_steps = {
+        std::make_shared<scraper::PrependStep>("sub_"),
+        std::make_shared<scraper::SetStep>("branched"),
+    };
+    scraper::TeeStep(branch_steps).apply(dummy_node(), vals, dict, ctx);
+    CHECK(vals == std::vector<std::string>{"one", "two"});
+    REQUIRE(dict["branched"].is_array());
+    CHECK(dict["branched"][0].as<std::string>() == "sub_one");
+
+    vals.clear();
+    scraper::RestoreValuesStep("orig").apply(dummy_node(), vals, dict, ctx);
+    CHECK(vals == std::vector<std::string>{"one", "two"});
+  }
+
+  // 4. CoalesceKeysStep
+  {
+    jsoncons::json input = jsoncons::json::parse(
+        R"({"hover_cover_data_src": "https://cdn/cover.jpg", "nested": {"vkey": "abc"}, "keep": 1})");
+    scraper::CoalesceKeysStep coalesce(
+        {
+            {"hover_cover", {"hover_cover", "hover_cover_data_src"}},
+            {"video_id", {"nested.vkey", "fallback_id"}},
+        },
+        true, true);
+    jsoncons::json out = coalesce.execute_postponed(input);
+    CHECK(out["hover_cover"].as<std::string>() == "https://cdn/cover.jpg");
+    CHECK_FALSE(out.contains("hover_cover_data_src"));
+    CHECK(out["video_id"].as<std::string>() == "abc");
+    CHECK(out["keep"].as<int>() == 1);
+  }
+
+  // 5. FindFirstStep, AttrStep fallback, ExtractFieldsStep single-pass
+  {
+    Document doc;
+    doc.parseMemory(R"(
+      <html><body>
+        <div class="card">
+          <h2 class="title">  Hello   World </h2>
+          <img class="pic" data-src="https://img/lazy.jpg" />
+          <span class="views">123</span>
+          <span class="badge">HD</span>
+          <span class="badge">4K</span>
+        </div>
+      </body></html>
+    )");
+    Node root(doc.getRoot());
+
+    std::vector<std::string> vals;
+    jsoncons::json dict = jsoncons::json::object();
+    scraper::FindFirstStep("h2.title", scraper::QueryAllStep::Type::Text, {},
+                           true, false)
+        .apply(root, vals, dict);
+    CHECK(vals == std::vector<std::string>{"Hello World"});
+
+    vals.clear();
+    scraper::FindFirstStep(".nonexistent", scraper::QueryAllStep::Type::Text,
+                           {}, true, false)
+        .apply(root, vals, dict);
+    CHECK(vals.empty());
+
+    std::vector<scraper::FieldSpec> specs;
+    {
+      scraper::FieldSpec s;
+      s.key = "title";
+      s.selector_str = "h2.title";
+      specs.push_back(std::move(s));
+    }
+    {
+      scraper::FieldSpec s;
+      s.key = "cover";
+      s.selector_str = "img.pic";
+      s.type = scraper::QueryAllStep::Type::Attribute;
+      s.attrs = {"src", "data-src"};
+      specs.push_back(std::move(s));
+    }
+    {
+      scraper::FieldSpec s;
+      s.key = "views";
+      s.selector_str = ".views";
+      s.cast = scraper::ValueType::Int;
+      s.cast_explicit = true;
+      specs.push_back(std::move(s));
+    }
+    {
+      scraper::FieldSpec s;
+      s.key = "has_hd";
+      s.selector_str = ".badge";
+      s.type = scraper::QueryAllStep::Type::ElementExists;
+      specs.push_back(std::move(s));
+    }
+    {
+      scraper::FieldSpec s;
+      s.key = "has_missing";
+      s.selector_str = ".nope";
+      s.type = scraper::QueryAllStep::Type::ElementExists;
+      specs.push_back(std::move(s));
+    }
+    {
+      scraper::FieldSpec s;
+      s.key = "badges";
+      s.selector_str = ".badge";
+      s.first_only = false;
+      specs.push_back(std::move(s));
+    }
+    scraper::ExtractFieldsStep(std::move(specs)).apply(root, vals, dict);
+    CHECK(dict["title"].as<std::string>() == "Hello World");
+    CHECK(dict["cover"].as<std::string>() == "https://img/lazy.jpg");
+    CHECK(dict["views"].as<int>() == 123);
+    CHECK(dict["has_hd"].as<bool>() == true);
+    CHECK(dict["has_missing"].as<bool>() == false);
+    REQUIRE(dict["badges"].is_array());
+    CHECK(dict["badges"].size() == 2);
+    CHECK(dict["badges"][0].as<std::string>() == "HD");
+    CHECK(dict["badges"][1].as<std::string>() == "4K");
+  }
+}
+
+TEST_CASE("Phase 2 steps: SubExtract (each), Conditional (when_exists/unless_exists/when_match), Guard (skip_if_exists/skip_if_empty/abort_if_exists)",
+          "[steps][phase2]") {
+  // 1. SubExtractStep (2-level nested) + SkipIfExists + SkipIfEmpty
+  {
+    const std::string html = R"(
+      <div class="card ad"><h2>Sponsored</h2></div>
+      <div class="card">
+        <h2>Product A</h2>
+        <span class="badge">Sale</span>
+        <a class="tag" href="/t/1">Fast</a>
+        <a class="tag" href="/t/2">Small</a>
+      </div>
+      <div class="card">
+        <h2>   </h2>
+      </div>
+    )";
+    scraper::ScraperBuilder sb;
+    sb.Select("div.card", "cards")
+        .SkipIfExists(".ad")
+        .FindFirst("h2")
+        .SkipIfEmpty()
+        .Set("title")
+        .WhenExists(".badge", {std::make_shared<scraper::FindFirstStep>(
+                                   ".badge"),
+                               std::make_shared<scraper::SetStep>("badge")})
+        .UnlessExists(".missing",
+                      {std::make_shared<scraper::DefaultIfEmptyStep>("active"),
+                       std::make_shared<scraper::SetStep>("status")})
+        .Each("a.tag", "tag_map",
+              {std::make_shared<scraper::TextStep>(),
+               std::make_shared<scraper::SetStep>("@key"),
+               std::make_shared<scraper::AttrStep>("href"),
+               std::make_shared<scraper::SetStep>("@value")});
+
+    const auto out = sb.scrape_from_string(html);
+    REQUIRE(out["cards"].is_object());
+    CHECK(out["cards"]["title"].as<std::string>() == "Product A");
+    CHECK(out["cards"]["badge"].as<std::string>() == "Sale");
+    CHECK(out["cards"]["status"].as<std::string>() == "active");
+    CHECK(out["cards"]["tag_map"]["Fast"].as<std::string>() == "/t/1");
+    CHECK(out["cards"]["tag_map"]["Small"].as<std::string>() == "/t/2");
+  }
+
+  // 2. AbortIfExists stops subsequent extractors while preserving abort reason
+  {
+    const std::string html = R"(
+      <div class="geoBlocked">Unavailable</div>
+      <h1>Should not run</h1>
+    )";
+    scraper::ScraperBuilder sb;
+    sb.Select("html")
+        .AbortIfExists(".geoBlocked", "error", "geo_blocked")
+        .Select("h1")
+        .Text()
+        .Set("title");
+
+    const auto out = sb.scrape_from_string(html);
+    CHECK(out["error"].as<std::string>() == "geo_blocked");
+    CHECK_FALSE(out.contains("title"));
+  }
+}
+
+TEST_CASE("Phase 3 steps: regex_find_all, regex_groups, compact numbers, parse_duration, relative dates, unescape_html, parse_srcset, css_url, strip_query drop_params, filter_urls, index_json_ld",
+          "[steps][phase3]") {
+  jsoncons::json dict = jsoncons::json::object();
+
+  // 1. RegexFindAllStep & RegexGroupsStep
+  {
+    std::vector<std::string> vals = {"a=10 b=20 c=30"};
+    scraper::RegexFindAllStep(R"(([a-z])=(\d+))", 2)
+        .apply(dummy_node(), vals, dict);
+    CHECK(vals == std::vector<std::string>{"10", "20", "30"});
+
+    std::vector<std::string> gvals = {"item-42-usd"};
+    jsoncons::json gdict = jsoncons::json::object();
+    scraper::RegexGroupsStep(R"((?P<kind>[a-z]+)-(?P<id>\d+)-(?P<cur>[a-z]+))",
+                             std::nullopt, "rx_")
+        .apply(dummy_node(), gvals, gdict);
+    CHECK(gdict["rx_kind"].as<std::string>() == "item");
+    CHECK(gdict["rx_id"].as<std::string>() == "42");
+    CHECK(gdict["rx_cur"].as<std::string>() == "usd");
+    CHECK(gvals.size() == 1); // clear=false by default
+  }
+
+  // 2. Compact numbers in extract_number_string / ParseNumberStep
+  {
+    CHECK(scraper::extract_number_string("1.2K views", ".", ",", true, true) ==
+          "1200");
+    CHECK(scraper::extract_number_string("3.4M", ".", ",", true, true) ==
+          "3400000");
+    CHECK(scraper::extract_number_string("2.5B", ".", ",", true, true) ==
+          "2500000000");
+    // Word starting with 'm' ("12 meters") must NOT be treated as Millions
+    CHECK(scraper::extract_number_string("12 meters", ".", ",", true, true) ==
+          "12");
+
+    std::vector<std::string> nvals = {"1.5K"};
+    jsoncons::json ndict = jsoncons::json::object();
+    scraper::ParseNumberStep(".", ",", true, "views", {}, true)
+        .apply(dummy_node(), nvals, ndict);
+    CHECK(ndict["views"].as<int64_t>() == 1500);
+  }
+
+  // 3. ParseDurationStep
+  {
+    std::vector<std::string> dvals = {"12:34", "1:02:05", "PT1H2M3S",
+                                      "5 min 20 sec"};
+    jsoncons::json ddict = jsoncons::json::object();
+    scraper::ParseDurationStep("dur", "seconds")
+        .apply(dummy_node(), dvals, ddict);
+    REQUIRE(ddict["dur"].is_array());
+    CHECK(ddict["dur"][0].as<int64_t>() == 754);
+    CHECK(ddict["dur"][1].as<int64_t>() == 3725);
+    CHECK(ddict["dur"][2].as<int64_t>() == 3723);
+    CHECK(ddict["dur"][3].as<int64_t>() == 320);
+
+    std::vector<std::string> ms_vals = {"1.5s"};
+    scraper::ParseDurationStep("", "ms").apply(dummy_node(), ms_vals, ddict);
+    CHECK(ms_vals == std::vector<std::string>{"1500"});
+  }
+
+  // 4. Relative dates in ParseDateStep
+  {
+    std::vector<std::string> rvals = {"yesterday", "3 days ago", "in 2 hours",
+                                      "just now"};
+    jsoncons::json rdict = jsoncons::json::object();
+    scraper::ParseDateStep("", "iso", "", "UTC", {}, "2026-11-20T12:00:00Z")
+        .apply(dummy_node(), rvals, rdict);
+    CHECK(rvals == std::vector<std::string>{
+                       "2026-11-19T12:00:00Z", "2026-11-17T12:00:00Z",
+                       "2026-11-20T14:00:00Z", "2026-11-20T12:00:00Z"});
+  }
+
+  // 5. UnescapeHtmlStep, ParseSrcsetStep, CssUrlStep
+  {
+    std::vector<std::string> hvals = {
+        "&lt;a&gt;Tom &amp; Jerry&#39;s &#x2605;&lt;/a&gt;"};
+    scraper::UnescapeHtmlStep().apply(dummy_node(), hvals, dict);
+    CHECK(hvals == std::vector<std::string>{"<a>Tom & Jerry's ★</a>"});
+
+    std::vector<std::string> svals = {
+        "https://cdn.test/w_400,q_auto/a.jpg 400w, "
+        "https://cdn.test/w_1200,q_auto/b.jpg 1200w"};
+    auto s_small = svals;
+    scraper::ParseSrcsetStep("largest").apply(dummy_node(), svals, dict);
+    CHECK(svals ==
+          std::vector<std::string>{"https://cdn.test/w_1200,q_auto/b.jpg"});
+    scraper::ParseSrcsetStep("smallest").apply(dummy_node(), s_small, dict);
+    CHECK(s_small ==
+          std::vector<std::string>{"https://cdn.test/w_400,q_auto/a.jpg"});
+
+    std::vector<std::string> cvals = {
+        "background-image: url('https://cdn.test/bg.png'); mask: url(/m.svg)"};
+    scraper::CssUrlStep().apply(dummy_node(), cvals, dict);
+    CHECK(cvals ==
+          std::vector<std::string>{"https://cdn.test/bg.png", "/m.svg"});
+  }
+
+  // 6. StripQueryStep drop_params globs & FilterUrlsStep
+  {
+    std::vector<std::string> uvals = {
+        "https://example.com/p?id=7&utm_source=x&utm_medium=y&fbclid=z"};
+    scraper::StripQueryStep({}, {"utm_*", "fbclid"})
+        .apply(dummy_node(), uvals, dict);
+    CHECK(uvals == std::vector<std::string>{"https://example.com/p?id=7"});
+
+    std::vector<std::string> fvals = {
+        "https://sub.example.com/a", "https://ads.example.com/b",
+        "https://other.org/c", "javascript:void(0)"};
+    scraper::FilterUrlsStep({"example.com"}, {"ads.example.com"}, {"https"})
+        .apply(dummy_node(), fvals, dict);
+    CHECK(fvals == std::vector<std::string>{"https://sub.example.com/a"});
+
+    std::vector<std::string> same = {"https://example.com/p",
+                                     "https://sub.example.com/p"};
+    scraper::FilterUrlsStep({}, {}, {"https"}, "https://example.com/root")
+        .apply(dummy_node(), same, dict);
+    CHECK(same == std::vector<std::string>{"https://example.com/p"});
+  }
+
+  // 7. ExtractMetaStep with index_json_ld=true (including @graph)
+  {
+    Document doc;
+    doc.parseMemory(R"(
+      <html><head>
+        <script type="application/ld+json">
+          {"@graph": [
+            {"@type": "VideoObject", "name": "Clip 1"},
+            {"@type": "BreadcrumbList", "itemListElement": []}
+          ]}
+        </script>
+      </head></html>
+    )");
+    jsoncons::json mdict = jsoncons::json::object();
+    std::vector<std::string> empty;
+    scraper::ExtractMetaStep("ld", true, {}, true)
+        .apply(Node(doc.getRoot()), empty, mdict);
+    CHECK(mdict["ld"]["json_ld_by_type"]["VideoObject"]["name"]
+              .as<std::string>() == "Clip 1");
+    CHECK(mdict["ld"]["json_ld_by_type"]["BreadcrumbList"].is_object());
+  }
+}

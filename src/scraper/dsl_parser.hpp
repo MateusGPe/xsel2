@@ -22,6 +22,7 @@ private:
   Token current_;
   absl::flat_hash_map<std::string, DslValue> variables_;
   absl::flat_hash_map<std::string, ScraperBuilder> scrapers_;
+  absl::flat_hash_map<std::string, std::vector<std::shared_ptr<Step>>> pipes_;
 
   void advance_token();
   void expect(Token::Type type, std::string_view msg);

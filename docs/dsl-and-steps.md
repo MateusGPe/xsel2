@@ -2,7 +2,7 @@
 
 The `xsel2` DSL (`.dsl`) is a declarative, fluent pipeline language for HTML/XML scraping, multi-pattern text extraction, and JSON/CSV/binary transformation. It compiles directly into `scraper::ScraperBuilder` pipelines and runs identically from the `xsel2` CLI, Python (`scraperpy`), and C++ (`scraper::dsl::DslParser`).
 
-This manual documents **100%** of the DSL grammar, syntax sugar, execution & merge engine, **all 100 canonical pipeline steps**, **all 15 plain-English aliases**, and every known caveat or edge case.
+This manual documents **100%** of the DSL grammar, syntax sugar, execution & merge engine, pipeline composition (`pipe`/`use`/`include`/`finalize`/`tee`/`each`/`when_*`), all canonical pipeline steps and aliases, and every known caveat or edge case.
 
 ---
 
@@ -189,6 +189,26 @@ Strict validation rules (`src/scraper/dsl/value.cpp`):
 | `to_number` | `parse_number` | Extracts/normalizes numeric strings |
 | `url_join` | `resolve_url` | RFC 3986 relative URL resolution |
 | `inner_html` | `html` | Extracts inner (or outer if `outer=true`) HTML |
+| `fields` | `extract_fields` | Single-pass multi-selector extraction into `dict` |
+| `branch` | `tee` | Runs sub-chain on a copy of `values` |
+
+### Composition, Branching & Control Flow
+
+- **Reusable pipeline fragments (`pipe` + `use`)**:
+  ```text
+  pipe link_map = { text | squish -> "@key" | @href | squish -> "@value" };
+  s := Scraper().select(".links a", "links") { use(link_map) };
+  ```
+- **Scraper composition (`include`)**: Appends all extractors and `finalize` steps from a previously declared scraper (`Scraper().include(base)`).
+- **Value branching (`tee { ... }` / `branch { ... }`) & slots (`save` / `restore`)**:
+  - `tee { ... }` executes its block on a copy of `values` while sharing `dict`, leaving the outer `values` intact.
+  - `save("slot")` / `restore("slot")` store and recall `values` within the current matched node's `ExecutionContext`.
+- **Nested relative sub-extractors (`each(selector, key="") { ... }`)**: Queries relative to the current matched node (arbitrarily nestable), supporting `@key`/`@value` collapsing.
+- **Conditional blocks & guards**:
+  - `when_exists(selector) { ... }`, `unless_exists(selector) { ... }`, `when_match(pattern, negate=false, flags=null) { ... }`: conditionally run steps on the shared `values` and `dict`.
+  - `skip_if_exists(selector)`, `skip_if_empty()`: drop the current item before merging into `dest`.
+  - `abort_if_exists(selector, key="", reason="")`: optionally record `reason` (or `true`) under `key` and stop subsequent extractors immediately.
+- **Scraper-level post-processing (`finalize { ... }`)**: Always runs once after all extractors finish (even if the final `select(...)` matched 0 nodes).
 
 ---
 
@@ -851,3 +871,31 @@ All URL steps mutate `values` in-place via `libxml2`'s RFC 3986 URI parser (`xml
 #### `debug(prefix="DEBUG: ", print_dict=false, print_node=false)`
 - **Behavior**: Prints `values` (with indices and quoted strings), and optionally `dict` (`print_dict=true`) and `node.Text()` / `node.OwnText()` (`print_node=true`) to `stderr`. Does not modify `values` or `dict`.
 - **Example**: `$(".price") { text | debug("raw_price", print_dict=true) | trim -> "price" }`
+
+---
+
+### 6.10 Fast Extraction, Wild-Web Normalizers & Crawler Helpers
+
+| Step | Parameters & Defaults | Aliases | Mutates / Behavior |
+| --- | --- | --- | --- |
+| `find_first` | `(selector, type=Value.Text, attr="", squish=true, required=false)` | — | Zero-alloc early-exit first match; `attr` accepts `str` or `list<str>` |
+| `try_find` | `(selector, type, attr="", number=Number.All, nth_val=0)` | — | Non-throwing alias for `find(..., optional=true)` |
+| `extract_fields` | `(spec, allow_empty=false)` | `fields` | Single-pass zero-alloc DOM walk writing directly to `dict` |
+| `attr` (fallback) | `(attr_name_or_list)` | `@[...]` | First non-empty attribute when given a list |
+| `map_values` | `(mapping, default_val=null)` | — | $O(1)$ exact-string lookup replacement on `values` |
+| `save` / `restore` | `(name)` | — | Save/restore `values` in per-node `ExecutionContext` |
+| `coalesce_keys` | `(mapping, drop_sources=true, postponable=true)` | — | Picks first non-empty dot-path per target key (`PostponableJsonStep`) |
+| `query_params` | `(mapping, default_val="", clear=false)` | — | Single-pass multi-param URL query extraction into `dict` (tolerates `[`/`]`) |
+| `js_blocks` (aliases) | `(prefixes_or_map, aliases=null)` | `extract_js_blocks` | Supports `"prefix_*"` wildcards, `{prefix: key}`, and `aliases` map |
+| `regex_find_all` | `(pattern, group_index=0, flags=null)` | — | Global non-overlapping RE2 matches across `values` |
+| `regex_groups` | `(pattern, flags=null, prefix="", clear=false)` | — | Writes RE2 named captures `(?P<name>...)` to `dict[prefix + name]` |
+| `parse_number` (compact) | `(..., compact=false)` | `to_number` | Expands `K`, `M`, `B`, `T` suffixes (`"1.2M"` -> `"1200000"`) when `compact=true` |
+| `parse_duration` | `(key="", unit="seconds")` | — | Parses `MM:SS`, `HH:MM:SS`, ISO-8601 `PT...`, and prose durations (`1h 5m`) |
+| `parse_date` (relative) | `(..., now="")` | — | Supports `"yesterday"`, `"3 days ago"`, `"in 2 hours"`, `"last week"`, etc. |
+| `unescape_html` | `()` | — | Decodes named and numeric (`&#NNN;`, `&#xHHH;`) HTML entities to UTF-8 |
+| `parse_srcset` | `(mode="largest")` | — | Picks `"largest"`/`"best"`, `"smallest"`, or `"all"` URLs from `srcset` |
+| `css_url` | `()` | — | Extracts URLs from CSS `url(...)` declarations |
+| `strip_query` (glob) | `(keep_params=[], drop_params=[])` | — | Supports glob patterns (e.g. `drop_params=["utm_*", "fbclid"]`) |
+| `filter_urls` | `(allowed_domains=[], blocked_domains=[], allowed_schemes=["http", "https"], same_origin_of="")` | — | Filters `values` by scheme, domain suffix, and origin |
+| `extract_meta` (indexed) | `(key="meta", include_json_ld=true, index_json_ld=false)` | — | When `index_json_ld=true`, indexes JSON-LD / `@graph` by `@type` under `json_ld_by_type` |
+| `skip_if_exists` / `skip_if_empty` / `abort_if_exists` | `(selector)` / `()` / `(selector, key="", reason="")` | — | Item skip / early scraper abort guards |

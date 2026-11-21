@@ -112,6 +112,7 @@ get_alias_map() {
           {"to_number", "parse_number"},
           {"url_join", "resolve_url"},
           {"inner_html", "html"},
+          {"fields", "extract_fields"},
       };
   return aliases;
 }
@@ -130,14 +131,20 @@ get_method_registry() {
        }},
       {"attr",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.Attr(as_str(require_arg(args, 0, "attr_name", name)));
+         const auto &val = require_arg(args, 0, "attr_name", name);
+         if (val.is_list()) {
+           b.AttrFallback(as_str_list(val));
+         } else {
+           b.Attr(as_str(val));
+         }
        }},
       {"find_all",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
          const auto &sel = require_arg(args, 0, "selector", name);
          const auto &type = require_arg(args, 1, "type", name);
          b.FindAll(as_str(sel), parse_value_type(as_str(type)),
-                   opt_str(args, 2, "attr", ""));
+                   opt_str(args, 2, "attr", ""),
+                   opt_bool(args, 3, "optional", false));
        }},
       {"find",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -148,7 +155,100 @@ get_method_registry() {
                 opt_str(args, 2, "attr", ""),
                 num ? parse_number_type(as_str(*num))
                     : QueryStep::Number::All,
-                opt_non_negative_size(args, 4, "nth_val", name, 0));
+                opt_non_negative_size(args, 4, "nth_val", name, 0),
+                opt_bool(args, 5, "optional", false));
+       }},
+      {"try_find",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &sel = require_arg(args, 0, "selector", name);
+         const auto &type = require_arg(args, 1, "type", name);
+         const auto *num = find_arg(args, 3, "number");
+         b.Find(as_str(sel), parse_value_type(as_str(type)),
+                opt_str(args, 2, "attr", ""),
+                num ? parse_number_type(as_str(*num))
+                    : QueryStep::Number::All,
+                opt_non_negative_size(args, 4, "nth_val", name, 0), true);
+       }},
+      {"find_first",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &sel = require_arg(args, 0, "selector", name);
+         const auto *type_arg = find_arg(args, 1, "type");
+         const auto type = (type_arg && !type_arg->is_null())
+                               ? parse_value_type(as_str(*type_arg))
+                               : QueryAllStep::Type::Text;
+         std::vector<std::string> attrs;
+         if (const auto *av = find_arg(args, 2, "attr"); av && !av->is_null()) {
+           attrs = as_str_list(*av);
+         }
+         b.FindFirst(as_str(sel), type, std::move(attrs),
+                     opt_bool(args, 3, "squish", true),
+                     opt_bool(args, 4, "required", false));
+       }},
+      {"extract_fields",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &spec_val = require_arg(args, 0, "spec", name);
+         if (!spec_val.is_object()) {
+           throw std::runtime_error(
+               "extract_fields: spec must be an object {key: selector_or_spec}");
+         }
+         std::vector<FieldSpec> specs;
+         specs.reserve(spec_val.get_object().size());
+         for (const auto &[k, val] : spec_val.get_object()) {
+           FieldSpec fs;
+           fs.key = k;
+           if (!val.is_object()) {
+             fs.selector_str = as_str(val);
+             specs.push_back(std::move(fs));
+             continue;
+           }
+           bool has_sel = false;
+           bool has_type = false;
+           bool has_attr = false;
+           for (const auto &[fk, fv] : val.get_object()) {
+             if (fk == "sel" || fk == "selector") {
+               fs.selector_str = as_str(fv);
+               has_sel = true;
+             } else if (fk == "type") {
+               fs.type = parse_value_type(as_str(fv));
+               has_type = true;
+             } else if (fk == "attr") {
+               if (!fv.is_null()) {
+                 fs.attrs = as_str_list(fv);
+                 has_attr = true;
+               }
+             } else if (fk == "squish") {
+               fs.squish = as_bool(fv);
+             } else if (fk == "trim") {
+               fs.trim = as_bool(fv);
+             } else if (fk == "first") {
+               fs.first_only = as_bool(fv);
+             } else if (fk == "cast" || fk == "as" || fk == "to") {
+               fs.cast = parse_value_type_name(as_str(fv));
+               fs.cast_explicit = true;
+             } else if (fk == "default") {
+               fs.default_val = dsl_value_to_json(fv);
+             } else if (fk == "join") {
+               if (!fv.is_null()) {
+                 fs.join_delim = as_str(fv);
+               }
+             } else {
+               throw std::runtime_error(
+                   "extract_fields: unknown field option '" + fk + "' for '" +
+                   k + "'");
+             }
+           }
+           if (!has_sel) {
+             throw std::runtime_error(
+                 "extract_fields: missing 'sel' in field spec for '" + k + "'");
+           }
+           if (!has_type && has_attr) {
+             fs.type = QueryAllStep::Type::Attribute;
+           }
+           specs.push_back(std::move(fs));
+         }
+         InsertOptions opts;
+         opts.allow_empty = opt_bool(args, 1, "allow_empty", false);
+         b.ExtractFields(std::move(specs), opts);
        }},
       {"trim", [](ScraperBuilder &b, const DslArgList &, std::string_view) {
         b.Trim();
@@ -230,6 +330,19 @@ get_method_registry() {
          b.RegexExtract(as_str(pat), opt_int(args, 1, "group_index", 0),
                         opt_flags(args, 2));
        }},
+      {"regex_find_all",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &pat = require_arg(args, 0, "pattern", name);
+         b.RegexFindAll(as_str(pat), opt_int(args, 1, "group_index", 0),
+                        opt_flags(args, 2));
+       }},
+      {"regex_groups",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &pat = require_arg(args, 0, "pattern", name);
+         b.RegexGroups(as_str(pat), opt_flags(args, 1),
+                       opt_str(args, 2, "prefix", ""),
+                       opt_bool(args, 3, "clear", false));
+       }},
       {"filter",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
          b.Filter(as_str_list(require_arg(args, 0, "patterns", name)));
@@ -283,7 +396,38 @@ get_method_registry() {
        }},
       {"js_blocks",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
-         b.JsBlocks(as_str_list(require_arg(args, 0, "prefixes", name)));
+         const auto &first = require_arg(args, 0, "prefixes", name);
+         std::vector<std::pair<std::string, std::string>> entries;
+         if (first.is_object()) {
+           entries.reserve(first.get_object().size());
+           for (const auto &[k, v] : first.get_object()) {
+             entries.emplace_back(k, as_str(v));
+           }
+         } else {
+           for (const auto &p : as_str_list(first)) {
+             if (p.size() > 1 && p.back() == '*') {
+               std::string prefix = p.substr(0, p.size() - 1);
+               std::string key = prefix;
+               if (key.size() > 1 && key.back() == '_') {
+                 key.pop_back();
+               }
+               entries.emplace_back(std::move(prefix), std::move(key));
+             } else {
+               entries.emplace_back(p, p);
+             }
+           }
+         }
+         if (const DslValue *al = find_arg(args, 1, "aliases");
+             al && !al->is_null()) {
+           if (!al->is_object()) {
+             throw std::runtime_error(
+                 "js_blocks: aliases must be an object {prefix: target_key}");
+           }
+           for (const auto &[k, v] : al->get_object()) {
+             entries.emplace_back(k, as_str(v));
+           }
+         }
+         b.JsBlocksAliased(std::move(entries));
        }},
       {"parse_js",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -486,7 +630,13 @@ get_method_registry() {
          b.ParseNumber(opt_str(args, 0, "decimal", "."),
                        opt_str(args, 1, "thousands", ","),
                        opt_bool(args, 2, "allow_float", true),
-                       opt_str(args, 3, "key", ""));
+                       opt_str(args, 3, "key", ""), scraper::InsertOptions{},
+                       opt_bool(args, 4, "compact", false));
+       }},
+      {"parse_duration",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.ParseDuration(opt_str(args, 0, "key", ""),
+                         opt_str(args, 1, "unit", "seconds"));
        }},
       {"to_int",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
@@ -547,12 +697,38 @@ get_method_registry() {
        }},
       {"strip_query",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         std::vector<std::string> keep;
+         std::vector<std::string> drop;
          if (const DslValue *kp = find_arg(args, 0, "keep_params");
              kp && !kp->is_null()) {
-           b.StripQuery(as_str_list(*kp));
-         } else {
-           b.StripQuery();
+           keep = as_str_list(*kp);
          }
+         if (const DslValue *dp = find_arg(args, 1, "drop_params");
+             dp && !dp->is_null()) {
+           drop = as_str_list(*dp);
+         }
+         b.StripQuery(keep, drop);
+       }},
+      {"filter_urls",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         std::vector<std::string> allowed_domains;
+         std::vector<std::string> blocked_domains;
+         std::vector<std::string> allowed_schemes = {"http", "https"};
+         if (const DslValue *ad = find_arg(args, 0, "allowed_domains");
+             ad && !ad->is_null()) {
+           allowed_domains = as_str_list(*ad);
+         }
+         if (const DslValue *bd = find_arg(args, 1, "blocked_domains");
+             bd && !bd->is_null()) {
+           blocked_domains = as_str_list(*bd);
+         }
+         if (const DslValue *as = find_arg(args, 2, "allowed_schemes");
+             as && !as->is_null()) {
+           allowed_schemes = as_str_list(*as);
+         }
+         b.FilterUrls(std::move(allowed_domains), std::move(blocked_domains),
+                      std::move(allowed_schemes),
+                      opt_str(args, 3, "same_origin_of", ""));
        }},
       {"slugify",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
@@ -655,13 +831,16 @@ get_method_registry() {
       {"extract_meta",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
          b.ExtractMeta(opt_str(args, 0, "key", "meta"),
-                       opt_bool(args, 1, "include_json_ld", true));
+                       opt_bool(args, 1, "include_json_ld", true),
+                       scraper::InsertOptions{},
+                       opt_bool(args, 2, "index_json_ld", false));
        }},
       {"parse_date",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
          b.ParseDate(opt_str(args, 0, "fmt", ""),
                      opt_str(args, 1, "output", "iso"),
-                     opt_str(args, 2, "key", ""), opt_str(args, 3, "tz", "UTC"));
+                     opt_str(args, 2, "key", ""), opt_str(args, 3, "tz", "UTC"),
+                     scraper::InsertOptions{}, opt_str(args, 4, "now", ""));
        }},
       {"unicode_normalize",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
@@ -696,6 +875,92 @@ get_method_registry() {
                       opt_str(args, 1, "algo", "jaro_winkler"),
                       opt_bool(args, 2, "case_sensitive", false),
                       opt_str(args, 3, "key", ""));
+       }},
+      {"map_values",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const jsoncons::json j =
+             as_json_document(require_arg(args, 0, "mapping", name));
+         if (!j.is_object()) {
+           throw std::runtime_error("map_values: mapping must be an object");
+         }
+         absl::flat_hash_map<std::string, std::string> mapping;
+         mapping.reserve(j.size());
+         for (const auto &kv : j.object_range()) {
+           mapping.emplace(kv.key(), xsel::common::json_to_string(kv.value()));
+         }
+         std::optional<std::string> def;
+         if (const DslValue *dv = find_arg(args, 1, "default_val");
+             dv && !dv->is_null()) {
+           def = as_str(*dv);
+         }
+         b.MapValues(std::move(mapping), std::move(def));
+       }},
+      {"save",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.Save(as_str(require_arg(args, 0, "name", name)));
+       }},
+      {"restore",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.Restore(as_str(require_arg(args, 0, "name", name)));
+       }},
+      {"coalesce_keys",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &mapping = require_arg(args, 0, "mapping", name);
+         if (!mapping.is_object()) {
+           throw std::runtime_error(
+               "coalesce_keys: mapping must be an object {target: [src, ...]}");
+         }
+         std::vector<CoalesceKeysStep::Rule> rules;
+         rules.reserve(mapping.get_object().size());
+         for (const auto &[target, srcs] : mapping.get_object()) {
+           rules.emplace_back(target, as_str_list(srcs));
+         }
+         b.CoalesceKeys(std::move(rules),
+                        opt_bool(args, 1, "drop_sources", true),
+                        opt_bool(args, 2, "postponable", true));
+       }},
+      {"query_params",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         const auto &mapping = require_arg(args, 0, "mapping", name);
+         std::vector<QueryParamsStep::ParamMapping> pairs;
+         if (mapping.is_object()) {
+           pairs.reserve(mapping.get_object().size());
+           for (const auto &[param_name, target_key] : mapping.get_object()) {
+             pairs.emplace_back(param_name, as_str(target_key));
+           }
+         } else {
+           for (const auto &p : as_str_list(mapping)) {
+             pairs.emplace_back(p, p);
+           }
+         }
+         b.QueryParams(std::move(pairs), opt_str(args, 1, "default_val", ""),
+                       opt_bool(args, 2, "clear", false));
+       }},
+      {"skip_if_exists",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.SkipIfExists(as_str(require_arg(args, 0, "selector", name)));
+       }},
+      {"skip_if_empty",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.SkipIfEmpty();
+       }},
+      {"abort_if_exists",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.AbortIfExists(as_str(require_arg(args, 0, "selector", name)),
+                         opt_str(args, 1, "key", ""),
+                         opt_str(args, 2, "reason", ""));
+       }},
+      {"unescape_html",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.UnescapeHtml();
+       }},
+      {"parse_srcset",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
+         b.ParseSrcset(opt_str(args, 0, "mode", "largest"));
+       }},
+      {"css_url",
+       [](ScraperBuilder &b, const DslArgList &, std::string_view) {
+         b.CssUrl();
        }},
   };
   return registry;

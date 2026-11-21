@@ -69,9 +69,19 @@ public:
     extractors_ = std::move(extractors);
   }
 
+  [[nodiscard]] const std::vector<std::shared_ptr<Step>> &
+  get_finalize_steps() const noexcept {
+    return finalize_steps_;
+  }
+
+  void set_finalize_steps(std::vector<std::shared_ptr<Step>> steps) {
+    finalize_steps_ = std::move(steps);
+  }
+
 protected:
   void add_step(std::shared_ptr<Step> step);
   std::vector<std::shared_ptr<Extractor>> extractors_;
+  std::vector<std::shared_ptr<Step>> finalize_steps_;
   ErrorPolicy error_policy_ = ErrorPolicy::LogAndContinue;
   std::vector<std::string> errors_;
 };
@@ -182,22 +192,55 @@ public:
     return self();
   }
 
+  Derived &
+  RegexFindAll(std::string_view pattern, int group_index = 0,
+               const std::optional<std::string> &flags = std::nullopt) {
+    add_step(std::make_shared<RegexFindAllStep>(pattern, group_index, flags));
+    return self();
+  }
+
+  Derived &
+  RegexGroups(std::string_view pattern,
+              const std::optional<std::string> &flags = std::nullopt,
+              std::string_view prefix = "", bool clear = false,
+              InsertOptions opts = {}) {
+    add_step(
+        std::make_shared<RegexGroupsStep>(pattern, flags, prefix, clear, opts));
+    return self();
+  }
+
   Derived &Filter(const std::vector<std::string> &patterns) {
     add_step(std::make_shared<FilterStep>(patterns));
     return self();
   }
 
   Derived &FindAll(std::string_view sel, QueryAllStep::Type type,
-                   std::string_view attr = "") {
-    add_step(std::make_shared<QueryAllStep>(sel, type, attr));
+                   std::string_view attr = "", bool optional = false) {
+    add_step(std::make_shared<QueryAllStep>(sel, type, attr, optional));
     return self();
   }
 
   Derived &Find(std::string_view sel, QueryAllStep::Type type,
                 std::string_view attr = "",
                 QueryStep::Number number = QueryStep::Number::All,
-                size_t nth_val = 0) {
-    add_step(std::make_shared<QueryStep>(sel, type, attr, number, nth_val));
+                size_t nth_val = 0, bool optional = false) {
+    add_step(
+        std::make_shared<QueryStep>(sel, type, attr, number, nth_val, optional));
+    return self();
+  }
+
+  Derived &FindFirst(std::string_view sel,
+                     QueryAllStep::Type type = QueryAllStep::Type::Text,
+                     std::vector<std::string> attrs = {}, bool squish = true,
+                     bool required = false) {
+    add_step(std::make_shared<FindFirstStep>(sel, type, std::move(attrs),
+                                             squish, required));
+    return self();
+  }
+
+  Derived &ExtractFields(std::vector<FieldSpec> specs,
+                         InsertOptions opts = {}) {
+    add_step(std::make_shared<ExtractFieldsStep>(std::move(specs), opts));
     return self();
   }
 
@@ -208,6 +251,11 @@ public:
 
   Derived &Attr(std::string_view attr_name) {
     add_step(std::make_shared<AttrStep>(attr_name));
+    return self();
+  }
+
+  Derived &AttrFallback(std::vector<std::string> attr_names) {
+    add_step(std::make_shared<AttrStep>(std::move(attr_names)));
     return self();
   }
 
@@ -275,6 +323,13 @@ public:
 
   Derived &JsBlocks(std::vector<std::string> prefixes) {
     add_step(std::make_shared<BlockParserStep>(std::move(prefixes)));
+    return self();
+  }
+
+  Derived &
+  JsBlocksAliased(std::vector<std::pair<std::string, std::string>> entries) {
+    add_step(std::make_shared<BlockParserStep>(BlockParserStep::AliasedTag{},
+                                               std::move(entries)));
     return self();
   }
 
@@ -496,9 +551,16 @@ public:
   Derived &ParseNumber(std::string_view decimal = ".",
                        std::string_view thousands = ",",
                        bool allow_float = true, std::string_view key = "",
-                       InsertOptions opts = {}) {
+                       InsertOptions opts = {}, bool compact = false) {
     add_step(std::make_shared<ParseNumberStep>(decimal, thousands, allow_float,
-                                               key, opts));
+                                               key, opts, compact));
+    return self();
+  }
+
+  Derived &ParseDuration(std::string_view key = "",
+                         std::string_view unit = "seconds",
+                         InsertOptions opts = {}) {
+    add_step(std::make_shared<ParseDurationStep>(key, unit, opts));
     return self();
   }
 
@@ -548,8 +610,20 @@ public:
     return self();
   }
 
-  Derived &StripQuery(const std::vector<std::string> &keep_params = {}) {
-    add_step(std::make_shared<StripQueryStep>(keep_params));
+  Derived &StripQuery(const std::vector<std::string> &keep_params = {},
+                      const std::vector<std::string> &drop_params = {}) {
+    add_step(std::make_shared<StripQueryStep>(keep_params, drop_params));
+    return self();
+  }
+
+  Derived &FilterUrls(
+      std::vector<std::string> allowed_domains = {},
+      std::vector<std::string> blocked_domains = {},
+      std::vector<std::string> allowed_schemes = {"http", "https"},
+      std::string_view same_origin_of = "") {
+    add_step(std::make_shared<FilterUrlsStep>(
+        std::move(allowed_domains), std::move(blocked_domains),
+        std::move(allowed_schemes), same_origin_of));
     return self();
   }
 
@@ -647,15 +721,17 @@ public:
   }
 
   Derived &ExtractMeta(std::string_view key = "meta",
-                       bool include_json_ld = true, InsertOptions opts = {}) {
-    add_step(std::make_shared<ExtractMetaStep>(key, include_json_ld, opts));
+                       bool include_json_ld = true, InsertOptions opts = {},
+                       bool index_json_ld = false) {
+    add_step(std::make_shared<ExtractMetaStep>(key, include_json_ld, opts,
+                                               index_json_ld));
     return self();
   }
 
   Derived &ParseDate(std::string_view fmt = "", std::string_view output = "iso",
                      std::string_view key = "", std::string_view tz = "UTC",
-                     InsertOptions opts = {}) {
-    add_step(std::make_shared<ParseDateStep>(fmt, output, key, tz, opts));
+                     InsertOptions opts = {}, std::string_view now = "") {
+    add_step(std::make_shared<ParseDateStep>(fmt, output, key, tz, opts, now));
     return self();
   }
 
@@ -681,6 +757,141 @@ public:
                       std::string_view algo = "jaro_winkler",
                       bool case_sensitive = false, std::string_view key = "") {
     add_step(std::make_shared<SimilarityStep>(query, algo, case_sensitive, key));
+    return self();
+  }
+
+  Derived &MapValues(absl::flat_hash_map<std::string, std::string> mapping,
+                     std::optional<std::string> default_val = std::nullopt) {
+    add_step(std::make_shared<MapValuesStep>(std::move(mapping),
+                                             std::move(default_val)));
+    return self();
+  }
+
+  Derived &UnescapeHtml() {
+    add_step(std::make_shared<UnescapeHtmlStep>());
+    return self();
+  }
+
+  Derived &ParseSrcset(std::string_view mode = "largest") {
+    add_step(std::make_shared<ParseSrcsetStep>(mode));
+    return self();
+  }
+
+  Derived &CssUrl() {
+    add_step(std::make_shared<CssUrlStep>());
+    return self();
+  }
+
+  Derived &Tee(std::vector<std::shared_ptr<Step>> steps) {
+    add_step(std::make_shared<TeeStep>(std::move(steps)));
+    return self();
+  }
+
+  Derived &Save(std::string_view name) {
+    add_step(std::make_shared<SaveValuesStep>(name));
+    return self();
+  }
+
+  Derived &Restore(std::string_view name) {
+    add_step(std::make_shared<RestoreValuesStep>(name));
+    return self();
+  }
+
+  Derived &CoalesceKeys(std::vector<CoalesceKeysStep::Rule> rules,
+                        bool drop_sources = true, bool postponable = true) {
+    add_step(std::make_shared<CoalesceKeysStep>(std::move(rules), drop_sources,
+                                                postponable));
+    return self();
+  }
+
+  Derived &QueryParams(std::vector<QueryParamsStep::ParamMapping> param_to_key,
+                       std::string_view default_val = "", bool clear = false,
+                       InsertOptions opts = {}) {
+    add_step(std::make_shared<QueryParamsStep>(std::move(param_to_key),
+                                               default_val, clear, opts));
+    return self();
+  }
+
+  Derived &AddStep(std::shared_ptr<Step> step) {
+    add_step(std::move(step));
+    return self();
+  }
+
+  Derived &Each(std::string_view selector, std::string_view key,
+                std::vector<std::shared_ptr<Step>> steps) {
+    SelectorPtr sel_ptr;
+    if (!selector.empty()) {
+      sel_ptr = SelectorParser::Create(std::string(selector));
+      if (!sel_ptr) {
+        throw std::runtime_error("each: failed to parse CSS selector: " +
+                                 std::string(selector));
+      }
+    }
+    auto ext = std::make_shared<Extractor>(std::move(sel_ptr), key);
+    for (auto &step : steps) {
+      ext->append_step(std::move(step));
+    }
+    add_step(std::make_shared<SubExtractStep>(std::move(ext)));
+    return self();
+  }
+
+  Derived &WhenExists(std::string_view selector,
+                      std::vector<std::shared_ptr<Step>> steps,
+                      bool negate = false) {
+    add_step(ConditionalStep::make_exists(selector, negate, std::move(steps)));
+    return self();
+  }
+
+  Derived &UnlessExists(std::string_view selector,
+                        std::vector<std::shared_ptr<Step>> steps) {
+    return WhenExists(selector, std::move(steps), true);
+  }
+
+  Derived &WhenMatch(std::string_view pattern,
+                     std::vector<std::shared_ptr<Step>> steps,
+                     bool negate = false,
+                     const std::optional<std::string> &flags = std::nullopt) {
+    add_step(ConditionalStep::make_match(pattern, negate, flags,
+                                         std::move(steps)));
+    return self();
+  }
+
+  Derived &SkipIfExists(std::string_view selector) {
+    add_step(GuardStep::make_skip_if_exists(selector));
+    return self();
+  }
+
+  Derived &SkipIfEmpty() {
+    add_step(GuardStep::make_skip_if_empty());
+    return self();
+  }
+
+  Derived &AbortIfExists(std::string_view selector, std::string_view key = "",
+                         std::string_view reason = "") {
+    add_step(GuardStep::make_abort_if_exists(selector, key, reason));
+    return self();
+  }
+
+  Derived &Finalize(std::vector<std::shared_ptr<Step>> steps) {
+    for (auto &step : steps) {
+      if (step) {
+        finalize_steps_.push_back(std::move(step));
+      }
+    }
+    return self();
+  }
+
+  Derived &Include(const Scraper &other) {
+    for (const auto &ext : other.get_extractors()) {
+      if (ext) {
+        extractors_.push_back(std::make_shared<Extractor>(*ext));
+      }
+    }
+    for (const auto &fstep : other.get_finalize_steps()) {
+      if (fstep) {
+        finalize_steps_.push_back(fstep);
+      }
+    }
     return self();
   }
 
