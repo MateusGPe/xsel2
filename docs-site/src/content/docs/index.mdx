@@ -3,7 +3,7 @@ title: xsel2
 description: Declarative, compiled HTML/XML & JSON extraction pipelines in C++20, Python, and WebAssembly.
 template: splash
 hero:
-  tagline: Fluent CSS, XPath, RE2, Aho-Corasick, and JS-block extraction at native speed.
+  tagline: Turn messy HTML, XML, and embedded <script> blobs into clean, typed JSON—in one compiled C++20 pipeline, with zero JS runtime.
   actions:
     - text: Quickstart
       link: /xsel2/quickstart/
@@ -16,8 +16,11 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import HomeHook from '../../components/HomeHook.astro';
 import XselPlayground from '../../components/XselPlayground.astro';
+
+<HomeHook />
 
 ## Try `xsel2` Live in WebAssembly
 
@@ -37,6 +40,9 @@ Edit the CLI command, HTML input, or `.dsl` pipeline below—it compiles and run
 
     # Run a .dsl scraper
     xsel2 -d examples/product.dsl -n summary --html examples/sample.html
+
+    # Stream HTML through stdin (pipe mode)
+    cat examples/sample.html | xsel2 -d examples/product.dsl -n summary -c
 
     # Multi-threaded batch scraping (NDJSON)
     xsel2 -d examples/product.dsl -n summary --batch examples/*.html -j 0
@@ -85,4 +91,29 @@ Edit the CLI command, HTML input, or `.dsl` pipeline below—it compiles and run
   <Card title="JSON, CSV & Schema Queries" icon="setting">
     Built-in JMESPath, JSONPath, JSON Schema validation, and CSV parsing/serialization powered by `jsoncons`.
   </Card>
+</CardGrid>
+
+## Explore the Docs
+
+<CardGrid>
+  <LinkCard
+    title="5-Minute Quickstart"
+    description="Build with CMake presets, run the CLI, or install scraperpy in Python."
+    href="/xsel2/quickstart/"
+  />
+  <LinkCard
+    title="DSL Mental Model & Grammar"
+    description="Learn how selectors, pipe chains, scopes, and merge modes compose."
+    href="/xsel2/dsl/mental-model/"
+  />
+  <LinkCard
+    title="Pipeline Steps Reference"
+    description="Browse every built-in step for DOM, text, RE2, URLs, dates, JSON, and hashing."
+    href="/xsel2/dsl/steps-reference/"
+  />
+  <LinkCard
+    title="CLI, Python & C++20 Guides"
+    description="Batch NDJSON streaming, scraperpy bindings, and embedding the C++20 libraries."
+    href="/xsel2/cli/"
+  />
 </CardGrid>

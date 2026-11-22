@@ -1,0 +1,151 @@
+---
+---
+
+<section class="xsel-hook" aria-label="Before and after transformation">
+  <div class="xsel-hook__header">
+    <span class="xsel-badge">30-Second Hook</span>
+    <h2>From messy real-world HTML to typed JSON in 12 lines</h2>
+    <p>
+      No headless browser, no fragile regex soup, no manual dict assembly.
+      Extract DOM text, normalize prices &amp; URLs, zip <code>&lt;dt&gt;/&lt;dd&gt;</code> pairs,
+      and parse embedded <code>&lt;script&gt;</code> state in one compiled pass.
+    </p>
+  </div>
+
+  <div class="xsel-hook__grid">
+    <div class="xsel-code-card">
+      <div class="xsel-code-card__head">
+        <span class="xsel-dot xsel-dot--amber"></span>
+        <span>1. Messy Input (<code>card.html</code>)</span>
+      </div>
+      <pre class="xsel-code-card__pre"><code>&lt;article class="product-card"&gt;
+  &lt;h1 class="title"&gt;  Mechanical   Keyboard   Pro  &lt;/h1&gt;
+  &lt;span class="price"&gt;$1,299.50&lt;/span&gt;
+  &lt;img class="hero" src="/img/placeholder.png"
+       data-src="/img/mk-pro.webp" /&gt;
+  &lt;dl class="specs"&gt;
+    &lt;dt&gt;Switch&lt;/dt&gt;&lt;dd&gt;Tactile Brown&lt;/dd&gt;
+    &lt;dt&gt;Layout&lt;/dt&gt;&lt;dd&gt;75% Compact&lt;/dd&gt;
+  &lt;/dl&gt;
+  &lt;script&gt;
+    window.__STATE__ = &#123;
+      sku: "MK-75", // unquoted keys &amp; comments
+      rating: 4.8,
+      inStock: true,
+    &#125;;
+  &lt;/script&gt;
+&lt;/article&gt;</code></pre>
+    </div>
+
+    <div class="xsel-code-card xsel-code-card--accent">
+      <div class="xsel-code-card__head">
+        <span class="xsel-dot xsel-dot--blue"></span>
+        <span>2. Pipeline (<code>product.dsl</code>)</span>
+      </div>
+      <pre class="xsel-code-card__pre"><code>let base = "https://shop.example"
+product = Scraper()
+  .$("article.product-card") &#123;
+    find("h1.title") | clean -&gt; "title"
+    | find(".price") | to_number(key="price")
+    | find("img.hero", Attribute, ["data-src", "src"])
+      | url_join(base) -&gt; "image"
+    | find_all("dl.specs dt") | clean -&gt; "_k"
+    | find_all("dl.specs dd") | clean -&gt; "_v"
+    | zip_keys("_k", "_v", "specs")
+    | omit_keys(["_k", "_v"])
+  &#125;
+  .$("script") &#123;
+    text | js_block("window.__STATE__ =")
+    | parse_js("state")
+  &#125;</code></pre>
+    </div>
+
+    <div class="xsel-code-card xsel-code-card--out">
+      <div class="xsel-code-card__head">
+        <span class="xsel-dot xsel-dot--green"></span>
+        <span>3. Typed JSON Output</span>
+      </div>
+      <pre class="xsel-code-card__pre"><code>&#123;
+  "title": "Mechanical Keyboard Pro",
+  "price": 1299.5,
+  "image": "https://shop.example/img/mk-pro.webp",
+  "specs": &#123;
+    "Switch": "Tactile Brown",
+    "Layout": "75% Compact"
+  &#125;,
+  "state": &#123;
+    "sku": "MK-75",
+    "rating": 4.8,
+    "inStock": true
+  &#125;
+&#125;</code></pre>
+    </div>
+  </div>
+
+  <div class="xsel-hook__cta-row">
+    <a href="#try-xsel2-live-in-webassembly" class="xsel-inline-link">
+      Edit &amp; run this exact pipeline in the live WASM playground below &darr;
+    </a>
+  </div>
+</section>
+
+<section class="xsel-pillars" aria-label="Why xsel2">
+  <div class="xsel-pillar">
+    <div class="xsel-pillar__kicker">Zero JS Runtime</div>
+    <h3>Deterministic Script Extraction</h3>
+    <p>
+      Heuristically extracts and parses embedded JS/JSON objects—comments, unquoted keys,
+      trailing commas, and string concatenations—without spinning up V8 or a browser.
+    </p>
+  </div>
+  <div class="xsel-pillar">
+    <div class="xsel-pillar__kicker">C++20 Native Core</div>
+    <h3>Built for Throughput</h3>
+    <p>
+      Backed by <code>libxml2</code>, Google <code>RE2</code>, compressed-DFA Aho-Corasick,
+      and <code>jsoncons</code>, with multi-threaded <code>--batch</code> NDJSON streaming.
+    </p>
+  </div>
+  <div class="xsel-pillar">
+    <div class="xsel-pillar__kicker">Write Once</div>
+    <h3>CLI, Python, C++20 &amp; WASM</h3>
+    <p>
+      Author pipelines in <code>.dsl</code> or fluent builders and run the exact same engine
+      from the terminal, <code>scraperpy</code>, embedded C++, or the browser.
+    </p>
+  </div>
+  <div class="xsel-pillar">
+    <div class="xsel-pillar__kicker">Batteries Included</div>
+    <h3>End-to-End Shaping</h3>
+    <p>
+      CSS, XPath 1.0, RFC 3986 URLs, <code>absl::Time</code> dates, <code>utf8proc</code> Unicode,
+      fuzzy matching, JMESPath, JSONPath, and JSON Schema validation.
+    </p>
+  </div>
+</section>
+
+<section class="xsel-flow" aria-label="Pipeline architecture">
+  <div class="xsel-flow__step">
+    <span class="xsel-flow__num">01</span>
+    <strong>Ingest</strong>
+    <span>HTML, XML, JSON, CSV, or stdin stream</span>
+  </div>
+  <div class="xsel-flow__arrow" aria-hidden="true">&rarr;</div>
+  <div class="xsel-flow__step">
+    <span class="xsel-flow__num">02</span>
+    <strong>Select</strong>
+    <span>CSS, XPath 1.0, or <code>js_block</code></span>
+  </div>
+  <div class="xsel-flow__arrow" aria-hidden="true">&rarr;</div>
+  <div class="xsel-flow__step">
+    <span class="xsel-flow__num">03</span>
+    <strong>Transform</strong>
+    <span>RE2, Aho-Corasick, URL, Date, Fuzzy</span>
+  </div>
+  <div class="xsel-flow__arrow" aria-hidden="true">&rarr;</div>
+  <div class="xsel-flow__step">
+    <span class="xsel-flow__num">04</span>
+    <strong>Shape &amp; Emit</strong>
+    <span>JMESPath, JSON Schema, Typed JSON / NDJSON</span>
+  </div>
+</section>
