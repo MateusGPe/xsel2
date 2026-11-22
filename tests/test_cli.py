@@ -279,11 +279,12 @@ def test_empty_dsl_file_errors(tmp_path):
     assert "No scrapers found in DSL file." in res.stderr
 
 
-def test_refactored_scrapers_dsl_runs_via_cli():
-    dsl = REPO_ROOT / "scrapers.dsl"
-    html = "<html><body><h1 class='title'>Title</h1><div class='videoblock' data-id='42'></div></body></html>"
+def test_product_dsl_runs_via_cli():
+    dsl = REPO_ROOT / "examples" / "product.dsl"
+    html = "<html><body><h1 class='product-title'>  Widget  </h1><span class='price' data-currency='USD'>$19.99</span></body></html>"
     res = run_cli(["-d", str(dsl), "--html", html, "-c"])
     assert res.returncode == 0
     parsed = json.loads(res.stdout)
-    assert parsed["shared_page_data"]["config_inline_title"] == "Title"
-    assert parsed["video_block"]["data_id"] == "42"
+    assert parsed["product"]["title"] == "Widget"
+    assert parsed["product"]["price"] == "19.99"
+    assert parsed["product"]["currency"] == "USD"

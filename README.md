@@ -19,7 +19,7 @@ High-performance HTML/XML scraping, multi-pattern text search, and JSON transfor
 | [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `Document`, `scrape_many`, `InsertMode`, `AhoCorasick`, `.dsl` loading, JSON queries, and `pip`/`uv` packaging |
 | [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and pipeline steps reference |
 | [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
-| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`metadata.dsl`](examples/metadata.dsl) / [`metadata_sample.html`](examples/metadata_sample.html), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), complete all-steps showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py), and real-world scraper suite [`scrapers.dsl`](scrapers.dsl) |
+| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`metadata.dsl`](examples/metadata.dsl) / [`metadata_sample.html`](examples/metadata_sample.html), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), and complete all-steps showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py) |
 
 ## Quick Build & Test
 
@@ -79,5 +79,5 @@ Type stubs are provided in [`scraperpy-stubs/_scraperpy.pyi`](scraperpy-stubs/_s
 - `src/python/` — `pybind11` bindings (`_scraperpy`)
 - `scraperpy/` & `scraperpy-stubs/` — Python wrapper, `py.typed`, and `.pyi` type stubs
 - `scripts/` — Build, test, and Python wheel packaging helper scripts (`build.sh`, `test.sh`, `build_and_test.sh`, `pack_python.sh`)
-- `docs/` & `examples/` — User guides, API references, and runnable examples (plus root [`scrapers.dsl`](scrapers.dsl))
+- `docs/` & `examples/` — User guides, API references, and runnable examples
 - `tests/` — Catch2 C++ unit test suite, CMake CLI tests, and `pytest` suites (`test_python.py`, `test_cli.py`)

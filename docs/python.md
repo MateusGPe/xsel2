@@ -116,12 +116,12 @@ inline = scraperpy.parse_dsl_string('title = Scraper().select("h1").text().trim(
 print(inline["title"].from_string("<h1>  Hi  </h1>"))
 
 # Parse once and run multiple scrapers on the same DOM:
-all_scrapers = scraperpy.load_scrapers("scrapers.dsl")
+all_scrapers = scraperpy.load_scrapers("examples/marketplace.dsl")
 results = scraperpy.scrape_many(all_scrapers, open("page.html").read())
 
 # Or reuse an explicit Document across calls:
 doc = scraperpy.Document.from_file("examples/sample.html")
-summary = all_scrapers["video_page"].from_document(doc)
+summary = all_scrapers["catalog_summary"].from_document(doc)
 ```
 
 ---

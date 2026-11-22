@@ -304,22 +304,22 @@ All dictionary and JSON transformation steps (`flatten`, `pick_keys`, `omit_keys
 
 - **CLI (`xsel2`)**:
   ```bash
-  ./build/xsel2 -d scrapers.dsl -n product --html page.html
-  cat page.html | ./build/xsel2 -d scrapers.dsl -n product -c
-  ./build/xsel2 -d scrapers.dsl -n product --batch pages/*.html -j 0
+  ./build/xsel2 -d examples/product.dsl -n product --html page.html
+  cat page.html | ./build/xsel2 -d examples/product.dsl -n product -c
+  ./build/xsel2 -d examples/product.dsl -n product --batch pages/*.html -j 0
   ```
   See [CLI Reference](cli.md).
 - **Python (`scraperpy`)**:
   ```python
   import scraperpy
-  scrapers = scraperpy.parse_dsl_string(dsl_text) # or load_scrapers("scrapers.dsl")
+  scrapers = scraperpy.parse_dsl_string(dsl_text) # or load_scrapers("examples/product.dsl")
   result = scrapers["product"].from_string(html)
   ```
   Every DSL method maps 1:1 to a `ScraperPy` method. See [Python Bindings](python.md).
 - **C++20 (`scraper::dsl::DslParser`)**:
   ```cpp
   scraper::dsl::DslParser parser;
-  auto scrapers = parser.parse_file("scrapers.dsl");
+  auto scrapers = parser.parse_file("examples/product.dsl");
   jsoncons::json out = scrapers.at("product").scrape_from_string(html);
   ```
   In C++ `ScraperBuilder`, method names use `PascalCase` (e.g., `select` → `Select`, `regex_extract` → `RegexExtract`, `json_parse` → `JsonParse`). See [C++20 API Guide](cpp-api.md).

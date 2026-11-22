@@ -474,11 +474,12 @@ def test_python_phase1_to_3_and_single_parse_document():
     assert many["s1"] == out1
     assert many["s2"] == {"heading": "Fast Scraper"}
 
-    # Ensure refactored scrapers.dsl loads cleanly in Python
+    # Ensure all_steps_showcase.dsl loads cleanly in Python
     repo_root = Path(__file__).resolve().parent.parent
-    prod_scrapers = sp.load_scrapers(str(repo_root / "scrapers.dsl"))
-    assert {"shared_page_data", "user_profile", "video_page", "next_video",
-            "script_data", "video_block", "preload_ad", "video_categories_tags"} <= set(prod_scrapers.keys())
+    showcase_scrapers = sp.load_scrapers(str(repo_root / "examples" / "all_steps_showcase.dsl"))
+    assert {"dom_and_text", "urls_dates_unicode", "algorithms_and_matching",
+            "types_tables_and_dict", "serialization", "json_transforms",
+            "debug_trace"} <= set(showcase_scrapers.keys())
 
 
 def test_python_outer_html_rename_and_merge_keys():
