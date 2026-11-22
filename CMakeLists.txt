@@ -25,6 +25,16 @@ if(DEFINED SCRAPERPY_VERSION_INFO)
 endif()
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
+option(XSEL_BUILD_WASM "Build xsel2 WebAssembly module" OFF)
+
+if(EMSCRIPTEN)
+  set(XSEL_BUILD_WASM ON)
+  set(XSEL_FETCH_LIBXML2 "ON" CACHE STRING
+    "Whether to fetch libxml2 from source: AUTO (fallback if not found), ON (always fetch), OFF (require system)" FORCE)
+  add_compile_options(-fexceptions)
+  add_link_options(-fexceptions)
+endif()
+
 set(XSEL_FETCH_LIBXML2 "AUTO" CACHE STRING
   "Whether to fetch libxml2 from source: AUTO (fallback if not found), ON (always fetch), OFF (require system)")
 set_property(CACHE XSEL_FETCH_LIBXML2 PROPERTY STRINGS AUTO ON OFF)
@@ -64,11 +74,13 @@ CPMAddPackage(
   OPTIONS
     "JSONCONS_BUILD_TESTS OFF")
 
-CPMAddPackage(
-  NAME pybind11
-  GITHUB_REPOSITORY pybind/pybind11
-  GIT_TAG stable
-  GIT_SHALLOW TRUE)
+if(NOT EMSCRIPTEN)
+  CPMAddPackage(
+    NAME pybind11
+    GITHUB_REPOSITORY pybind/pybind11
+    GIT_TAG stable
+    GIT_SHALLOW TRUE)
+endif()
 
 CPMAddPackage(
   NAME lxml2_query
@@ -187,24 +199,45 @@ target_link_libraries(scraper PUBLIC
   utf8proc)
 
 # ── Python module target ─────────────────────────────────────────────────────
-pybind11_add_module(_scraperpy src/python/module.cpp)
-target_include_directories(_scraperpy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_features(_scraperpy PRIVATE cxx_std_20)
-target_compile_options(_scraperpy PRIVATE ${XSEL_WARN_FLAGS})
-target_link_libraries(_scraperpy PRIVATE scraper)
+if(NOT EMSCRIPTEN)
+  pybind11_add_module(_scraperpy src/python/module.cpp)
+  target_include_directories(_scraperpy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_compile_features(_scraperpy PRIVATE cxx_std_20)
+  target_compile_options(_scraperpy PRIVATE ${XSEL_WARN_FLAGS})
+  target_link_libraries(_scraperpy PRIVATE scraper)
 
-if(DEFINED SCRAPERPY_VERSION_INFO)
-  target_compile_definitions(_scraperpy
-    PRIVATE SCRAPERPY_VERSION_INFO="${SCRAPERPY_VERSION_INFO}")
+  if(DEFINED SCRAPERPY_VERSION_INFO)
+    target_compile_definitions(_scraperpy
+      PRIVATE SCRAPERPY_VERSION_INFO="${SCRAPERPY_VERSION_INFO}")
+  endif()
+
+  if(SKBUILD)
+    install(TARGETS _scraperpy LIBRARY DESTINATION scraperpy)
+    install(FILES scraperpy-stubs/_scraperpy.pyi DESTINATION scraperpy)
+  endif()
 endif()
 
-if(SKBUILD)
-  install(TARGETS _scraperpy LIBRARY DESTINATION scraperpy)
-  install(FILES scraperpy-stubs/_scraperpy.pyi DESTINATION scraperpy)
+# ── WebAssembly target ───────────────────────────────────────────────────────
+if(XSEL_BUILD_WASM AND EMSCRIPTEN)
+  add_executable(xsel2_wasm src/wasm/wasm_entry.cpp)
+  target_compile_features(xsel2_wasm PRIVATE cxx_std_20)
+  target_compile_options(xsel2_wasm PRIVATE ${XSEL_WARN_FLAGS})
+  target_link_libraries(xsel2_wasm PRIVATE scraper)
+  set_target_properties(xsel2_wasm PROPERTIES
+    OUTPUT_NAME "xsel2"
+    SUFFIX ".js")
+  target_link_options(xsel2_wasm PRIVATE
+    "--bind"
+    "-sMODULARIZE=1"
+    "-sEXPORT_ES6=1"
+    "-sEXPORT_NAME=createXsel2Module"
+    "-sENVIRONMENT=web,worker,node"
+    "-sALLOW_MEMORY_GROWTH=1"
+    "-sINITIAL_MEMORY=33554432")
 endif()
 
 # ── Executables & Tests ──────────────────────────────────────────────────────
-if(NOT DEFINED SCRAPERPY_VERSION_INFO)
+if(NOT DEFINED SCRAPERPY_VERSION_INFO AND NOT EMSCRIPTEN)
   find_package(Threads REQUIRED)
 
   add_executable(xsel2 src/cli/main.cpp)

@@ -1,0 +1,21 @@
+:root {
+  --sl-accent-low: #13253e;
+  --sl-accent: #3b82f6;
+  --sl-accent-high: #bfdbfe;
+}
+
+:root[data-theme='light'] {
+  --sl-accent-low: #dbeafe;
+  --sl-accent: #2563eb;
+  --sl-accent-high: #1e3a8a;
+}
+
+.xsel-hero-playground {
+  margin-top: 2rem;
+}
+
+/* Give pages hosting the WASM playground a wider content container */
+main:has(.xsel-pg--full),
+main:has(.xsel-hero-playground) {
+  --sl-content-width: 82rem;
+}

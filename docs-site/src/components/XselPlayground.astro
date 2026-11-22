@@ -1,0 +1,470 @@
+---
+interface Props {
+  fullPage?: boolean;
+}
+
+const { fullPage = false } = Astro.props;
+const rawBase = import.meta.env.BASE_URL || '/';
+const baseUrl = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+---
+
+<div class:list={['xsel-pg', { 'xsel-pg--full': fullPage }]} data-base-url={baseUrl}>
+  <div class="xsel-pg__toolbar">
+    <div class="xsel-pg__toolbar-left">
+      <label class="xsel-pg__label">
+        <span>Preset</span>
+        <select class="xsel-pg__select" data-role="preset">
+          <option value="card">30-Second Product Card (DSL)</option>
+          <option value="product">Product + JMESPath Summary (DSL)</option>
+          <option value="selector">Quick CSS Selector (-s)</option>
+          <option value="js_digger">JS Block &amp; JSON Digger (DSL)</option>
+        </select>
+      </label>
+      <label class="xsel-pg__check">
+        <input type="checkbox" data-role="compact" />
+        <span>Compact (<code>-c</code>)</span>
+      </label>
+    </div>
+    <div class="xsel-pg__toolbar-right">
+      <span class="xsel-pg__status" data-role="status">WASM: Ready on run</span>
+      <button type="button" class="xsel-pg__btn" data-role="run">
+        Run in WASM
+      </button>
+    </div>
+  </div>
+
+  <div class="xsel-pg__cli">
+    <span class="xsel-pg__prompt">$</span>
+    <input
+      type="text"
+      class="xsel-pg__cmd"
+      data-role="cmd"
+      spellcheck="false"
+      aria-label="xsel2 CLI command"
+      value="xsel2 -d card.dsl -n product --html card.html"
+    />
+  </div>
+
+  <div class="xsel-pg__grid">
+    <div class="xsel-pg__pane">
+      <div class="xsel-pg__pane-head">
+        <span>HTML Input</span>
+      </div>
+      <div class="xsel-pg__cm" data-role="html"></div>
+    </div>
+
+    <div class="xsel-pg__pane">
+      <div class="xsel-pg__pane-head">
+        <span>DSL Pipeline (<code>.dsl</code>)</span>
+      </div>
+      <div class="xsel-pg__cm" data-role="dsl"></div>
+    </div>
+
+    <div class="xsel-pg__pane xsel-pg__pane--out">
+      <div class="xsel-pg__pane-head">
+        <span>JSON Output</span>
+      </div>
+      <div class="xsel-pg__cm" data-role="output"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { createPlaygroundEditors } from './xsel2-codemirror.ts';
+
+  const PRESETS = {
+    card: {
+      cmd: 'xsel2 -d card.dsl -n product --html card.html',
+      html: `<article class="product-card">
+  <h1 class="title">  Mechanical   Keyboard   Pro  </h1>
+  <span class="price">$1,299.50</span>
+  <img class="hero" src="/img/placeholder.png" data-src="/img/mk-pro.webp" />
+  <a class="manual" href="/docs/mk-pro.pdf">User Manual</a>
+  <dl class="specs">
+    <dt>Switch</dt><dd>Tactile Brown</dd>
+    <dt>Layout</dt><dd>75% Compact</dd>
+  </dl>
+  <script>
+    window.__STATE__ = {
+      sku: "MK-75", // unquoted keys & comments
+      rating: 4.8,
+      inStock: true,
+    };
+  <\/script>
+</article>`,
+      dsl: `let base = "https://shop.example"
+product = Scraper()
+  .$("article.product-card") {
+    find("h1.title") | clean -> "title"
+    | find(".price") | to_number(key="price")
+    | find("img.hero", Attribute, ["data-src", "src"]) | url_join(base) -> "image"
+    | find("a.manual", Attribute, "href") | url_join(base) -> "manual_url"
+    | find_all("dl.specs dt") | clean -> "_k"
+    | find_all("dl.specs dd") | clean -> "_v"
+    | zip_keys("_k", "_v", "specs") | omit_keys(["_k", "_v"])
+  }
+  .$("script") { text | js_block("window.__STATE__ =") | parse_js("state") }`,
+    },
+    product: {
+      cmd: 'xsel2 -d product.dsl -n summary --html sample.html',
+      html: `<!DOCTYPE html>
+<html lang="en">
+<body>
+  <main class="product-page">
+    <h1 class="product-title">  Mechanical   Keyboard   Pro  </h1>
+    <div class="pricing">
+      <span class="price" data-currency="USD">$149.99</span>
+      <span class="badge">In Stock</span>
+      <span class="badge">Free Shipping</span>
+    </div>
+    <ul class="specs">
+      <li>Switch: Tactile Brown</li>
+      <li>Layout: 75% Compact</li>
+      <li>Connection: USB-C / Bluetooth</li>
+    </ul>
+  </main>
+  <script>
+    window.__PRODUCT_STATE__ = {
+      sku: "MK-PRO-75",
+      rating: 4.8,
+      inStock: true,
+      tags: ["mechanical", "wireless", "rgb"]
+    };
+  <\/script>
+</body>
+</html>`,
+      dsl: `let title_sel = "h1.product-title"
+
+product = Scraper()
+  .select(title_sel).text().squish().set("title")
+  .select(".price").text().regex_extract("([0-9]+\\\\.[0-9]+)", 1).set("price")
+  .select(".badge").text().trim().set("badges")
+  .select("script").text().js_block("window.__PRODUCT_STATE__ =").parse_js("state", true)
+
+summary = Scraper()
+  .select(title_sel).text().squish().set("title")
+  .select("script").text().js_block("window.__PRODUCT_STATE__ =").parse_js("state", true)
+  .jmespath("{title: title, sku: state.sku, rating: state.rating}")`,
+    },
+    selector: {
+      cmd: 'xsel2 -s "ul.specs li" --html sample.html',
+      html: `<ul class="specs">
+  <li>  Switch:   Tactile Brown  </li>
+  <li>  Layout:   75% Compact  </li>
+  <li>  Connection: USB-C / Bluetooth  </li>
+</ul>`,
+      dsl: `// Quick selector mode (-s) ignores the .dsl buffer.\n// Edit the CLI command above to test any CSS selector!`,
+    },
+    js_digger: {
+      cmd: 'xsel2 -d digger.dsl --html page.html',
+      html: `<script>
+  window.__HYDRATION__ = {
+    store: 'Apex ' + 'Audio', // string concat & single quotes
+    featured: [
+      { id: 101, name: "Studio Monitor", price: 199.90, },
+      { id: 102, name: "Braided Cable", price: 29.50, }
+    ],
+    active: true,
+  };
+<\/script>`,
+      dsl: `hydration = Scraper()
+  .$("script") {
+    text
+    | js_block("window.__HYDRATION__ =")
+    | parse_js("data", true)
+  }
+  | jmespath("data.featured[?price > \`50\`].{id: id, name: name, price: price}")`,
+    },
+  };
+
+  let modulePromise = null;
+
+  async function getWasmModule(baseUrl) {
+    if (!modulePromise) {
+      const wasmJsUrl = `${baseUrl}wasm/xsel2.js`;
+      modulePromise = import(/* @vite-ignore */ wasmJsUrl).then((mod) =>
+        mod.default({
+          locateFile: (path) => `${baseUrl}wasm/${path}`,
+        })
+      );
+    }
+    return modulePromise;
+  }
+
+  function initPlayground(root) {
+    if (root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
+
+    const baseUrl = root.dataset.baseUrl || '/';
+    const presetEl = root.querySelector('[data-role="preset"]');
+    const compactEl = root.querySelector('[data-role="compact"]');
+    const cmdEl = root.querySelector('[data-role="cmd"]');
+    const htmlHost = root.querySelector('[data-role="html"]');
+    const dslHost = root.querySelector('[data-role="dsl"]');
+    const outHost = root.querySelector('[data-role="output"]');
+    const statusEl = root.querySelector('[data-role="status"]');
+    const runBtn = root.querySelector('[data-role="run"]');
+
+    let editors;
+
+    function loadPreset(key) {
+      const preset = PRESETS[key] || PRESETS.card;
+      cmdEl.value = preset.cmd;
+      editors.setHtml(preset.html);
+      editors.setDsl(preset.dsl);
+    }
+
+    async function execute() {
+      runBtn.disabled = true;
+      statusEl.textContent = 'Running in WASM...';
+      statusEl.dataset.state = 'busy';
+
+      try {
+        const mod = await getWasmModule(baseUrl);
+        let cmd = cmdEl.value.trim();
+        if (compactEl.checked && !/(?:^|\s)(-c|--compact)(?:\s|$)/.test(cmd)) {
+          cmd = `${cmd} -c`;
+        }
+        const raw = mod.run_cli(cmd, editors.getHtml(), editors.getDsl());
+        const res = JSON.parse(raw);
+
+        if (res.ok) {
+          editors.setOutput(res.stdout, false);
+          statusEl.textContent = `WASM: ${res.elapsedMs.toFixed(2)} ms`;
+          statusEl.dataset.state = 'ok';
+        } else {
+          editors.setOutput(res.stderr || 'Unknown error', true);
+          statusEl.textContent = `Error (${res.elapsedMs.toFixed(2)} ms)`;
+          statusEl.dataset.state = 'err';
+        }
+      } catch (err) {
+        editors.setOutput(String(err), true);
+        statusEl.textContent = 'WASM load failed';
+        statusEl.dataset.state = 'err';
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    editors = createPlaygroundEditors(htmlHost, dslHost, outHost, execute);
+
+    presetEl.addEventListener('change', () => {
+      loadPreset(presetEl.value);
+      execute();
+    });
+
+    compactEl.addEventListener('change', execute);
+    runBtn.addEventListener('click', execute);
+    cmdEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        execute();
+      }
+    });
+
+    loadPreset('card');
+    execute();
+  }
+
+  document.querySelectorAll('.xsel-pg').forEach(initPlayground);
+</script>
+
+<style>
+  .xsel-pg {
+    container-type: inline-size;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.75rem;
+    background: var(--sl-color-bg-nav);
+    overflow: hidden;
+    margin: 1.5rem 0;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.14);
+  }
+
+  .xsel-pg__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-bg-sidebar);
+  }
+
+  .xsel-pg__toolbar-left,
+  .xsel-pg__toolbar-right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .xsel-pg__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .xsel-pg__select {
+    padding: 0.35rem 0.6rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--sl-color-gray-4);
+    background: var(--sl-color-bg);
+    color: var(--sl-color-text);
+    font-size: 0.85rem;
+  }
+
+  .xsel-pg__check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .xsel-pg__status {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-gray-2);
+    font-family: var(--sl-font-mono);
+  }
+
+  .xsel-pg__status[data-state='ok'] {
+    color: #22c55e;
+  }
+
+  .xsel-pg__status[data-state='err'] {
+    color: #ef4444;
+  }
+
+  .xsel-pg__btn {
+    padding: 0.45rem 0.9rem;
+    border: none;
+    border-radius: 0.45rem;
+    background: var(--sl-accent);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .xsel-pg__btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .xsel-pg__cli {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-bg);
+    font-family: var(--sl-font-mono);
+  }
+
+  .xsel-pg__prompt {
+    color: var(--sl-accent);
+    font-weight: 700;
+  }
+
+  .xsel-pg__cmd {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--sl-color-text);
+    font-family: var(--sl-font-mono);
+    font-size: 0.88rem;
+    outline: none;
+  }
+
+  .xsel-pg__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-height: 360px;
+  }
+
+  .xsel-pg--full .xsel-pg__grid {
+    min-height: 500px;
+  }
+
+  @container (max-width: 900px) {
+    .xsel-pg__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .xsel-pg__pane:nth-child(2) {
+      border-right: none;
+    }
+
+    .xsel-pg__pane--out {
+      grid-column: 1 / -1;
+      border-right: none;
+      border-top: 1px solid var(--sl-color-gray-5);
+    }
+
+    .xsel-pg--full .xsel-pg__pane--out .xsel-pg__cm {
+      height: 300px;
+      min-height: 260px;
+    }
+  }
+
+  @container (max-width: 600px) {
+    .xsel-pg__grid {
+      grid-template-columns: 1fr;
+    }
+
+    .xsel-pg__pane {
+      border-right: none;
+      border-bottom: 1px solid var(--sl-color-gray-5);
+    }
+
+    .xsel-pg__pane--out {
+      border-top: none;
+      border-bottom: none;
+    }
+  }
+
+  .xsel-pg__pane {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--sl-color-gray-5);
+    min-width: 0;
+  }
+
+  .xsel-pg__pane:last-child {
+    border-right: none;
+  }
+
+  .xsel-pg__pane-head {
+    padding: 0.45rem 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sl-color-gray-2);
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-bg-sidebar);
+  }
+
+  .xsel-pg__cm {
+    flex: 1;
+    height: 340px;
+    min-height: 300px;
+    overflow: hidden;
+    background: var(--sl-color-bg);
+  }
+
+  .xsel-pg--full .xsel-pg__cm {
+    height: 480px;
+    min-height: 440px;
+  }
+
+  .xsel-pg__cm[data-error='true'] :global(.cm-content) {
+    color: #ef4444;
+  }
+</style>

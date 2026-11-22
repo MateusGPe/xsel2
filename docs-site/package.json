@@ -1,0 +1,21 @@
+{
+  "name": "xsel2-docs",
+  "type": "module",
+  "version": "0.6.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.32.0",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "astro": "^5.4.0",
+    "codemirror": "^6.0.2",
+    "sharp": "^0.33.5"
+  }
+}

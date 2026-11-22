@@ -58,3 +58,9 @@ venv/
 # Local reference copy
 xmlsel-main/
 scrapers.dsl
+
+# Docs site generated / WASM artifacts
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/
+docs-site/public/wasm/

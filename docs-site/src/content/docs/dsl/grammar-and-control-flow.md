@@ -1,0 +1,76 @@
+---
+title: Grammar & Control Flow
+description: Syntax sugar, shorthand operators, complete alias table, and pipeline composition/branching.
+---
+
+## Chaining & Grouping
+
+- **Chain separators**: `.`, `|`, and `|>` are completely interchangeable:
+  ```dsl
+  s = Scraper().select("h1") | text() |> trim() -> "title"
+  ```
+- **Paren-free zero-arg steps**: Omit `()` when calling any step with zero arguments (or relying on all defaults):
+  ```dsl
+  $("h1") { text | clean | lower -> "title" }
+  ```
+- **Grouped sub-chains `.( ... )`**: Visually group related steps in a chain (e.g., `.(.find(...).trim().set("x"))` or `| (.text | .trim)`).
+- **Select blocks `select(...) { ... }` and `$(...) { ... }`**:
+  - Top-level `select(...)` or `$` queries from the document root and optionally accepts a `{ ... }` block.
+  - Inside `{ ... }`, the leading `.`, `|`, or `|>` before the very first step is optional.
+  - **Lexical scoping inside `{ ... }`**: A `select(...)` or `$(...)` written *inside* another `{ ... }` block **requires** a trailing `{ ... }` body and compiles to `each(...)`, querying **relative to the current node** (matching the key-scoping of `each(selector, key="") { ... }`).
+
+## Shorthand Operators
+
+| Shorthand | Equivalent Canonical Call | Notes & Caveats |
+| --- | --- | --- |
+| `$("sel")` or `$ "sel"` | `select("sel")` | Supports `{ ... }` block immediately after. `$("sel", "key")` also works. |
+| `@href`, `@"href"`, `@("href")`, `@["data-src", "src"]` | `attr(...)` | `@ident` parses `ident` as attribute name; list form tries fallback attributes in order. |
+| `?? "fallback"` | `default("fallback")` | Coerces argument via `as_str()`. |
+| `[i]` (e.g. `[0]`, `[2]`) | `nth(i)` | Non-negative integer index. |
+| `[-1]` | `last(1)` | **Caveat**: Any negative index other than `-1` (e.g., `[-2]`) throws at parse time. |
+| `-> "key"`, `>> "key"`, `as "key"` | `set("key")` | Always uses default `type="string"`. For typed `set`, call `set("key", "int")` or `as("key", "int")`. |
+
+## Complete Alias Table (17 Aliases)
+
+| Alias | Canonical Step | Notes |
+| --- | --- | --- |
+| `strip` | `trim` | Strips leading/trailing ASCII whitespace |
+| `clean` | `squish` | Trims and collapses internal whitespace runs |
+| `normalize_whitespace` | `squish` | Long alias for `squish` |
+| `sub` | `regex_replace` | RE2 global regex replacement |
+| `grep` | `regex_filter` | RE2 regex filter |
+| `extract` | `regex_extract` | RE2 regex capture extraction |
+| `as` | `set` | Both `as "k"` (sugar) and `as("k", "int")` (alias) work |
+| `limit` | `first` | Keeps first `count` items |
+| `dedup` | `unique` | Removes duplicate items |
+| `extract_js_block` | `js_block` | Locates balanced `{...}` / `[...]` / `(...)` block |
+| `extract_js_blocks` | `js_blocks` | Extracts & parses multiple prefixed JS blocks into `dict` |
+| `json` | `json_parse` | Supports all `json_parse` kwargs including `lenient=true` |
+| `to_number` | `parse_number` | Extracts/normalizes numeric strings |
+| `url_join` | `resolve_url` | RFC 3986 relative URL resolution |
+| `inner_html` | `html` | Extracts inner (or outer if `outer=true`) HTML |
+| `fields` | `extract_fields` | Single-pass multi-selector extraction into `dict` |
+| `branch` | `tee` | Runs sub-chain on a copy of `values` |
+
+## Composition, Branching & Control Flow
+
+- **Reusable pipeline fragments (`pipe` + `use`)**:
+  ```dsl
+  pipe link_map = { text | squish -> "@key" | @href | squish -> "@value" };
+  s := Scraper().select(".links a", "links") { use(link_map) };
+  ```
+- **Scraper composition (`include`)**: Appends all extractors and `finalize` steps from a previously declared scraper (`Scraper().include(base)`).
+- **Value branching (`tee { ... }` / `branch { ... }`) & slots (`save` / `restore`)**:
+  - `tee { ... }` executes its block on a copy of `values` while sharing `dict`, leaving the outer `values` intact.
+  - `save("slot")` / `restore("slot")` store and recall `values` within the current matched node's `ExecutionContext`.
+- **Nested relative sub-extractors (`each(selector, key="") { ... }`)**: Queries relative to the current matched node (arbitrarily nestable), supporting `@key`/`@value` collapsing.
+- **Conditional blocks & guards**:
+  - `when_exists(selector) { ... }`, `unless_exists(selector) { ... }`, `when_match(pattern, negate=false, flags=null) { ... }`: conditionally run steps on the shared `values` and `dict`.
+  - `skip_if_exists(selector)`, `skip_if_empty()`: drop the current item before merging into `dest`.
+  - `abort_if_exists(selector, key="", reason="")`: optionally record `reason` (or `true`) under `key` and stop subsequent extractors immediately.
+- **Scraper-level post-processing (`finalize { ... }`)**: Always runs once after all extractors finish (even if the final `select(...)` matched 0 nodes).
+
+See [Control Flow, Branching, Slots & Composition](/xsel2/dsl/steps-reference/#control-flow-branching-slots--composition) for full signatures, caveats, and examples of every control-flow and composition step.
+
+---
+

@@ -1,0 +1,88 @@
+---
+title: xsel2
+description: Declarative, compiled HTML/XML & JSON extraction pipelines in C++20, Python, and WebAssembly.
+template: splash
+hero:
+  tagline: Fluent CSS, XPath, RE2, Aho-Corasick, and JS-block extraction at native speed.
+  actions:
+    - text: Quickstart
+      link: /xsel2/quickstart/
+      icon: right-arrow
+    - text: Live WASM Playground
+      link: /xsel2/playground/
+      icon: laptop
+    - text: Full DSL Manual
+      link: /xsel2/dsl/mental-model/
+      variant: minimal
+---
+
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import XselPlayground from '../../components/XselPlayground.astro';
+
+## Try `xsel2` Live in WebAssembly
+
+Edit the CLI command, HTML input, or `.dsl` pipeline below—it compiles and runs the real C++20 `xsel2` engine (`libxml2` + `RE2` + `jsoncons`) directly in your browser.
+
+<div class="xsel-hero-playground">
+  <XselPlayground />
+</div>
+
+## Same Pipeline Across CLI, Python & C++20
+
+<Tabs>
+  <TabItem label="CLI (xsel2)">
+    ```bash
+    # Quick CSS selector extraction
+    xsel2 -s "h1.product-title" --html examples/sample.html
+
+    # Run a .dsl scraper
+    xsel2 -d examples/product.dsl -n summary --html examples/sample.html
+
+    # Multi-threaded batch scraping (NDJSON)
+    xsel2 -d examples/product.dsl -n summary --batch examples/*.html -j 0
+    ```
+  </TabItem>
+  <TabItem label="Python (scraperpy)">
+    ```python
+    import scraperpy
+
+    s = scraperpy.ScraperPy()
+    (
+        s.select("h1.product-title").text().squish().set("title")
+         .select(".price").text().regex_extract(r"([0-9]+\.[0-9]+)", 1).set("price")
+         .select("script").text().js_block("window.__PRODUCT_STATE__ =").parse_js("state", True)
+    )
+    result = s.from_file("examples/sample.html")
+    ```
+  </TabItem>
+  <TabItem label="C++20 API">
+    ```cpp
+    #include "scraper/scraper.hpp"
+    #include <iostream>
+
+    int main() {
+      scraper::ScraperBuilder builder;
+      builder.Select("h1.product-title").Text().Squish().Set("title");
+      auto result = builder.scrape_from_file("examples/sample.html");
+      std::cout << jsoncons::pretty_print(result) << '\n';
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Core Capabilities
+
+<CardGrid stagger>
+  <Card title="HTML/XML Scraping & DSL" icon="document">
+    CSS selectors &amp; XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table &amp; metadata extraction, and a compiled `.dsl` pipeline language.
+  </Card>
+  <Card title="JS / JSON Block Digger" icon="puzzle">
+    Heuristically extracts and parses embedded JavaScript/JSON objects, comments, string concatenations, and typed scalars without a JS runtime.
+  </Card>
+  <Card title="Multi-Pattern & Fuzzy Search" icon="magnifier">
+    Compressed-DFA Aho-Corasick matcher (`AhoCorasick`, `filter`, `replace`, `extract_many`) and UTF-8 Jaro-Winkler / Levenshtein fuzzy matching.
+  </Card>
+  <Card title="JSON, CSV & Schema Queries" icon="setting">
+    Built-in JMESPath, JSONPath, JSON Schema validation, and CSV parsing/serialization powered by `jsoncons`.
+  </Card>
+</CardGrid>

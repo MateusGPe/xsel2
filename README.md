@@ -2,6 +2,71 @@
 
 High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine written in C++20, with the `xsel2` CLI, Python bindings (`scraperpy`), and a fluent `.dsl` pipeline language.
 
+## 30-Second Before vs. After
+
+Turn messy real-world HTML—whitespace-padded text, formatted prices, lazy `data-src` / relative URLs, dynamic `<dt>`/`<dd>` specs, and embedded `<script>` JS with unquoted keys, comments, and trailing commas—into clean, typed JSON in a 12-line `.dsl` file (no JS runtime required).
+
+**Before (`card.html`)**
+
+```html
+<article class="product-card">
+  <h1 class="title">  Mechanical   Keyboard   Pro  </h1>
+  <span class="price">$1,299.50</span>
+  <img class="hero" src="/img/placeholder.png" data-src="/img/mk-pro.webp" />
+  <a class="manual" href="/docs/mk-pro.pdf">User Manual</a>
+  <dl class="specs">
+    <dt>Switch</dt><dd>Tactile Brown</dd>
+    <dt>Layout</dt><dd>75% Compact</dd>
+  </dl>
+  <script>
+    window.__STATE__ = {
+      sku: "MK-75", // unquoted keys & comments
+      rating: 4.8,
+      inStock: true,
+    };
+  </script>
+</article>
+```
+
+**After (`product.dsl` — 12 lines)**
+
+```dsl
+let base = "https://shop.example"
+product = Scraper()
+  .$("article.product-card") {
+    find("h1.title") | clean -> "title"
+    | find(".price") | to_number(key="price")
+    | find("img.hero", Attribute, ["data-src", "src"]) | url_join(base) -> "image"
+    | find("a.manual", Attribute, "href") | url_join(base) -> "manual_url"
+    | find_all("dl.specs dt") | clean -> "_k"
+    | find_all("dl.specs dd") | clean -> "_v"
+    | zip_keys("_k", "_v", "specs") | omit_keys(["_k", "_v"])
+  }
+  .$("script") { text | js_block("window.__STATE__ =") | parse_js("state") }
+```
+
+**Output (`xsel2 -d product.dsl -n product --html card.html`)**
+
+```json
+{
+    "image": "https://shop.example/img/mk-pro.webp",
+    "manual_url": "https://shop.example/docs/mk-pro.pdf",
+    "price": 1299.5,
+    "specs": {
+        "Layout": "75% Compact",
+        "Switch": "Tactile Brown"
+    },
+    "state": {
+        "inStock": true,
+        "rating": 4.8,
+        "sku": "MK-75"
+    },
+    "title": "Mechanical Keyboard Pro"
+}
+```
+
+See [DSL & Pipeline Steps](docs/dsl-and-steps.md) for the full language and step reference.
+
 ## Features
 
 - **HTML/XML Scraping & DSL**: CSS selector & XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table & metadata extraction, fluent C++/Python pipelines, and a `.dsl` parser (`parse_dsl_string`, `load_scrapers`).
