@@ -460,9 +460,9 @@ get_method_registry() {
          b.MergeKeys(as_str_list(require_arg(args, 0, "source_keys", name)),
                      as_str(require_arg(args, 1, "target_key", name)));
        }},
-      {"sort_keys",
+      {"sort_array",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
-         b.SortKeys(opt_bool(args, 0, "ascending", true));
+         b.SortArray(opt_bool(args, 0, "ascending", true));
        }},
       {"deduplicate",
        [](ScraperBuilder &b, const DslArgList &, std::string_view) {

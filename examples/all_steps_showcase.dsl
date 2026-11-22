@@ -134,7 +134,7 @@ types_tables_and_dict = Scraper()
   | pick_keys(["page_meta", "comparison_rows", "products", "numeric_sort"])
   | omit_keys(["page_meta.meta"])
   | merge_keys(["numeric_sort"], "pricing_summary")
-  | sort_keys(true)
+  | sort_array(true)
 
 
 // 5. Serialization (JSON, CSV) + zip_keys

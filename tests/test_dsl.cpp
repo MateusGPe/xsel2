@@ -20,7 +20,7 @@ TEST_CASE("DslParser supports variables, :=, grouped chains, and dict steps",
         .rename_keys(["title", "heading"])
         .merge_keys(["heading", "tags"], "summary")
       )
-      .sort_keys(true);
+      .sort_array(true);
   )";
 
   scraper::dsl::DslParser parser;

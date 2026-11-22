@@ -291,7 +291,7 @@ TEST_CASE("dict_steps cover flatten, filter, remove, rename, merge, sort, dedup"
   CHECK(dict["combined"].size() == 3);
 
   scraper::DeduplicateStep().apply(dummy_node(), vals, dict);
-  scraper::SortKeysStep(true).apply(dummy_node(), vals, dict);
+  scraper::SortArrayStep(true).apply(dummy_node(), vals, dict);
   REQUIRE(dict["items"] == jsoncons::json::parse("[1, 2, 3]"));
 
   scraper::FilterDictStep({"writer", "items"}).apply(dummy_node(), vals, dict);

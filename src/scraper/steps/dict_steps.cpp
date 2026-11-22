@@ -208,16 +208,16 @@ MergeKeysStep::transform(const jsoncons::json &input) const {
   return out;
 }
 
-// ── SortKeysStep ─────────────────────────────────────────────────────────────
+// ── SortArrayStep ────────────────────────────────────────────────────────────
 
 jsoncons::json
-SortKeysStep::transform(const jsoncons::json &input) const {
+SortArrayStep::transform(const jsoncons::json &input) const {
   return sort_impl(input, 0);
 }
 
-jsoncons::json SortKeysStep::sort_impl(const jsoncons::json &input,
-                                       int depth) const {
-  xsel::common::check_json_depth(depth, "SortKeysStep");
+jsoncons::json SortArrayStep::sort_impl(const jsoncons::json &input,
+                                        int depth) const {
+  xsel::common::check_json_depth(depth, "SortArrayStep");
   if (input.is_array()) {
     std::vector<jsoncons::json> items;
     items.reserve(input.size());

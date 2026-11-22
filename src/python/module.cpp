@@ -487,7 +487,7 @@ PYBIND11_MODULE(_scraperpy, m) {
           py::arg("prefix") = "DEBUG: ", py::arg("print_dict") = false,
           py::arg("print_node") = false,
           py::return_value_policy::reference_internal)
-      .def("sort_keys", &ScraperPy::SortKeys, py::arg("ascending") = true,
+      .def("sort_array", &ScraperPy::SortArray, py::arg("ascending") = true,
            py::return_value_policy::reference_internal)
       .def("deduplicate", &ScraperPy::Deduplicate,
            py::return_value_policy::reference_internal)

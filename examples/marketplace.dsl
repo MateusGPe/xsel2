@@ -50,7 +50,7 @@ catalog_full = Scraper()
   // Top-level JSON transformations & validation
   | omit_keys(["apiSecret", "wholesaleCost"])
   | deduplicate()
-  | sort_keys(true)
+  | sort_array(true)
   | json_schema({
       "type": "object",
       "required": ["storefront", "products", "hydration", "shipping_rates"],

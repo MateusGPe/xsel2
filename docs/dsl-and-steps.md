@@ -25,7 +25,7 @@ This manual documents **100%** of the DSL grammar, syntax sugar, execution & mer
   - [Block-Local vs. Document-Level Execution](#block-local-vs-document-level-execution)
   - [Dot-Paths, Collision Modes & Merging](#dot-paths-collision-modes--merging)
   - [`@key` / `@value` Post-Processing](#key--value-post-processing)
-  - [Error Policies & Recovery (`find(..., required=true)` + `??`)](#error-policies--recovery-find-requiredtrue--)
+  - [Error Policies & Recovery (`find(...)` + `??` vs. `required=true`)](#error-policies--recovery-find--vs-requiredtrue)
 - [4. Engines, Limits & Caveats](#4-engines-limits--caveats)
 - [5. Running & Embedding DSL](#5-running--embedding-dsl)
 - [6. Pipeline Steps Reference](#6-pipeline-steps-reference)
@@ -248,7 +248,7 @@ Inside each `Extractor` match, two mutable state objects exist (alongside a per-
 
 ### Block-Local vs. Document-Level Execution
 
-All dictionary and JSON transformation steps (`flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `sort_keys`, `deduplicate`, `jmespath`, `jsonpath`, `json_schema`, `cast_keys`, `zip_keys`, `coalesce_keys`) execute **immediately** without hidden deferral flags:
+All dictionary and JSON transformation steps (`flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `sort_array`, `deduplicate`, `jmespath`, `jsonpath`, `json_schema`, `cast_keys`, `zip_keys`, `coalesce_keys`) execute **immediately** without hidden deferral flags:
 
 - **Inside `{ ... }` blocks or `.( ... )` grouped chains**: Each dict/JSON transform runs in-order on the current node's local `dict` (`dict = step.transform(dict)`).
 - **At the top level of a scraper chain** (outside `{ ... }` and `.( ... )`) **or inside `finalize { ... }`**: Dict/JSON transforms are appended to `finalize_steps_`, so they execute **once on the final accumulated `dest` document** after all extractors finish—even if a preceding `select(...)` matched 0 nodes.
@@ -274,14 +274,14 @@ All dictionary and JSON transformation steps (`flatten`, `pick_keys`, `omit_keys
 - If an object contains only `"@key"` or only `"@value"`, the dangling `@key`/`@value` field is erased.
 - This allows scraping dynamic key-value pairs (e.g. `dt`/`dd` or `th`/`td`) by setting `"@key"` and `"@value"` on each item!
 
-### Error Policies & Recovery (`find(..., required=true)` + `??`)
+### Error Policies & Recovery (`find(...)` + `??` vs. `required=true`)
 
 `Extractor::extract` supports three `ErrorPolicy` modes (configured in CLI/Python/C++):
 - `LogAndContinue` (**default**): Logs `[prefix] Extractor error (name): ...` to `stderr`, **clears `values`**, and continues to the next step.
 - `CollectErrors`: Appends the error string to `errors()`, **clears `values`**, and continues.
 - `ThrowOnError`: Rethrows immediately, aborting the extraction.
 
-> **Idiom & Caveat**: `find` and `find_all` are optional by default (`required=false`). When `required=true` is passed and no non-empty match is found, they throw `std::runtime_error`; under `LogAndContinue` (default), `values` is cleared so a subsequent `?? "N/A"` (`default("N/A")`) recovers with `"N/A"`, whereas under `ThrowOnError`, that same pipeline aborts.
+> **Idiom & Caveat**: `find` and `find_all` are optional by default (`required=false`), so `find(".x") ?? "N/A"` works cleanly for normal fallbacks without throwing or logging to `stderr`. Only pass `required=true` when you genuinely want missing fields flagged—for example, to abort under `ThrowOnError`, record an error under `CollectErrors`, or log `[prefix] Extractor error (name): ...` to `stderr` under `LogAndContinue` (which also clears `values` so a subsequent `?? "N/A"` can still recover).
 
 ---
 
@@ -378,7 +378,7 @@ All dictionary and JSON transformation steps (`flatten`, `pick_keys`, `omit_keys
 - **Examples**:
   - `$("article") { find("h1") -> "title" }`
   - `$("article") { find("img.thumb", attr=["data-src", "src"]) -> "thumb" }`
-  - `$("article") { find(".subtitle", required=true) ?? "N/A" -> "subtitle" }`
+  - `$("article") { find(".subtitle") ?? "N/A" -> "subtitle" }`
 
 #### `find_all(selector, type=Value.Text, attr="", squish=false, required=false)`
 - **Parameters**: Same as `find`, except `squish` defaults to `false`.
@@ -765,7 +765,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 | `omit_keys` | `(keys_to_remove)` | — | `dict` / `dest` |
 | `rename_keys` | `(pairs)` | — | `dict` / `dest` |
 | `merge_keys` | `(source_keys, target_key)` | — | `dict` / `dest` |
-| `sort_keys` | `(ascending=true)` | — | `dict` / `dest` |
+| `sort_array` | `(ascending=true)` | — | `dict` / `dest` |
 | `deduplicate` | `()` | — | `dict` / `dest` |
 | `jmespath` | `(expr)` | — | `dict` / `dest` |
 | `jsonpath` | `(expr)` | — | `dict` / `dest` |
@@ -845,10 +845,9 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 - **Behavior**: Collects values from each key in `source_keys` on the root object (flattening arrays, skipping `null`), erases `source_keys`, and stores the combined array under `target_key` (if non-empty).
 - **Example**: `merge_keys(["primary_tags", "extra_tags"], "all_tags")`
 
-#### `sort_keys(ascending=true)`
-- **Behavior**: Recursively sorts JSON **arrays** using total JSON type ordering (`null < bool < number < string < array < object`)!
-- **Caveat**: Despite its name, `SortKeysStep` sorts array elements (`input.is_array()`), while preserving object key order (`jsoncons::json` preserves insertion order).
-- **Example**: `sort_keys(ascending=true)`
+#### `sort_array(ascending=true)`
+- **Behavior**: Recursively sorts JSON **array elements** using total JSON type ordering (`null < bool < number < string < array < object`). Object keys are already maintained in ascending alphabetical order by `jsoncons::json`.
+- **Example**: `sort_array(ascending=true)`
 
 #### `deduplicate()`
 - **Behavior**: Recursively removes duplicate elements from JSON arrays using canonical JSON serialization (`canonical_json_key`).

@@ -81,9 +81,9 @@ private:
   std::string target_key_;
 };
 
-class SortKeysStep final : public JsonTransformStep {
+class SortArrayStep final : public JsonTransformStep {
 public:
-  explicit SortKeysStep(bool ascending = true) noexcept
+  explicit SortArrayStep(bool ascending = true) noexcept
       : ascending_(ascending) {}
 
 protected:

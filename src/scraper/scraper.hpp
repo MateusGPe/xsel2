@@ -383,8 +383,8 @@ public:
     return self();
   }
 
-  Derived &SortKeys(bool ascending = true) {
-    add_dict_step(std::make_shared<SortKeysStep>(ascending));
+  Derived &SortArray(bool ascending = true) {
+    add_dict_step(std::make_shared<SortArrayStep>(ascending));
     return self();
   }
 
