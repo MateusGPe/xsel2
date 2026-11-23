@@ -134,27 +134,30 @@ const lightTheme = EditorView.theme({
 const sharedLayoutTheme = EditorView.theme({
   '&': {
     height: '100%',
-    fontSize: '0.8rem',
+    fontSize: '0.82rem',
     fontFamily: 'var(--sl-font-mono)',
   },
   '.cm-scroller': {
     overflow: 'auto',
     fontFamily: 'var(--sl-font-mono)',
-    lineHeight: '1.35',
+    lineHeight: '1.4',
   },
   '.cm-content': {
-    lineHeight: '1.35',
+    lineHeight: '1.4',
     padding: '4px 0',
   },
   '.cm-line': {
     padding: '0 8px',
-    lineHeight: '1.35',
+    lineHeight: '1.4',
+    margin: '0',
   },
   '.cm-gutters': {
-    lineHeight: '1.35',
+    lineHeight: '1.4',
+    margin: '0',
   },
   '.cm-gutterElement': {
-    lineHeight: '1.35',
+    lineHeight: '1.4',
+    margin: '0',
   },
 });
 

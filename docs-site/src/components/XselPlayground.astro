@@ -8,7 +8,7 @@ const rawBase = import.meta.env.BASE_URL || '/';
 const baseUrl = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 ---
 
-<div class:list={['xsel-pg', { 'xsel-pg--full': fullPage }]} data-base-url={baseUrl}>
+<div class:list={['xsel-pg', 'not-content', { 'xsel-pg--full': fullPage }]} data-base-url={baseUrl}>
   <div class="xsel-pg__toolbar">
     <div class="xsel-pg__toolbar-left">
       <label class="xsel-pg__label">
@@ -465,30 +465,33 @@ article = Scraper()
   }
 
   :global(.xsel-pg .cm-editor) {
-    line-height: 1.35 !important;
+    font-size: 0.82rem;
+    line-height: 1.4 !important;
   }
 
   :global(.xsel-pg .cm-scroller) {
-    line-height: 1.35 !important;
-  }
-
-  :global(.xsel-pg .cm-line) {
-    line-height: 1.35 !important;
-    padding-top: 1px !important;
-    padding-bottom: 1px !important;
+    line-height: 1.4 !important;
   }
 
   :global(.xsel-pg .cm-content) {
-    line-height: 1.35 !important;
+    line-height: 1.4 !important;
     padding: 4px 0 !important;
   }
 
+  :global(.xsel-pg .cm-line) {
+    line-height: 1.4 !important;
+    padding: 0 8px !important;
+    margin: 0 !important;
+  }
+
   :global(.xsel-pg .cm-gutters) {
-    line-height: 1.35 !important;
+    line-height: 1.4 !important;
+    margin: 0 !important;
   }
 
   :global(.xsel-pg .cm-gutterElement) {
-    line-height: 1.35 !important;
+    line-height: 1.4 !important;
+    margin: 0 !important;
   }
 
   .xsel-pg__toolbar {
@@ -590,6 +593,9 @@ article = Scraper()
     color: var(--sl-color-text);
     font-family: var(--sl-font-mono);
     font-size: 0.84rem;
+    line-height: normal;
+    padding: 0;
+    margin: 0;
     outline: none;
   }
 
