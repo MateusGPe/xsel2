@@ -49,6 +49,8 @@ product = Scraper()
     | find(".price") | to_number(key="price")
     | find("img.hero", Attribute, ["data-src", "src"])
       | url_join(base) -&gt; "image"
+    | find("a.manual", Attribute, "href")
+      | url_join(base) -&gt; "manual_url"
     | find_all("dl.specs dt") | clean -&gt; "_k"
     | find_all("dl.specs dd") | clean -&gt; "_v"
     | zip_keys("_k", "_v", "specs")
@@ -69,6 +71,7 @@ product = Scraper()
   "title": "Mechanical Keyboard Pro",
   "price": 1299.5,
   "image": "https://shop.example/img/mk-pro.webp",
+  "manual_url": "https://shop.example/docs/mk-pro.pdf",
   "specs": &#123;
     "Switch": "Tactile Brown",
     "Layout": "75% Compact"

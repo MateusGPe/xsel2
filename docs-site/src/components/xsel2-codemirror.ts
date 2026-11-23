@@ -140,6 +140,21 @@ const sharedLayoutTheme = EditorView.theme({
   '.cm-scroller': {
     overflow: 'auto',
     fontFamily: 'var(--sl-font-mono)',
+    lineHeight: '1.35',
+  },
+  '.cm-content': {
+    lineHeight: '1.35',
+    padding: '4px 0',
+  },
+  '.cm-line': {
+    padding: '0 8px',
+    lineHeight: '1.35',
+  },
+  '.cm-gutters': {
+    lineHeight: '1.35',
+  },
+  '.cm-gutterElement': {
+    lineHeight: '1.35',
   },
 });
 

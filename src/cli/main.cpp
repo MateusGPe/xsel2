@@ -16,6 +16,14 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -363,11 +371,42 @@ int run_batch(const CliOptions &opts, const ScraperTemplate &tpl) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+#ifdef _WIN32
+  SetConsoleOutputCP(CP_UTF8);
+  // On Windows, command line arguments in argv are encoded in ANSI / current ACP.
+  // Convert Unicode arguments from GetCommandLineW to UTF-8 std::string.
+  int win_argc = 0;
+  LPWSTR *win_argv = CommandLineToArgvW(GetCommandLineW(), &win_argc);
+  std::vector<std::string> utf8_args_storage;
+  std::vector<std::string_view> args;
+  if (win_argv) {
+    utf8_args_storage.reserve(static_cast<size_t>(win_argc));
+    args.reserve(static_cast<size_t>(win_argc));
+    for (int i = 0; i < win_argc; ++i) {
+      int len = WideCharToMultiByte(CP_UTF8, 0, win_argv[i], -1, nullptr, 0, nullptr, nullptr);
+      if (len > 1) {
+        std::string s(static_cast<size_t>(len - 1), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, win_argv[i], -1, s.data(), len, nullptr, nullptr);
+        utf8_args_storage.push_back(std::move(s));
+      } else {
+        utf8_args_storage.emplace_back();
+      }
+      args.emplace_back(utf8_args_storage.back());
+    }
+    LocalFree(win_argv);
+  } else {
+    args.reserve(static_cast<size_t>(argc));
+    for (int i = 0; i < argc; ++i) {
+      args.emplace_back(argv[i]);
+    }
+  }
+#else
   std::vector<std::string_view> args;
   args.reserve(static_cast<size_t>(argc));
   for (int i = 0; i < argc; ++i) {
     args.emplace_back(argv[i]);
   }
+#endif
 
   if (args.size() < 2) {
     print_usage();

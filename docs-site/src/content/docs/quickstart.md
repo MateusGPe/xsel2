@@ -96,6 +96,10 @@ Add both the build directory (which contains `_scraperpy*.so`) and the repositor
 
 ```bash
 PYTHONPATH=build:. python3 examples/scrape_example.py
+PYTHONPATH=build:. python3 examples/table_financial.py
+PYTHONPATH=build:. python3 examples/article_news.py
+PYTHONPATH=build:. python3 examples/ecommerce_catalog.py
+PYTHONPATH=build:. python3 examples/social_hydration.py
 PYTHONPATH=build:. python3 examples/all_steps_showcase.py
 ```
 
