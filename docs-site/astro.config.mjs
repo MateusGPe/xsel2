@@ -1,5 +1,7 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import mermaid from 'astro-mermaid';
+import remarkGithubBlockquoteAlert from 'remark-github-blockquote-alert';
 import fs from 'node:fs';
 
 const xsel2Grammar = JSON.parse(
@@ -9,7 +11,13 @@ const xsel2Grammar = JSON.parse(
 export default defineConfig({
   site: 'https://MateusGPe.github.io',
   base: '/xsel2',
+  markdown: {
+    remarkPlugins: [remarkGithubBlockquoteAlert],
+  },
   integrations: [
+    mermaid({
+      autoTheme: true,
+    }),
     starlight({
       title: 'xsel2',
       description:
