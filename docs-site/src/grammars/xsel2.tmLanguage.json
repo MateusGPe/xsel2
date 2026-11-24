@@ -35,7 +35,13 @@
         {
           "name": "string.quoted.double.xsel2",
           "begin": "\"",
-          "end": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.xsel2" }
+          },
+          "end": "(?<!\\\\)\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.xsel2" }
+          },
           "patterns": [
             { "include": "#string-escapes" },
             { "include": "#interpolation" }
@@ -44,7 +50,13 @@
         {
           "name": "string.quoted.single.xsel2",
           "begin": "'",
-          "end": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.xsel2" }
+          },
+          "end": "(?<!\\\\)'",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.xsel2" }
+          },
           "patterns": [
             { "include": "#string-escapes" },
             { "include": "#interpolation" }

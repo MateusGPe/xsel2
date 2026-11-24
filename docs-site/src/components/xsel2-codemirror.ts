@@ -46,11 +46,12 @@ const DSL_TYPES = new Set([
 
 interface DslState {
   inBlockComment: boolean;
+  stringQuote: '"' | "'" | null;
 }
 
 export const xsel2Language = StreamLanguage.define<DslState>({
   name: 'xsel2',
-  startState: () => ({ inBlockComment: false }),
+  startState: () => ({ inBlockComment: false, stringQuote: null }),
   token(stream, state) {
     if (state.inBlockComment) {
       if (stream.skipTo('*/')) {
@@ -60,6 +61,23 @@ export const xsel2Language = StreamLanguage.define<DslState>({
         stream.skipToEnd();
       }
       return 'comment';
+    }
+
+    if (state.stringQuote) {
+      const quote = state.stringQuote;
+      let escaped = false;
+      while (!stream.eol()) {
+        const c = stream.next();
+        if (escaped) {
+          escaped = false;
+        } else if (c === '\\') {
+          escaped = true;
+        } else if (c === quote) {
+          state.stringQuote = null;
+          break;
+        }
+      }
+      return 'string';
     }
 
     if (stream.eatSpace()) return null;
@@ -82,7 +100,8 @@ export const xsel2Language = StreamLanguage.define<DslState>({
 
     const ch = stream.peek();
     if (ch === '"' || ch === "'") {
-      const quote = stream.next();
+      const quote = stream.next() as '"' | "'";
+      state.stringQuote = quote;
       let escaped = false;
       while (!stream.eol()) {
         const c = stream.next();
@@ -91,6 +110,7 @@ export const xsel2Language = StreamLanguage.define<DslState>({
         } else if (c === '\\') {
           escaped = true;
         } else if (c === quote) {
+          state.stringQuote = null;
           break;
         }
       }

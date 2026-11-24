@@ -79,7 +79,20 @@ catalog_summary = Scraper()
   | $("script") {
       text | js_block("window.__CATALOG_STATE__ =") | parse_js("hydration", true)
     }
-  | jmespath("{store: storefront.title, total_items: json_ld.numberOfItems, warehouse: hydration.fulfillment.warehouse, api_base: hydration.apiBase, in_stock_products: products[?in_stock == 'true'].{sku: sku, name: name, price: price, seller: seller}, shipping_carriers: shipping_rates[*].carrier}")
+  | jmespath("{
+      store: storefront.title,
+      total_items: json_ld.numberOfItems,
+      warehouse: hydration.fulfillment.warehouse,
+      api_base: hydration.apiBase,
+      in_stock_products: products[?in_stock == 'true'].{
+        sku: sku,
+        name: name,
+        price: price,
+        seller: seller
+      },
+      shipping_carriers: shipping_rates[*].carrier
+    }
+  ")
 
 
 // 3. JSONPath query scraper

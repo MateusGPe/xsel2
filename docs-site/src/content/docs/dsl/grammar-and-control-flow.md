@@ -19,6 +19,26 @@ description: Syntax sugar, shorthand operators, complete alias table, and pipeli
   - Inside `{ ... }`, the leading `.`, `|`, or `|>` before the very first step is optional.
   - **Lexical scoping inside `{ ... }`**: A `select(...)` or `$(...)` written *inside* another `{ ... }` block **requires** a trailing `{ ... }` body and compiles to `each(...)`, querying **relative to the current node** (matching the key-scoping of `each(selector, key="") { ... }`).
 
+## Strings & Multiline Literals
+
+String literals can be wrapped in double quotes (`"..."`) or single quotes (`'...'`). Both single and double-quoted strings natively support spanning across multiple lines without requiring escape characters or line continuation slashes (`\`):
+
+```dsl
+# Multiline string with structured JMESPath projection
+s = Scraper().select("article")
+  | jmespath("{
+      title: headline,
+      author: byline.author,
+      stats: {
+        likes: likes_count,
+        views: view_count
+      }
+    }")
+```
+
+- Newlines and indentation inside string literals are preserved verbatim.
+- String interpolation (`${var}`) works identically across single-line and multiline string literals.
+
 ## Shorthand Operators
 
 | Shorthand | Equivalent Canonical Call | Notes & Caveats |

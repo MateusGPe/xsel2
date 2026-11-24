@@ -711,4 +711,27 @@ TEST_CASE("Cleanup seams: lexical nested select, 0-match top-level transforms, s
   CHECK_THROWS_AS(
       parser.parse(R"(s = Scraper() | $("div") { $("span") | text -> "x" };)"),
       std::runtime_error);
+
+  // Multiline strings in DSL (double and single quoted) with JMESPath
+  const std::string dsl_multiline = R"(
+    multiline_test = Scraper()
+      .$("div") {
+        find(".title") | clean -> "title"
+        | find(".author") | clean -> "author"
+      }
+      | jmespath("{
+          title: title,
+          author: author
+        }")
+  )";
+  auto scrapers_ml = parser.parse(dsl_multiline);
+  const std::string html_ml = R"(
+    <div>
+      <span class="title">Test Title</span>
+      <span class="author">Alice</span>
+    </div>
+  )";
+  const auto out_ml = scrapers_ml["multiline_test"].scrape_from_string(html_ml);
+  CHECK(out_ml["title"].as<std::string>() == "Test Title");
+  CHECK(out_ml["author"].as<std::string>() == "Alice");
 }

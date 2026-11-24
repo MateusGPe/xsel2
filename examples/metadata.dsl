@@ -440,4 +440,16 @@ metadata_summary = Scraper()
       | find("meta[name='twitter:image']", Value.Attribute, "content") | clean -> "tw_image"
     }
   | $("script[type='application/ld+json']", "json_ld") { text | json_parse(strict=false) }
-  | jmespath("{title: not_null(og_title, tw_title, basic_title), description: not_null(og_description, tw_description, basic_description), url: not_null(canonical, og_url), image: not_null(og_image, tw_image), type: og_type, site_name: og_site_name, author: basic_author, published_time: published_time, lang: lang, json_ld: json_ld}")
+  | jmespath("{
+      title: not_null(og_title, tw_title, basic_title),
+      description: not_null(og_description, tw_description, basic_description),
+      url: not_null(canonical, og_url),
+      image: not_null(og_image, tw_image),
+      type: og_type,
+      site_name: og_site_name,
+      author: basic_author,
+      published_time: published_time,
+      lang: lang,
+      json_ld: json_ld
+    }
+  ")

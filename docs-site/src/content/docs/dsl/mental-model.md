@@ -144,6 +144,8 @@ All dictionary and JSON transformation steps (`flatten`, `pick_keys`, `omit_keys
 ### Dot-Paths, Collision Modes & Merging
 
 - **Dot-path keys**: Both `select(selector, key)` and `set(key)` / `insert_into_json` split `key` on `.` into nested objects (e.g., `"meta.author"` → `{"meta": {"author": ...}}`). Escape a literal dot with `\.` (e.g., `"a\\.b"` in DSL string → `a.b` as a single key).
+  > [!NOTE]
+  > Dot-path splitting applies to extractor target keys and `coalesce_keys` source candidates. Dict transformation steps like `pick_keys`, `omit_keys`, `rename_keys`, `cast_keys`, and `merge_keys` do **not** parse dot-paths (`"a.b"`). Instead, `pick_keys`, `omit_keys`, and `rename_keys` operate recursively matching bare key names across all nesting levels.
 - **Empty value skipping**: By default (`allow_empty=false`), `insert_into_json` and `merge_into` ignore `null`, `""`, `[]`, and `{}` (`is_empty_json`).
 - **Single vs. Multiple values in `set`**:
   - 0 non-whitespace values → nothing is written (unless `allow_empty=true` on `InsertOptions` in C++/Python).

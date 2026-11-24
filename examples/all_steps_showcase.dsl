@@ -114,6 +114,8 @@ types_tables_and_dict = Scraper()
       @"data-sku" -> "sku"
       | @"data-stock" | to_bool(key="in_stock", default_val=false)
       | @"data-rating" | to_float(key="rating_num")
+      | @"data-rating" -> "rating_cast"
+      | cast_keys({"rating_cast": "float"})
       | find("span.price", Value.Text) | parse_number(decimal=".", thousands=",", allow_float=true, key="price_num")
       | find_all("ul.tags li", Value.Text) | unique(true) | count("tag_count")
       | find_all("ul.tags li", Value.Text) | append_to("collected_tags", allow_empty=false)
@@ -129,10 +131,9 @@ types_tables_and_dict = Scraper()
   | $("section#catalog", "numeric_sort") {
       find_all("article.item span.price", Value.Text) | parse_number() | sort(ascending=true, numeric=true) -> "prices_asc"
     }
-  | cast_keys({"page_meta.json_ld.numberOfItems": "int"})
   | rename_keys({"temp_name": "title"})
   | pick_keys(["page_meta", "comparison_rows", "products", "numeric_sort"])
-  | omit_keys(["page_meta.meta"])
+  | omit_keys(["@context", "canonical"])
   | merge_keys(["numeric_sort"], "pricing_summary")
   | sort_array(true)
 
@@ -173,7 +174,12 @@ json_transforms = Scraper()
     }, strict=true)
   | flatten()
   | deduplicate()
-  | jmespath("{store: state_store, build: state_build, fast: state_flags_fastMode}")
+  | jmespath("{
+      store: state_store,
+      build: state_build,
+      fast: state_flags_fastMode
+    }
+  ")
   | jsonpath("$.*")
 
 

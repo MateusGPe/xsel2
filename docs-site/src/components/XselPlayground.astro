@@ -187,7 +187,18 @@ summary = Scraper()
   | $("table.financial-matrix") {
       table(key="stocks", header=true, normalize_headers=true, trim_cells=true)
     }
-  | jmespath("{index: index_title, updated_epoch: epoch, buy_recommendations: stocks[?rating == 'Strong Buy' || rating == 'Buy'].{symbol: ticker, company: company, price: price, change: change, market_cap: market_cap}}")`,
+  | jmespath("{
+      index: index_title,
+      updated_epoch: epoch,
+      buy_recommendations: stocks[?rating == 'Strong Buy' || rating == 'Buy'].{
+        symbol: ticker,
+        company: company,
+        price: price,
+        change: change,
+        market_cap: market_cap
+      }
+    }
+  ")`,
     },
     ecommerce_catalog: {
       cmd: 'xsel2 -d catalog.dsl -n catalog --html catalog.html',
@@ -284,7 +295,7 @@ article = Scraper()
   .$("script[type='application/ld+json']") {
     text | json_parse("json_ld", strict=false)
   }
-  | omit_keys(["json_ld.@context"])`,
+  | omit_keys(["@context"])`,
     },
     social_hydration: {
       cmd: 'xsel2 -d social.dsl -n social --html social.html',
@@ -328,7 +339,18 @@ article = Scraper()
   .$("script") {
     text | js_block("window.__INITIAL_DATA__ =") | parse_js("payload", true)
   }
-  | jmespath("{author: payload.author.username, followers: payload.author.followers, post: post_text, likes: likes_count, top_comments: payload.comments[?score > \`50\`].{user: user, score: score, text: text}}")`,
+  | jmespath("{
+      author: payload.author.username,
+      followers: payload.author.followers,
+      post: post_text,
+      likes: likes_count,
+      top_comments: payload.comments[?score > \`50\`].{
+        user: user,
+        score: score,
+        text: text
+      }
+    }
+  ")`,
     },
     selector: {
       cmd: 'xsel2 -s "ul.specs li" --html sample.html',

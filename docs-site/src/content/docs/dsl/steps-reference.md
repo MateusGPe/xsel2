@@ -490,7 +490,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 - **Example**: `$(".stock") { text | to_bool(key="in_stock", default_val=false) }`
 
 ### `cast_keys(schema)`
-- **Behavior**: Recursively traverses arrays/objects and coerces string fields (or string elements of array fields) matching keys in `schema` (`{key: "int"|"float"|"number"|"bool"|"auto"}`).
+- **Behavior**: Traverses arrays and coerces matching string fields (or string elements of array fields) matching keys in `schema` (`{key: "int"|"float"|"number"|"bool"|"auto"}`). Keys in `schema` match immediate object property names; dot-separated paths (e.g., `"parent.child"`) are not supported.
 - **Example**: `cast_keys({"price": "float", "qty": "int"})`
 
 ### `zip_keys(keys_key, values_key, target_key="")`
@@ -501,7 +501,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 - **Parameters**:
   - `mapping` (`object`, required): `{target_key: [source_path1, source_path2, ...]}` (each value may be a list or single string dot-path).
   - `drop_sources` (`bool`, default `true`): Removes single-segment (top-level) source keys from the output object unless they also appear as a `target_key`.
-- **Behavior**: For each `target_key`, resolves candidate `source_path` dot-paths in order and writes the first non-null, non-empty value into `target_key` (overwriting with `nested_path=true`).
+- **Behavior**: For each `target_key`, resolves candidate `source_path` dot-paths in order and writes the first non-null, non-empty value into `target_key` (overwriting with `nested_path=true`). Unlike `pick_keys`/`omit_keys`, source candidates support dot paths (e.g., `"meta.title"`).
 - **Example**: `coalesce_keys({"title": ["og_title", "h1_title", "meta.title"]}, drop_sources=true)`
 
 ### `flatten()`
@@ -509,15 +509,17 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 - **Example**: `$("div.card") { attrs() | flatten() }`
 
 ### `pick_keys(keys_to_keep)` & `omit_keys(keys_to_remove)`
-- **Behavior**: Recursively keeps only (`pick_keys`) or removes (`omit_keys`) object keys in the provided list.
-- **Example**: `omit_keys(["_debug", "raw_html"])`
+- **Behavior**: Recursively keeps only (`pick_keys`) or removes (`omit_keys`) object keys in the provided list across all nesting levels.
+> [!NOTE]
+> `pick_keys` and `omit_keys` match exact property names (`key`), **not dot-separated paths** (`"parent.child"`). To omit a nested property such as `@context` inside `json_ld`, specify `omit_keys(["@context"])` rather than `omit_keys(["json_ld.@context"])`.
+- **Example**: `omit_keys(["@context", "raw_html"])`
 
 ### `rename_keys(pairs)`
-- **Behavior**: Recursively renames object keys. `pairs` may be an object `{old: new}` or an even-length list `["old1", "new1", "old2", "new2"]` (odd-length list throws).
+- **Behavior**: Recursively renames object keys across all nesting levels matching exact property names (`pairs` may be an object `{old: new}` or an even-length list `["old1", "new1", "old2", "new2"]`; odd-length list throws). Dot-separated paths are not supported.
 - **Example**: `rename_keys({"title": "heading"})`
 
 ### `merge_keys(source_keys, target_key)`
-- **Behavior**: Collects values from each key in `source_keys` on the root object (flattening arrays, skipping `null`), erases `source_keys`, and stores the combined array under `target_key` (if non-empty).
+- **Behavior**: Collects values from each key in `source_keys` on the root object (flattening arrays, skipping `null`), erases `source_keys`, and stores the combined array under `target_key` (if non-empty). `source_keys` must be top-level keys in the object (dot-separated paths are not supported).
 - **Example**: `merge_keys(["primary_tags", "extra_tags"], "all_tags")`
 
 ### `sort_array(ascending=true)`

@@ -12,4 +12,15 @@ social = Scraper()
   .$("script") {
     text | js_block("window.__INITIAL_DATA__ =") | parse_js("payload", true)
   }
-  | jmespath("{author: payload.author.username, followers: payload.author.followers, post: post_text, likes: likes_count, top_comments: payload.comments[?score > `50`].{user: user, score: score, text: text}}")
+  | jmespath("{
+      author: payload.author.username,
+      followers: payload.author.followers,
+      post: post_text,
+      likes: likes_count,
+      top_comments: payload.comments[?score > `50`].{
+        user: user,
+        score: score,
+        text: text
+      }
+    }
+  ")

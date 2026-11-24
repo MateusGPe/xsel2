@@ -17,4 +17,4 @@ article = Scraper()
   .$("script[type='application/ld+json']") {
     text | json_parse("json_ld", strict=false)
   }
-  | omit_keys(["json_ld.@context"])
+  | omit_keys(["@context"])
