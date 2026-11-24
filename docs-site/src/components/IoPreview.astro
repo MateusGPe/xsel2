@@ -1,9 +1,13 @@
 ---
+import CodeCard from './CodeCard.astro';
+
 interface Props {
   leftTitle: string;
   rightTitle: string;
   leftCode: string;
   rightCode: string;
+  leftLang?: string;
+  rightLang?: string;
   leftAccent?: 'amber' | 'blue';
 }
 
@@ -12,24 +16,23 @@ const {
   rightTitle,
   leftCode,
   rightCode,
+  leftLang = 'bash',
+  rightLang = 'json',
   leftAccent = 'blue',
 } = Astro.props;
 ---
 
 <div class="xsel-io-grid">
-  <div class:list={['xsel-code-card', leftAccent === 'blue' ? 'xsel-code-card--accent' : '']}>
-    <div class="xsel-code-card__head">
-      <span class:list={['xsel-dot', leftAccent === 'blue' ? 'xsel-dot--blue' : 'xsel-dot--amber']}></span>
-      <span>{leftTitle}</span>
-    </div>
-    <pre class="xsel-code-card__pre"><code>{leftCode}</code></pre>
-  </div>
+  <CodeCard
+    code={leftCode}
+    lang={leftLang}
+    dot={leftAccent === 'blue' ? 'blue' : 'amber'}
+    variant={leftAccent === 'blue' ? 'accent' : 'default'}
+  >
+    <Fragment slot="title">{leftTitle}</Fragment>
+  </CodeCard>
 
-  <div class="xsel-code-card xsel-code-card--out">
-    <div class="xsel-code-card__head">
-      <span class="xsel-dot xsel-dot--green"></span>
-      <span>{rightTitle}</span>
-    </div>
-    <pre class="xsel-code-card__pre"><code>{rightCode}</code></pre>
-  </div>
+  <CodeCard code={rightCode} lang={rightLang} dot="green" variant="out">
+    <Fragment slot="title">{rightTitle}</Fragment>
+  </CodeCard>
 </div>

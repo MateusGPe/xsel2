@@ -1,0 +1,80 @@
+---
+import { highlightCode } from '../utils/highlight';
+
+interface Props {
+  code: string;
+  lang?: string;
+  dot?: 'amber' | 'blue' | 'green';
+  variant?: 'default' | 'accent' | 'out';
+}
+
+const {
+  code,
+  lang = 'text',
+  dot = 'blue',
+  variant = 'default',
+} = Astro.props;
+
+const highlightedHtml = await highlightCode(code, lang);
+const dotClass = `xsel-dot--${dot}`;
+const variantClass =
+  variant === 'accent'
+    ? 'xsel-code-card--accent'
+    : variant === 'out'
+      ? 'xsel-code-card--out'
+      : '';
+---
+
+<div class:list={['xsel-code-card', 'not-content', variantClass]}>
+  <div class="xsel-code-card__head">
+    <span class:list={['xsel-dot', dotClass]}></span>
+    <span class="xsel-code-card__title">
+      <slot name="title" />
+    </span>
+    <button
+      type="button"
+      class="xsel-code-card__copy"
+      aria-label="Copy code"
+      title="Copy code"
+      data-code={code}
+    >
+      <svg class="xsel-code-card__copy-icon xsel-code-card__copy-icon--copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <svg class="xsel-code-card__copy-icon xsel-code-card__copy-icon--check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </button>
+  </div>
+  <div class="xsel-code-card__body" set:html={highlightedHtml} />
+</div>
+
+<script>
+  if (!(window as any).__xselCopyBound) {
+    (window as any).__xselCopyBound = true;
+    document.addEventListener('click', async (event) => {
+      const target = event.target as HTMLElement | null;
+      const btn = target?.closest('.xsel-code-card__copy') as HTMLButtonElement | null;
+      if (!btn) return;
+
+      const text = btn.dataset.code ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.classList.add('is-copied');
+        btn.setAttribute('aria-label', 'Copied');
+        btn.setAttribute('title', 'Copied!');
+        const prevTimer = Number(btn.dataset.timerId || '0');
+        if (prevTimer) window.clearTimeout(prevTimer);
+        const timerId = window.setTimeout(() => {
+          btn.classList.remove('is-copied');
+          btn.setAttribute('aria-label', 'Copy code');
+          btn.setAttribute('title', 'Copy code');
+        }, 1600);
+        btn.dataset.timerId = String(timerId);
+      } catch {
+        // Ignore clipboard errors in restricted contexts
+      }
+    });
+  }
+</script>

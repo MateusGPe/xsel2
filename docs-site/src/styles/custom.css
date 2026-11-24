@@ -348,7 +348,8 @@ main:has(.xsel-pg--full) .content-panel > .sl-container {
   background: var(--xsel-emerald);
 }
 
-.xsel-code-card__pre {
+.xsel-code-card__pre,
+.xsel-code-card__body pre.shiki {
   margin: 0 !important;
   padding: 0.9rem 1rem !important;
   border: none !important;
@@ -362,8 +363,107 @@ main:has(.xsel-pg--full) .content-panel > .sl-container {
   flex: 1;
 }
 
-.xsel-code-card__pre code {
+.xsel-code-card__pre code,
+.xsel-code-card__body pre.shiki code {
   text-align: left !important;
+  background: transparent !important;
+}
+
+.xsel-code-card__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.xsel-code-card__body pre.shiki:focus-visible {
+  outline: 2px solid var(--sl-accent);
+  outline-offset: -2px;
+}
+
+.xsel-code-card__body pre.shiki span {
+  color: var(--shiki-dark);
+}
+
+:root[data-theme='light'] .xsel-code-card__body pre.shiki span {
+  color: var(--shiki-light);
+}
+
+.xsel-code-card__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xsel-code-card__title code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.85em;
+  font-weight: 500;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--sl-color-gray-5) 35%, transparent);
+  color: var(--sl-color-gray-1);
+}
+
+.xsel-code-card__copy {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--sl-color-gray-3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.xsel-code-card__copy:hover {
+  color: var(--sl-color-white);
+  background: color-mix(in srgb, var(--sl-color-gray-5) 35%, transparent);
+  border-color: var(--sl-color-hairline);
+}
+
+.xsel-code-card__copy:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.xsel-code-card__copy:focus-visible {
+  outline: 2px solid var(--sl-accent);
+  outline-offset: 2px;
+  color: var(--sl-color-white);
+}
+
+.xsel-code-card__copy.is-copied {
+  color: var(--xsel-emerald);
+  border-color: color-mix(in srgb, var(--xsel-emerald) 45%, transparent);
+  background: color-mix(in srgb, var(--xsel-emerald) 12%, transparent);
+}
+
+.xsel-code-card__copy-icon {
+  display: block;
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.xsel-code-card__copy-icon--check {
+  display: none;
+  color: var(--xsel-emerald);
+}
+
+.xsel-code-card__copy.is-copied .xsel-code-card__copy-icon--copy {
+  display: none;
+}
+
+.xsel-code-card__copy.is-copied .xsel-code-card__copy-icon--check {
+  display: block;
 }
 
 pre,
@@ -865,6 +965,8 @@ pre,
 .xsel-pillars > *,
 .xsel-flow > *,
 .xsel-io-grid > *,
+.xsel-code-card > *,
+.xsel-code-card__head > *,
 .xsel-bench-strip > *,
 .xsel-recipes > * {
   margin-top: 0 !important;
