@@ -3,6 +3,15 @@ title: Grammar & Control Flow
 description: Syntax sugar, shorthand operators, complete alias table, and pipeline composition/branching.
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+import XselPlayground from '../../../components/XselPlayground.astro';
+
+<Aside type="tip" title="Try shorthand & block syntax live">
+  Experiment with `$("...")`, `@attr`, `-> "key"`, and `table(...)` directly in the WASM sandbox below.
+</Aside>
+
+<XselPlayground compact initialPreset="table" />
+
 ## Chaining & Grouping
 
 - **Chain separators**: `.`, `|`, and `|>` are completely interchangeable:

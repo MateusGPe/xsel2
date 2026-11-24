@@ -3,6 +3,9 @@ title: Python Bindings (scraperpy)
 description: Fluent Python scraping pipelines, InsertMode, AhoCorasick, .dsl loading, and JSON queries.
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+import IoPreview from '../../components/IoPreview.astro';
+
 `scraperpy` wraps the compiled `_scraperpy` C++20 extension module and ships type stubs in `scraperpy-stubs/_scraperpy.pyi`.
 
 ## Importing `scraperpy`
@@ -57,20 +60,29 @@ See `./scripts/pack_python.sh --help` for options (`--wheel-only`, `--sdist-only
 
 All builder methods return `self` (`ScraperPy`), so calls chain cleanly:
 
-```python
-import scraperpy
+<IoPreview
+  leftTitle="Python (scraperpy)"
+  rightTitle="Returned Python dict"
+  leftCode={`import scraperpy
 
 s = scraperpy.ScraperPy()
 (
     s.select("h1.product-title").text().squish().set("title")
-     .select(".price").text().regex_extract(r"([0-9]+\.[0-9]+)", 1).set("price")
+     .select(".price").text().regex_extract(r"([0-9]+\\.[0-9]+)", 1).set("price")
      .select(".badge").text().trim().set("badges")
 )
 
-data = s.from_file("examples/sample.html")
-# Or from a string:
-# data = s.from_string(html_string)
-```
+data = s.from_file("examples/sample.html")`}
+  rightCode={`{
+  "title": "Mechanical Keyboard Pro",
+  "price": "149.99",
+  "badges": ["In Stock", "Free Shipping"]
+}`}
+/>
+
+<Aside type="tip" title="Parse once, scrape many">
+  When running multiple scrapers against the same HTML document, use <code>Document.from_string(html)</code> or <code>scrape_many(scrapers, html)</code> so <code>libxml2</code> parses the DOM only once.
+</Aside>
 
 For the full list of pipeline steps and their parameters, see the [Pipeline Steps Reference](/xsel2/dsl/steps-reference/). Keep these Python-specific notes in mind:
 

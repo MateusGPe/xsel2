@@ -1,0 +1,35 @@
+---
+interface Props {
+  leftTitle: string;
+  rightTitle: string;
+  leftCode: string;
+  rightCode: string;
+  leftAccent?: 'amber' | 'blue';
+}
+
+const {
+  leftTitle,
+  rightTitle,
+  leftCode,
+  rightCode,
+  leftAccent = 'blue',
+} = Astro.props;
+---
+
+<div class="xsel-io-grid">
+  <div class:list={['xsel-code-card', leftAccent === 'blue' ? 'xsel-code-card--accent' : '']}>
+    <div class="xsel-code-card__head">
+      <span class:list={['xsel-dot', leftAccent === 'blue' ? 'xsel-dot--blue' : 'xsel-dot--amber']}></span>
+      <span>{leftTitle}</span>
+    </div>
+    <pre class="xsel-code-card__pre"><code>{leftCode}</code></pre>
+  </div>
+
+  <div class="xsel-code-card xsel-code-card--out">
+    <div class="xsel-code-card__head">
+      <span class="xsel-dot xsel-dot--green"></span>
+      <span>{rightTitle}</span>
+    </div>
+    <pre class="xsel-code-card__pre"><code>{rightCode}</code></pre>
+  </div>
+</div>

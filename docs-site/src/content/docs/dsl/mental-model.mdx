@@ -3,6 +3,15 @@ title: Mental Model & Execution
 description: Lexical specification, variables, scraper declarations, execution & merge model, and engine limits.
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+import XselPlayground from '../../../components/XselPlayground.astro';
+
+<Aside type="tip" title="Explore state flow interactively">
+  Every block in `.dsl` maintains a working string list (`values`) and an output object (`dict`). Try editing the pipeline below to see how `js_block`, `parse_js`, and `jmespath` transform them in real time.
+</Aside>
+
+<XselPlayground compact initialPreset="js_digger" />
+
 ## Lexical & Grammar Specification
 
 ### Comments

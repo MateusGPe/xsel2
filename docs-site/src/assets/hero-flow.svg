@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360" fill="none" role="img" aria-label="Messy HTML and script state transformed by xsel2 into clean typed NDJSON">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="560" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0b141c"/>
+      <stop offset="100%" stop-color="#091d26"/>
+    </linearGradient>
+    <linearGradient id="coreGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="560" height="360" rx="16" fill="url(#bgGrad)" stroke="#1e3a4c" stroke-width="1.5"/>
+
+  <!-- Subtle dot grid -->
+  <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+    <circle cx="2" cy="2" r="1" fill="#1e3a4c" opacity="0.55"/>
+  </pattern>
+  <rect width="560" height="360" rx="16" fill="url(#dots)"/>
+
+  <!-- Left Card: Messy HTML + Script -->
+  <rect x="24" y="34" width="210" height="292" rx="10" fill="#0f1b24" stroke="#2a3f4f" stroke-width="1.2"/>
+  <rect x="24" y="34" width="210" height="30" rx="10" fill="#152633"/>
+  <circle cx="42" cy="49" r="4" fill="#f59e0b"/>
+  <text x="54" y="53" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" font-weight="600">page.html + &lt;script&gt;</text>
+
+  <text x="36" y="86" fill="#64748b" font-family="ui-monospace, monospace" font-size="10.5">&lt;h1 class="title"&gt;</text>
+  <text x="44" y="102" fill="#e2e8f0" font-family="ui-monospace, monospace" font-size="10.5">  Keyboard   Pro  </text>
+  <text x="36" y="118" fill="#64748b" font-family="ui-monospace, monospace" font-size="10.5">&lt;/h1&gt;</text>
+  <text x="36" y="138" fill="#64748b" font-family="ui-monospace, monospace" font-size="10.5">&lt;span class="price"&gt;</text>
+  <text x="44" y="154" fill="#fbbf24" font-family="ui-monospace, monospace" font-size="10.5">$1,299.50</text>
+  <text x="36" y="170" fill="#64748b" font-family="ui-monospace, monospace" font-size="10.5">&lt;/span&gt;</text>
+
+  <rect x="34" y="186" width="190" height="124" rx="6" fill="#09131a" stroke="#f59e0b" stroke-opacity="0.35"/>
+  <text x="42" y="204" fill="#f59e0b" font-family="ui-monospace, monospace" font-size="10">&lt;script&gt;</text>
+  <text x="42" y="220" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="10">window.__STATE__ = {</text>
+  <text x="50" y="236" fill="#cbd5e1" font-family="ui-monospace, monospace" font-size="10">sku: 'MK-' + '75',</text>
+  <text x="50" y="252" fill="#64748b" font-family="ui-monospace, monospace" font-size="10">// unquoted + comment</text>
+  <text x="50" y="268" fill="#cbd5e1" font-family="ui-monospace, monospace" font-size="10">inStock: true,</text>
+  <text x="42" y="284" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="10">};</text>
+  <text x="42" y="300" fill="#f59e0b" font-family="ui-monospace, monospace" font-size="10">&lt;/script&gt;</text>
+
+  <!-- Center Engine Pill -->
+  <path d="M 236 180 L 266 180" stroke="#06b6d4" stroke-width="2" stroke-dasharray="4 3"/>
+  <path d="M 314 180 L 340 180" stroke="#10b981" stroke-width="2"/>
+  <polygon points="340,175 349,180 340,185" fill="#10b981"/>
+
+  <rect x="252" y="136" width="76" height="88" rx="12" fill="#0c2d36" stroke="url(#coreGrad)" stroke-width="2"/>
+  <text x="290" y="166" text-anchor="middle" fill="#a5f3fc" font-family="ui-monospace, monospace" font-size="13" font-weight="800">xsel2</text>
+  <text x="290" y="184" text-anchor="middle" fill="#22d3ee" font-family="ui-monospace, monospace" font-size="9.5">C++20</text>
+  <text x="290" y="199" text-anchor="middle" fill="#10b981" font-family="ui-monospace, monospace" font-size="9">No V8</text>
+  <text x="290" y="213" text-anchor="middle" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="8.5">38ms/1k</text>
+
+  <!-- Right Card: Clean Typed JSON -->
+  <rect x="350" y="54" width="186" height="252" rx="10" fill="#0f1b24" stroke="#10b981" stroke-opacity="0.55" stroke-width="1.2"/>
+  <rect x="350" y="54" width="186" height="30" rx="10" fill="#0f2924"/>
+  <circle cx="368" cy="69" r="4" fill="#10b981"/>
+  <text x="380" y="73" fill="#a7f3d0" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" font-weight="600">typed NDJSON</text>
+
+  <text x="362" y="106" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="10.5">{</text>
+  <text x="370" y="126" fill="#38bdf8" font-family="ui-monospace, monospace" font-size="10.5">"title":</text>
+  <text x="424" y="126" fill="#a7f3d0" font-family="ui-monospace, monospace" font-size="10.5">"Keyboard Pro",</text>
+  <text x="370" y="146" fill="#38bdf8" font-family="ui-monospace, monospace" font-size="10.5">"price":</text>
+  <text x="424" y="146" fill="#fbbf24" font-family="ui-monospace, monospace" font-size="10.5">1299.5,</text>
+  <text x="370" y="166" fill="#38bdf8" font-family="ui-monospace, monospace" font-size="10.5">"state":</text>
+  <text x="424" y="166" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="10.5">{</text>
+  <text x="382" y="186" fill="#38bdf8" font-family="ui-monospace, monospace" font-size="10.5">"sku":</text>
+  <text x="424" y="186" fill="#a7f3d0" font-family="ui-monospace, monospace" font-size="10.5">"MK-75",</text>
+  <text x="382" y="206" fill="#38bdf8" font-family="ui-monospace, monospace" font-size="10.5">"inStock":</text>
+  <text x="448" y="206" fill="#c084fc" font-family="ui-monospace, monospace" font-size="10.5">true</text>
+  <text x="370" y="226" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="10.5">}</text>
+  <text x="362" y="246" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="10.5">}</text>
+
+  <rect x="362" y="264" width="162" height="26" rx="5" fill="#062e24" stroke="#10b981" stroke-opacity="0.4"/>
+  <text x="443" y="281" text-anchor="middle" fill="#6ee7b7" font-family="ui-monospace, monospace" font-size="9.5" font-weight="600">libxml2 · RE2 · jsoncons</text>
+</svg>

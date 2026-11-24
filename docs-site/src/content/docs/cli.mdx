@@ -3,7 +3,17 @@ title: CLI Reference (xsel2)
 description: xsel2 command-line options, stdin pipe mode, and multi-threaded batch processing.
 ---
 
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import XselPlayground from '../../components/XselPlayground.astro';
+import IoPreview from '../../components/IoPreview.astro';
+
 `xsel2` is a unified command-line HTML/XML scraping tool that supports single inputs, Unix `stdin` pipelines, and multi-threaded batch processing.
+
+<Aside type="tip" title="Test CLI flags live">
+  Edit the `$ xsel2 ...` command bar below (e.g. toggle `-c` or change `-s`) to run the real CLI parser in WebAssembly.
+</Aside>
+
+<XselPlayground compact initialPreset="selector" />
 
 ## Input Resolution
 
@@ -46,34 +56,42 @@ Run `xsel2 --help` (or `-h`) to print usage.
 
 ## Examples
 
-### Single Input & Pipe Mode
-
-```bash
-# Quick inline HTML extraction
+<Tabs>
+  <TabItem label="Single Input & Pipe Mode">
+    <IoPreview
+      leftTitle="Commands"
+      rightTitle="Output (stdout)"
+      leftCode={`# Quick inline HTML extraction
 xsel2 -s "h1" --html "<html><body><h1>  Hello  </h1></body></html>" -c
 
 # Run a named scraper from a .dsl file
 xsel2 -d examples/product.dsl -n summary --html examples/sample.html
 
-# Run all scrapers in a .dsl file (when -n is omitted)
-xsel2 -d examples/metadata.dsl --html examples/metadata_sample.html
-
 # Stream HTML from stdin (pipe mode)
-cat examples/sample.html | xsel2 -d examples/product.dsl -n summary -c
-```
+cat examples/sample.html | xsel2 -d examples/product.dsl -n summary -c`}
+      rightCode={`{"text":"Hello"}
 
-### Batch & Multi-Threaded Batch
-
-```bash
-# NDJSON output (default) using 4 worker threads
+{
+  "title": "Mechanical Keyboard Pro",
+  "sku": "MK-PRO-75",
+  "rating": 4.8
+}`}
+    />
+  </TabItem>
+  <TabItem label="Multi-Threaded Batch">
+    <IoPreview
+      leftTitle="Batch Commands"
+      rightTitle="NDJSON Output (stdout)"
+      leftCode={`# NDJSON output (default) using 4 worker threads
 xsel2 -d examples/product.dsl -n summary --batch examples/*.html -j 4
 
 # Single JSON array with auto-detected thread count
 xsel2 -s "h1" --batch examples/sample.html examples/marketplace_sample.html --json-array -j 0 -c
 
-# Single JSON object keyed by file path
-xsel2 -d examples/product.dsl --batch examples/sample.html examples/metadata_sample.html --json-object
-
 # Write one .json file per input into out/
-xsel2 -d examples/product.dsl -n summary --batch examples/*.html --out-dir out -j 0 -c
-```
+xsel2 -d examples/product.dsl -n summary --batch examples/*.html --out-dir out -j 0 -c`}
+      rightCode={`{"file":"examples/sample.html","result":{"title":"Mechanical Keyboard Pro","sku":"MK-PRO-75","rating":4.8}}
+{"file":"examples/marketplace_sample.html","result":{"title":null}}`}
+    />
+  </TabItem>
+</Tabs>

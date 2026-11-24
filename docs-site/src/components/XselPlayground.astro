@@ -1,36 +1,53 @@
 ---
 interface Props {
   fullPage?: boolean;
+  compact?: boolean;
+  initialPreset?: string;
 }
 
-const { fullPage = false } = Astro.props;
+const { fullPage = false, compact = false, initialPreset = 'card' } = Astro.props;
 const rawBase = import.meta.env.BASE_URL || '/';
 const baseUrl = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+
+const PRESET_LABELS = [
+  { id: 'card', label: 'Product Card' },
+  { id: 'js_digger', label: 'JS Block Digger' },
+  { id: 'table', label: 'HTML Table -> JSON' },
+  { id: 'aho', label: 'Aho-Corasick Filter' },
+  { id: 'product', label: 'JMESPath Summary' },
+  { id: 'selector', label: 'Quick CSS (-s)' },
+];
 ---
 
-<div class:list={['xsel-pg', 'not-content', { 'xsel-pg--full': fullPage }]} data-base-url={baseUrl}>
+<div
+  class:list={['xsel-pg', 'not-content', { 'xsel-pg--full': fullPage, 'xsel-pg--compact': compact }]}
+  data-base-url={baseUrl}
+  data-initial-preset={initialPreset}
+>
   <div class="xsel-pg__toolbar">
     <div class="xsel-pg__toolbar-left">
-      <label class="xsel-pg__label">
-        <span>Preset</span>
-        <select class="xsel-pg__select" data-role="preset">
-          <option value="card">30-Second Product Card (DSL)</option>
-          <option value="product">Product + JMESPath Summary (DSL)</option>
-          <option value="table_data">HTML Table &amp; Financial Matrix (DSL)</option>
-          <option value="ecommerce_catalog">E-Commerce Catalog &amp; Variants (DSL)</option>
-          <option value="article_news">News Article &amp; JSON-LD Schema (DSL)</option>
-          <option value="social_hydration">Social Media &amp; JS Hydration (DSL)</option>
-          <option value="selector">Quick CSS Selector (-s)</option>
-          <option value="js_digger">JS Block &amp; JSON Digger (DSL)</option>
-        </select>
-      </label>
+      <div class="xsel-pg__pills" role="group" aria-label="Playground presets">
+        {
+          PRESET_LABELS.map((p) => (
+            <button
+              type="button"
+              class="xsel-pg__pill"
+              data-role="preset-btn"
+              data-preset={p.id}
+              aria-pressed={p.id === initialPreset ? 'true' : 'false'}
+            >
+              {p.label}
+            </button>
+          ))
+        }
+      </div>
       <label class="xsel-pg__check">
         <input type="checkbox" data-role="compact" />
         <span>Compact (<code>-c</code>)</span>
       </label>
     </div>
     <div class="xsel-pg__toolbar-right">
-      <span class="xsel-pg__status" data-role="status">WASM: Ready on run</span>
+      <span class="xsel-pg__status" data-role="status">WASM: Ready</span>
       <button type="button" class="xsel-pg__btn" data-role="run">
         Run in WASM
       </button>
@@ -65,8 +82,9 @@ const baseUrl = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
     </div>
 
     <div class="xsel-pg__pane xsel-pg__pane--out">
-      <div class="xsel-pg__pane-head">
+      <div class="xsel-pg__pane-head xsel-pg__pane-head--out">
         <span>JSON Output</span>
+        <button type="button" class="xsel-pg__copy" data-role="copy-out">Copy JSON</button>
       </div>
       <div class="xsel-pg__cm" data-role="output"></div>
     </div>
@@ -108,6 +126,68 @@ product = Scraper()
     | zip_keys("_k", "_v", "specs") | omit_keys(["_k", "_v"])
   }
   .$("script") { text | js_block("window.__STATE__ =") | parse_js("state") }`,
+    },
+    js_digger: {
+      cmd: 'xsel2 -d digger.dsl --html page.html',
+      html: `<script>
+  window.__HYDRATION__ = {
+    store: 'Apex ' + 'Audio', // string concat & single quotes
+    featured: [
+      { id: 101, name: "Studio Monitor", price: 199.90, },
+      { id: 102, name: "Braided Cable", price: 29.50, }
+    ],
+    active: true,
+  };
+<\/script>`,
+      dsl: `hydration = Scraper()
+  .$("script") {
+    text
+    | js_block("window.__HYDRATION__ =")
+    | parse_js("data", true)
+  }
+  | jmespath("data.featured[?price > \`50\`].{id: id, name: name, price: price}")`,
+    },
+    table: {
+      cmd: 'xsel2 -d table.dsl --html specs.html',
+      html: `<table class="specs">
+  <thead>
+    <tr><th>Component</th><th>Engine / Library</th><th>Role</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>DOM &amp; XPath</td><td>libxml2 + lxml2-query</td><td>CSS &amp; XPath 1.0</td></tr>
+    <tr><td>Regex</td><td>Google RE2</td><td>Linear-time matching</td></tr>
+    <tr><td>JSON &amp; JMESPath</td><td>jsoncons</td><td>Shaping &amp; validation</td></tr>
+  </tbody>
+</table>`,
+      dsl: `specs = Scraper()
+  .$("table.specs") {
+    table(key="rows", normalize_headers=true)
+  }`,
+    },
+    aho: {
+      cmd: 'xsel2 -d filter.dsl --html catalog.html',
+      html: `<section class="catalog">
+  <ul class="items">
+    <li>Mechanical Keyboard Pro (C++20 Edition)</li>
+    <li>Mechanical Keyboard Pro - Refurbished</li>
+    <li>CMake + RE2 High-Speed Parser Kit</li>
+    <li>USB-C Coiled Cable (Refurbished)</li>
+  </ul>
+  <article class="notes">
+    Built with C++20, CMake, and Google RE2 for deterministic extraction.
+  </article>
+</section>`,
+      dsl: `catalog = Scraper()
+  .$("ul.items") {
+    find_all("li", Text)
+    | filter(["+Pro", "-Refurbished"])
+    -> "matching_items"
+  }
+  .$("article.notes") {
+    text
+    | extract_many(["C++20", "CMake", "RE2"])
+    -> "detected_tech"
+  }`,
     },
     product: {
       cmd: 'xsel2 -d product.dsl -n summary --html sample.html',
@@ -361,26 +441,6 @@ article = Scraper()
 </ul>`,
       dsl: `// Quick selector mode (-s) ignores the .dsl buffer.\n// Edit the CLI command above to test any CSS selector!`,
     },
-    js_digger: {
-      cmd: 'xsel2 -d digger.dsl --html page.html',
-      html: `<script>
-  window.__HYDRATION__ = {
-    store: 'Apex ' + 'Audio', // string concat & single quotes
-    featured: [
-      { id: 101, name: "Studio Monitor", price: 199.90, },
-      { id: 102, name: "Braided Cable", price: 29.50, }
-    ],
-    active: true,
-  };
-<\/script>`,
-      dsl: `hydration = Scraper()
-  .$("script") {
-    text
-    | js_block("window.__HYDRATION__ =")
-    | parse_js("data", true)
-  }
-  | jmespath("data.featured[?price > \`50\`].{id: id, name: name, price: price}")`,
-    },
   };
 
   let modulePromise = null;
@@ -402,7 +462,8 @@ article = Scraper()
     root.dataset.initialized = 'true';
 
     const baseUrl = root.dataset.baseUrl || '/';
-    const presetEl = root.querySelector('[data-role="preset"]');
+    const initialPreset = root.dataset.initialPreset || 'card';
+    const presetBtns = root.querySelectorAll('[data-role="preset-btn"]');
     const compactEl = root.querySelector('[data-role="compact"]');
     const cmdEl = root.querySelector('[data-role="cmd"]');
     const htmlHost = root.querySelector('[data-role="html"]');
@@ -410,14 +471,20 @@ article = Scraper()
     const outHost = root.querySelector('[data-role="output"]');
     const statusEl = root.querySelector('[data-role="status"]');
     const runBtn = root.querySelector('[data-role="run"]');
+    const copyOutBtn = root.querySelector('[data-role="copy-out"]');
 
     let editors;
+    let lastOutput = '';
 
     function loadPreset(key) {
-      const preset = PRESETS[key] || PRESETS.card;
+      const activeKey = PRESETS[key] ? key : 'card';
+      const preset = PRESETS[activeKey];
       cmdEl.value = preset.cmd;
       editors.setHtml(preset.html);
       editors.setDsl(preset.dsl);
+      presetBtns.forEach((btn) => {
+        btn.setAttribute('aria-pressed', btn.dataset.preset === activeKey ? 'true' : 'false');
+      });
     }
 
     async function execute() {
@@ -435,16 +502,19 @@ article = Scraper()
         const res = JSON.parse(raw);
 
         if (res.ok) {
+          lastOutput = res.stdout;
           editors.setOutput(res.stdout, false);
           statusEl.textContent = `WASM: ${res.elapsedMs.toFixed(2)} ms`;
           statusEl.dataset.state = 'ok';
         } else {
-          editors.setOutput(res.stderr || 'Unknown error', true);
+          lastOutput = res.stderr || 'Unknown error';
+          editors.setOutput(lastOutput, true);
           statusEl.textContent = `Error (${res.elapsedMs.toFixed(2)} ms)`;
           statusEl.dataset.state = 'err';
         }
       } catch (err) {
-        editors.setOutput(String(err), true);
+        lastOutput = String(err);
+        editors.setOutput(lastOutput, true);
         statusEl.textContent = 'WASM load failed';
         statusEl.dataset.state = 'err';
       } finally {
@@ -454,9 +524,11 @@ article = Scraper()
 
     editors = createPlaygroundEditors(htmlHost, dslHost, outHost, execute);
 
-    presetEl.addEventListener('change', () => {
-      loadPreset(presetEl.value);
-      execute();
+    presetBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        loadPreset(btn.dataset.preset);
+        execute();
+      });
     });
 
     compactEl.addEventListener('change', execute);
@@ -468,7 +540,20 @@ article = Scraper()
       }
     });
 
-    loadPreset('card');
+    copyOutBtn.addEventListener('click', async () => {
+      if (!lastOutput) return;
+      try {
+        await navigator.clipboard.writeText(lastOutput);
+        copyOutBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyOutBtn.textContent = 'Copy JSON';
+        }, 1500);
+      } catch {
+        // Ignore clipboard errors in restricted contexts
+      }
+    });
+
+    loadPreset(initialPreset);
     execute();
   }
 
@@ -521,8 +606,8 @@ article = Scraper()
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.45rem 0.85rem;
+    gap: 0.65rem;
+    padding: 0.65rem 0.9rem;
     border-bottom: 1px solid var(--sl-color-gray-5);
     background: var(--sl-color-bg-sidebar);
   }
@@ -532,37 +617,50 @@ article = Scraper()
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.55rem;
   }
 
-  .xsel-pg__label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.82rem;
-    font-weight: 600;
+  .xsel-pg__pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
   }
 
-  .xsel-pg__select {
-    padding: 0.25rem 0.55rem;
-    border-radius: 0.35rem;
-    border: 1px solid var(--sl-color-gray-4);
+  .xsel-pg__pill {
+    padding: 0.28rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid var(--sl-color-gray-5);
     background: var(--sl-color-bg);
-    color: var(--sl-color-text);
-    font-size: 0.82rem;
+    color: var(--sl-color-gray-2);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+
+  .xsel-pg__pill:hover {
+    border-color: var(--sl-accent);
+    color: var(--sl-accent-high);
+  }
+
+  .xsel-pg__pill[aria-pressed='true'] {
+    background: var(--sl-accent-low);
+    border-color: var(--sl-accent);
+    color: var(--sl-accent-high);
   }
 
   .xsel-pg__check {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 0.82rem;
+    gap: 0.35rem;
+    font-size: 0.8rem;
     cursor: pointer;
+    margin-left: 0.25rem;
   }
 
   .xsel-pg__status {
-    font-size: 0.75rem;
-    padding: 0.2rem 0.55rem;
+    font-size: 0.78rem;
+    padding: 0.22rem 0.6rem;
     border-radius: 999px;
     background: var(--sl-color-gray-6);
     color: var(--sl-color-gray-2);
@@ -570,22 +668,23 @@ article = Scraper()
   }
 
   .xsel-pg__status[data-state='ok'] {
-    color: #22c55e;
+    color: var(--xsel-emerald, #10b981);
   }
 
   .xsel-pg__status[data-state='err'] {
-    color: #ef4444;
+    color: var(--sl-color-red-high, #ef4444);
   }
 
   .xsel-pg__btn {
-    padding: 0.35rem 0.8rem;
+    padding: 0.4rem 0.85rem;
     border: none;
     border-radius: 0.4rem;
     background: var(--sl-accent);
-    color: #fff;
-    font-weight: 600;
+    color: var(--sl-color-black, #06181e);
+    font-weight: 700;
     font-size: 0.82rem;
     cursor: pointer;
+    min-height: 40px;
   }
 
   .xsel-pg__btn:disabled {
@@ -596,8 +695,8 @@ article = Scraper()
   .xsel-pg__cli {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.35rem 0.85rem;
+    gap: 0.5rem;
+    padding: 0.5rem 0.9rem;
     border-bottom: 1px solid var(--sl-color-gray-5);
     background: var(--sl-color-bg);
     font-family: var(--sl-font-mono);
@@ -614,7 +713,7 @@ article = Scraper()
     background: transparent;
     color: var(--sl-color-text);
     font-family: var(--sl-font-mono);
-    font-size: 0.84rem;
+    font-size: 0.85rem;
     line-height: normal;
     padding: 0;
     margin: 0;
@@ -624,11 +723,15 @@ article = Scraper()
   .xsel-pg__grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    min-height: 360px;
+    min-height: 340px;
   }
 
   .xsel-pg--full .xsel-pg__grid {
     min-height: 500px;
+  }
+
+  .xsel-pg--compact .xsel-pg__grid {
+    min-height: 230px;
   }
 
   @container (max-width: 900px) {
@@ -680,14 +783,35 @@ article = Scraper()
   }
 
   .xsel-pg__pane-head {
-    padding: 0.32rem 0.75rem;
-    font-size: 0.74rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.42rem 0.85rem;
+    font-size: 0.76rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--sl-color-gray-2);
     border-bottom: 1px solid var(--sl-color-gray-5);
     background: var(--sl-color-bg-sidebar);
+  }
+
+  .xsel-pg__copy {
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-bg);
+    color: var(--sl-color-gray-2);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.14rem 0.45rem;
+    border-radius: 0.3rem;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: pointer;
+  }
+
+  .xsel-pg__copy:hover {
+    border-color: var(--sl-accent);
+    color: var(--sl-accent-high);
   }
 
   .xsel-pg__cm {
@@ -703,7 +827,24 @@ article = Scraper()
     min-height: 440px;
   }
 
+  .xsel-pg--compact .xsel-pg__cm {
+    height: 230px;
+    min-height: 210px;
+  }
+
   .xsel-pg__cm[data-error='true'] :global(.cm-content) {
-    color: #ef4444;
+    color: var(--sl-color-red-high, #ef4444);
+  }
+
+  @media (max-width: 48rem) {
+    .xsel-pg__pill,
+    .xsel-pg__copy {
+      min-height: 40px;
+      min-width: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.4rem 0.75rem;
+    }
   }
 </style>

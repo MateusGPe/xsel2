@@ -3,7 +3,17 @@ title: Quickstart
 description: Build, test, and run xsel2 in C++20, CLI, and Python in a few minutes.
 ---
 
-Get `xsel2` built, tested, and running in a few minutes.
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import XselPlayground from '../../components/XselPlayground.astro';
+import IoPreview from '../../components/IoPreview.astro';
+
+Get `xsel2` built, tested, and running in a few minutes—or try it immediately in your browser below.
+
+<Aside type="tip" title="Try before you build">
+  Want to test a selector or `.dsl` pipeline right now? Use the live WASM sandbox below—no local build required.
+</Aside>
+
+<XselPlayground compact initialPreset="card" />
 
 ## Prerequisites
 
@@ -82,13 +92,20 @@ The `examples/` directory includes a sample HTML page (`examples/sample.html`), 
 
 ### 2. Run a `.dsl` scraper with `xsel2`
 
-```bash
-# Run the "summary" scraper from examples/product.dsl
+<IoPreview
+  leftTitle="CLI Command"
+  rightTitle="JSON Output (stdout)"
+  leftCode={`# Run the "summary" scraper from examples/product.dsl
 ./build/xsel2 -d examples/product.dsl -n summary --html examples/sample.html
 
 # Or stream HTML through stdin (pipe mode)
-cat examples/sample.html | ./build/xsel2 -d examples/product.dsl -n summary -c
-```
+cat examples/sample.html | ./build/xsel2 -d examples/product.dsl -n summary -c`}
+  rightCode={`{
+  "title": "Mechanical Keyboard Pro",
+  "sku": "MK-PRO-75",
+  "rating": 4.8
+}`}
+/>
 
 ### 3. Run the Python example (`scraperpy`)
 

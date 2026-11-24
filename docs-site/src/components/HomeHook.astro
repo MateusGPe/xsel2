@@ -94,7 +94,12 @@ product = Scraper()
 
 <section class="xsel-pillars" aria-label="Why xsel2">
   <div class="xsel-pillar">
-    <div class="xsel-pillar__kicker">Zero JS Runtime</div>
+    <div class="xsel-pillar__top">
+      <svg class="xsel-pillar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>
+      </svg>
+      <span class="xsel-pillar__kicker">Zero JS Runtime</span>
+    </div>
     <h3>Deterministic Script Extraction</h3>
     <p>
       Heuristically extracts and parses embedded JS/JSON objects—comments, unquoted keys,
@@ -102,7 +107,12 @@ product = Scraper()
     </p>
   </div>
   <div class="xsel-pillar">
-    <div class="xsel-pillar__kicker">C++20 Native Core</div>
+    <div class="xsel-pillar__top">
+      <svg class="xsel-pillar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+      <span class="xsel-pillar__kicker">C++20 Native Core</span>
+    </div>
     <h3>Built for Throughput</h3>
     <p>
       Backed by <code>libxml2</code>, Google <code>RE2</code>, compressed-DFA Aho-Corasick,
@@ -110,7 +120,12 @@ product = Scraper()
     </p>
   </div>
   <div class="xsel-pillar">
-    <div class="xsel-pillar__kicker">Write Once</div>
+    <div class="xsel-pillar__top">
+      <svg class="xsel-pillar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/>
+      </svg>
+      <span class="xsel-pillar__kicker">Write Once</span>
+    </div>
     <h3>CLI, Python, C++20 &amp; WASM</h3>
     <p>
       Author pipelines in <code>.dsl</code> or fluent builders and run the exact same engine
@@ -118,7 +133,12 @@ product = Scraper()
     </p>
   </div>
   <div class="xsel-pillar">
-    <div class="xsel-pillar__kicker">Batteries Included</div>
+    <div class="xsel-pillar__top">
+      <svg class="xsel-pillar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M12 2l3 7h7l-5.5 4.5 2 7L12 16l-6.5 4.5 2-7L2 9h7l3-7z"/>
+      </svg>
+      <span class="xsel-pillar__kicker">Batteries Included</span>
+    </div>
     <h3>End-to-End Shaping</h3>
     <p>
       CSS, XPath 1.0, RFC 3986 URLs, <code>absl::Time</code> dates, <code>utf8proc</code> Unicode,
@@ -128,27 +148,27 @@ product = Scraper()
 </section>
 
 <section class="xsel-flow" aria-label="Pipeline architecture">
-  <div class="xsel-flow__step">
+  <a href="/xsel2/dsl/mental-model/#pipeline-architecture" class="xsel-flow__step">
     <span class="xsel-flow__num">01</span>
     <strong>Ingest</strong>
     <span>HTML, XML, JSON, CSV, or stdin stream</span>
-  </div>
+  </a>
   <div class="xsel-flow__arrow" aria-hidden="true">&rarr;</div>
-  <div class="xsel-flow__step">
+  <a href="/xsel2/dsl/steps-reference/#dom-selection--extraction" class="xsel-flow__step">
     <span class="xsel-flow__num">02</span>
     <strong>Select</strong>
     <span>CSS, XPath 1.0, or <code>js_block</code></span>
-  </div>
+  </a>
   <div class="xsel-flow__arrow" aria-hidden="true">&rarr;</div>
-  <div class="xsel-flow__step">
+  <a href="/xsel2/dsl/steps-reference/#regex-aho-corasick--filtering" class="xsel-flow__step">
     <span class="xsel-flow__num">03</span>
     <strong>Transform</strong>
     <span>RE2, Aho-Corasick, URL, Date, Fuzzy</span>
-  </div>
+  </a>
   <div class="xsel-flow__arrow" aria-hidden="true">&rarr;</div>
-  <div class="xsel-flow__step">
+  <a href="/xsel2/dsl/steps-reference/#json-jmespath-jsonpath--schema" class="xsel-flow__step">
     <span class="xsel-flow__num">04</span>
     <strong>Shape &amp; Emit</strong>
     <span>JMESPath, JSON Schema, Typed JSON / NDJSON</span>
-  </div>
+  </a>
 </section>

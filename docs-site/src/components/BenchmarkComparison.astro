@@ -1,0 +1,78 @@
+---
+---
+
+<section class="xsel-comparison" aria-label="Benchmarks and feature comparison">
+  <div class="xsel-bench-strip">
+    <div class="xsel-bench-stat xsel-bench-stat--highlight">
+      <div class="xsel-bench-stat__value">38.1 ms</div>
+      <div class="xsel-bench-stat__label">1,000 HTML Files Parsed (<code>-j 0</code>)</div>
+      <div class="xsel-bench-stat__sub">13.3&times; faster than Python + BeautifulSoup + lxml (505.3 ms)</div>
+    </div>
+    <div class="xsel-bench-stat">
+      <div class="xsel-bench-stat__value">9.8 MB</div>
+      <div class="xsel-bench-stat__label">Peak RSS Memory Footprint</div>
+      <div class="xsel-bench-stat__sub">4.2&times; lower than Python + BeautifulSoup + lxml (41.4 MB)</div>
+    </div>
+    <div class="xsel-bench-stat">
+      <div class="xsel-bench-stat__value">0 ms V8</div>
+      <div class="xsel-bench-stat__label">Embedded <code>&lt;script&gt;</code> Extraction</div>
+      <div class="xsel-bench-stat__sub"><code>js_block</code> + <code>parse_js</code> parses JS state without a browser</div>
+    </div>
+  </div>
+  <p class="xsel-bench-note">
+    Measured locally on 1,000 copies of <code>examples/sample.html</code> (12-core Linux x86_64):
+    <code>./build/xsel2 -d examples/product.dsl -n summary --batch ... -j 0</code> (38.1 ms, 9.8 MB RSS; single-threaded <code>-j 1</code>: 182.2 ms, 9.4 MB RSS)
+    vs. Python 3 + <code>beautifulsoup4</code> 4.14 + <code>lxml</code> 6.0 (505.3 ms, 41.4 MB RSS, requiring regex fallback for unquoted JS keys).
+  </p>
+
+  <div class="xsel-matrix-wrap">
+    <table class="xsel-matrix">
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th class="xsel-matrix__col-xsel">xsel2</th>
+          <th>BeautifulSoup + regex</th>
+          <th>pup / htmlq</th>
+          <th>Playwright / Puppeteer</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CSS Selectors + XPath 1.0</td>
+          <td class="xsel-matrix__col-xsel">Both built-in</td>
+          <td>CSS (soupsieve), no XPath</td>
+          <td>CSS only</td>
+          <td>CSS + XPath</td>
+        </tr>
+        <tr>
+          <td>Embedded <code>&lt;script&gt;</code> JS/JSON without V8</td>
+          <td class="xsel-matrix__col-xsel">Yes (<code>js_block</code> + <code>parse_js</code>)</td>
+          <td>Manual regex + brittle hacks</td>
+          <td>No</td>
+          <td>Full browser V8 runtime</td>
+        </tr>
+        <tr>
+          <td>Multi-threaded batch NDJSON streaming</td>
+          <td class="xsel-matrix__col-xsel">Yes (<code>--batch -j 0</code>)</td>
+          <td>Manual multiprocessing</td>
+          <td>Single-file CLI</td>
+          <td>Heavy browser contexts</td>
+        </tr>
+        <tr>
+          <td>RE2, Aho-Corasick, JMESPath &amp; Schema</td>
+          <td class="xsel-matrix__col-xsel">Built into pipeline</td>
+          <td>Separate libraries</td>
+          <td>No</td>
+          <td>External JS libraries</td>
+        </tr>
+        <tr>
+          <td>CLI + Python + C++20 + WASM</td>
+          <td class="xsel-matrix__col-xsel">All 4 from one core</td>
+          <td>Python only</td>
+          <td>CLI only</td>
+          <td>Node / Python / etc.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>

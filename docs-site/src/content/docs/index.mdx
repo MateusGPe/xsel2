@@ -3,9 +3,12 @@ title: xsel2
 description: Declarative, compiled HTML/XML & JSON extraction pipelines in C++20, Python, and WebAssembly.
 template: splash
 hero:
-  tagline: Turn messy HTML, XML, and embedded <script> blobs into clean, typed JSON—in one compiled C++20 pipeline, with zero JS runtime.
+  tagline: Structured data out of messy HTML and inline script blobs—at C++20 speed, without spinning up a headless browser.
+  image:
+    file: ../../assets/hero-flow.svg
+    alt: Messy HTML and window.__STATE__ script transformed by xsel2 into clean typed NDJSON
   actions:
-    - text: Quickstart
+    - text: 5-Minute Quickstart
       link: /xsel2/quickstart/
       icon: right-arrow
     - text: Live WASM Playground
@@ -17,14 +20,19 @@ hero:
 ---
 
 import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import HeroVisual from '../../components/HeroVisual.astro';
 import HomeHook from '../../components/HomeHook.astro';
 import XselPlayground from '../../components/XselPlayground.astro';
+import IoPreview from '../../components/IoPreview.astro';
+import BenchmarkComparison from '../../components/BenchmarkComparison.astro';
+
+<HeroVisual />
 
 <HomeHook />
 
 ## Try `xsel2` Live in WebAssembly
 
-Edit the CLI command, HTML input, or `.dsl` pipeline below—it compiles and runs the real C++20 `xsel2` engine (`libxml2` + `RE2` + `jsoncons`) directly in your browser.
+Click any preset pill below or edit the CLI command, HTML input, and `.dsl` pipeline—it runs the real C++20 `xsel2` engine (`libxml2` + `RE2` + `jsoncons`) directly in your browser.
 
 <div class="xsel-hero-playground">
   <XselPlayground />
@@ -34,51 +42,96 @@ Edit the CLI command, HTML input, or `.dsl` pipeline below—it compiles and run
 
 <Tabs>
   <TabItem label="CLI (xsel2)">
-    ```bash
-    # Quick CSS selector extraction
-    xsel2 -s "h1.product-title" --html examples/sample.html
+    <IoPreview
+      leftTitle="CLI Invocation"
+      rightTitle="Typed JSON Output"
+      leftCode={`# Quick CSS selector extraction
+xsel2 -s "h1.product-title" --html examples/sample.html
 
-    # Run a .dsl scraper
-    xsel2 -d examples/product.dsl -n summary --html examples/sample.html
+# Run a .dsl scraper
+xsel2 -d examples/product.dsl -n summary --html examples/sample.html
 
-    # Stream HTML through stdin (pipe mode)
-    cat examples/sample.html | xsel2 -d examples/product.dsl -n summary -c
-
-    # Multi-threaded batch scraping (NDJSON)
-    xsel2 -d examples/product.dsl -n summary --batch examples/*.html -j 0
-    ```
+# Multi-threaded batch scraping (NDJSON)
+xsel2 -d examples/product.dsl -n summary --batch examples/*.html -j 0`}
+      rightCode={`{
+  "title": "Mechanical Keyboard Pro",
+  "sku": "MK-PRO-75",
+  "rating": 4.8
+}`}
+    />
   </TabItem>
   <TabItem label="Python (scraperpy)">
-    ```python
-    import scraperpy
+    <IoPreview
+      leftTitle="Python (scraperpy)"
+      rightTitle="Returned Python dict"
+      leftCode={`import scraperpy
 
-    s = scraperpy.ScraperPy()
-    (
-        s.select("h1.product-title").text().squish().set("title")
-         .select(".price").text().regex_extract(r"([0-9]+\.[0-9]+)", 1).set("price")
-         .select("script").text().js_block("window.__PRODUCT_STATE__ =").parse_js("state", True)
-    )
-    result = s.from_file("examples/sample.html")
-    ```
+s = scraperpy.ScraperPy()
+(
+    s.select("h1.product-title").text().squish().set("title")
+     .select(".price").text().regex_extract(r"([0-9]+\\.[0-9]+)", 1).set("price")
+     .select("script").text().js_block("window.__PRODUCT_STATE__ =").parse_js("state", True)
+)
+result = s.from_file("examples/sample.html")`}
+      rightCode={`{
+  "title": "Mechanical Keyboard Pro",
+  "price": "149.99",
+  "state": {
+    "sku": "MK-PRO-75",
+    "rating": 4.8,
+    "inStock": True,
+    "tags": ["mechanical", "wireless", "rgb"]
+  }
+}`}
+    />
   </TabItem>
   <TabItem label="C++20 API">
-    ```cpp
-    #include "scraper/scraper.hpp"
-    #include <iostream>
+    <IoPreview
+      leftTitle="C++20 (scraper::ScraperBuilder)"
+      rightTitle="jsoncons::json Output"
+      leftCode={`#include "scraper/scraper.hpp"
+#include <iostream>
 
-    int main() {
-      scraper::ScraperBuilder builder;
-      builder.Select("h1.product-title").Text().Squish().Set("title");
-      auto result = builder.scrape_from_file("examples/sample.html");
-      std::cout << jsoncons::pretty_print(result) << '\n';
-    }
-    ```
+int main() {
+  scraper::ScraperBuilder builder;
+  builder.Select("h1.product-title").Text().Squish().Set("title");
+  auto result = builder.scrape_from_file("examples/sample.html");
+  std::cout << jsoncons::pretty_print(result) << '\\n';
+}`}
+      rightCode={`{
+  "title": "Mechanical Keyboard Pro"
+}`}
+    />
   </TabItem>
 </Tabs>
 
+## Why `xsel2` Instead of BeautifulSoup or Playwright?
+
+<BenchmarkComparison />
+
+## Built For Real-World Extraction
+
+<div class="xsel-recipes">
+  <div class="xsel-recipe">
+    <span class="xsel-recipe__tag">SPA Hydration</span>
+    <h3>Scrape <code>window.__STATE__</code> at Scale</h3>
+    <p>Extract embedded JS state objects—with comments, unquoted keys, and string concatenation—without booting Chromium or Node.</p>
+  </div>
+  <div class="xsel-recipe">
+    <span class="xsel-recipe__tag">CI/CD Validation</span>
+    <h3>HTML &amp; JSON Schema Gates</h3>
+    <p>Validate extracted payloads with built-in JSON Schema and JMESPath assertions in a single fast CLI pass.</p>
+  </div>
+  <div class="xsel-recipe">
+    <span class="xsel-recipe__tag">Text &amp; Logs</span>
+    <h3>Aho-Corasick Multi-Pattern Filter</h3>
+    <p>Match thousands of keywords in linear time with compressed-DFA <code>extract_many</code> and boolean <code>filter</code> rules.</p>
+  </div>
+</div>
+
 ## Core Capabilities
 
-<CardGrid stagger>
+<CardGrid>
   <Card title="HTML/XML Scraping & DSL" icon="document">
     CSS selectors &amp; XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table &amp; metadata extraction, and a compiled `.dsl` pipeline language.
   </Card>
