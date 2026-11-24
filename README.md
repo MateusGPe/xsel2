@@ -65,7 +65,7 @@ product = Scraper()
 }
 ```
 
-See [`xsel2` DSL & Pipeline Steps](docs/dsl-and-steps.md) for the full language and step reference.
+See [`xsel2` DSL & Pipeline Steps](https://github.com/MateusGPe/xsel2/blob/main/docs/dsl-and-steps.md) for the full language and step reference.
 
 ## Features
 
@@ -79,16 +79,17 @@ See [`xsel2` DSL & Pipeline Steps](docs/dsl-and-steps.md) for the full language 
 
 | Guide | Description |
 | --- | --- |
-| [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, helper scripts, building, testing, and 5-minute walkthrough |
-| [CLI Reference](docs/cli.md) | `xsel2` CLI (single input, `stdin` pipe, and multi-threaded `--batch`) |
-| [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `Document`, `scrape_many`, `InsertMode`, `AhoCorasick`, `.dsl` loading, JSON queries, and `pip`/`uv` packaging |
-| [`xsel2` DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `xsel2` DSL (`.dsl`) manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and pipeline steps reference |
-| [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
-| [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`metadata.dsl`](examples/metadata.dsl) / [`metadata_sample.html`](examples/metadata_sample.html), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), and complete all-steps showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py) |
+| [Website & Interactive Docs](https://mateusgpe.github.io/xsel2) | Full documentation site and WebAssembly playground |
+| [Quickstart](https://github.com/MateusGPe/xsel2/blob/main/docs/quickstart.md) | Prerequisites, CMake presets, helper scripts, building, testing, and 5-minute walkthrough |
+| [CLI Reference](https://github.com/MateusGPe/xsel2/blob/main/docs/cli.md) | `xsel2` CLI (single input, `stdin` pipe, and multi-threaded `--batch`) |
+| [Python Bindings (`scraperpy`)](https://github.com/MateusGPe/xsel2/blob/main/docs/python.md) | `ScraperPy`, `Document`, `scrape_many`, `InsertMode`, `AhoCorasick`, `.dsl` loading, JSON queries, and `pip`/`uv` packaging |
+| [`xsel2` DSL & Pipeline Steps](https://github.com/MateusGPe/xsel2/blob/main/docs/dsl-and-steps.md) | Complete `xsel2` DSL (`.dsl`) manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and pipeline steps reference |
+| [C++20 API Guide](https://github.com/MateusGPe/xsel2/blob/main/docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
+| [Examples](https://github.com/MateusGPe/xsel2/tree/main/examples) | Runnable [`sample.html`](https://github.com/MateusGPe/xsel2/blob/main/examples/sample.html), [`product.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/product.dsl), [`scrape_example.py`](https://github.com/MateusGPe/xsel2/blob/main/examples/scrape_example.py), [`metadata.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/metadata.dsl) / [`metadata_sample.html`](https://github.com/MateusGPe/xsel2/blob/main/examples/metadata_sample.html), [`marketplace.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/marketplace.dsl) / [`marketplace_example.py`](https://github.com/MateusGPe/xsel2/blob/main/examples/marketplace_example.py), and complete all-steps showcase [`all_steps_showcase.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](https://github.com/MateusGPe/xsel2/blob/main/examples/all_steps_showcase.py) |
 
 ## Quick Build & Test
 
-Requires a C++20 compiler (GCC or Clang), CMake >= 3.24, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `utf8proc`, `Catch2`) are fetched automatically via [CPM.cmake](cmake/CPM.cmake). `libxml2` uses the system package if found, and falls back to fetching `GNOME/libxml2` via CPM otherwise (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`).
+Requires a C++20 compiler (GCC, Clang, or MSVC), CMake >= 3.24, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `utf8proc`, `Catch2`) are fetched automatically via [CPM.cmake](https://github.com/MateusGPe/xsel2/blob/main/cmake/CPM.cmake). `libxml2` uses the system package if found, and falls back to fetching `GNOME/libxml2` via CPM otherwise (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`).
 
 ```bash
 cmake --preset debug
@@ -96,7 +97,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Or run `./scripts/build_and_test.sh`. Use `--preset release` (`build-release/`) for an optimized `-O3` build. To build/install the `scraperpy` Python package via `scikit-build-core`, run `uv pip install .` (or `./scripts/pack_python.sh --clean --test`). See [Quickstart](docs/quickstart.md) for install, helper scripts, and `asan-ubsan` details.
+Or run `./scripts/build_and_test.sh`. Use `--preset release` (`build-release/`) for an optimized `-O3` build. To build/install the `scraperpy` Python package via `scikit-build-core`, run `uv pip install .` (or `./scripts/pack_python.sh --clean --test`). See [Quickstart](https://github.com/MateusGPe/xsel2/blob/main/docs/quickstart.md) for install, helper scripts, and `asan-ubsan` details.
 
 ## Quick Examples
 
@@ -119,6 +120,12 @@ cat examples/sample.html | ./build/xsel2 -d examples/product.dsl -n summary -c
 ### Python (`scraperpy`)
 
 ```bash
+pip install scraperpy
+```
+
+Or run the repository examples against a local build:
+
+```bash
 PYTHONPATH=build:. python3 examples/scrape_example.py
 PYTHONPATH=build:. python3 examples/marketplace_example.py
 PYTHONPATH=build:. python3 examples/all_steps_showcase.py
@@ -132,7 +139,7 @@ s.select("h1").text().trim().set("title")
 result = s.from_string("<html><body><h1>  Hello  </h1></body></html>")
 ```
 
-Type stubs are provided in [`scraperpy-stubs/_scraperpy.pyi`](scraperpy-stubs/_scraperpy.pyi).
+Type stubs are provided in [`scraperpy-stubs/_scraperpy.pyi`](https://github.com/MateusGPe/xsel2/blob/main/scraperpy-stubs/_scraperpy.pyi).
 
 ## Project Structure
 

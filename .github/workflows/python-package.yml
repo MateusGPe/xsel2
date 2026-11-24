@@ -1,4 +1,4 @@
-name: Pack scraperpy
+name: Pack & Publish scraperpy
 
 on:
   push:
@@ -7,18 +7,26 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_target:
+        description: "Publish target (requires ENABLE_PYPI_PUBLISH=true repository variable)"
+        type: choice
+        default: none
+        options:
+          - none
+          - testpypi
+          - pypi
+
+concurrency:
+  group: python-package-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
-  pack-python:
+  build_sdist:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxml2-dev python3-dev ninja-build
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -26,13 +34,100 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Build and verify scraperpy wheel & sdist
-        run: |
-          chmod +x scripts/pack_python.sh
-          ./scripts/pack_python.sh --clean --test
+      - name: Build sdist
+        run: uv build --sdist --out-dir dist .
 
-      - name: Upload distribution artifacts
+      - name: Check distribution metadata with twine
+        run: uv run --no-project --with twine -- twine check dist/*
+
+      - name: Upload sdist artifact
         uses: actions/upload-artifact@v4
         with:
-          name: scraperpy-dist
-          path: dist/*
+          name: scraperpy-sdist
+          path: dist/*.tar.gz
+
+  build_wheels:
+    needs: build_sdist
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            only: ""
+          - os: ubuntu-24.04-arm
+            only: ""
+          - os: macos-15
+            only: ""
+          - os: macos-15-intel
+            only: ""
+          - os: windows-latest
+            only: ""
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test wheels with cibuildwheel
+        uses: pypa/cibuildwheel@v3
+        env:
+          CIBW_BUILD_VERBOSITY: 1
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraperpy-wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  # Ready for PyPI Trusted Publishing (OIDC):
+  # 1. Configure Trusted Publishing on test.pypi.org / pypi.org for MateusGPe/xsel2 (workflow: python-package.yml).
+  # 2. Set repository variable ENABLE_PYPI_PUBLISH=true in GitHub Settings -> Secrets and variables -> Actions -> Variables.
+  publish_testpypi:
+    needs: [build_sdist, build_wheels]
+    if: >-
+      vars.ENABLE_PYPI_PUBLISH == 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.publish_target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/scraperpy
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scraperpy-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish_pypi:
+    needs: [build_sdist, build_wheels]
+    if: >-
+      vars.ENABLE_PYPI_PUBLISH == 'true' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_target == 'pypi'))
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/scraperpy
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scraperpy-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

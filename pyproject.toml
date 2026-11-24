@@ -20,9 +20,22 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Text Processing :: Markup :: HTML",
     "Topic :: Text Processing :: Markup :: XML",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://mateusgpe.github.io/xsel2"
+Documentation = "https://mateusgpe.github.io/xsel2"
+Repository = "https://github.com/MateusGPe/xsel2"
+Issues = "https://github.com/MateusGPe/xsel2/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
@@ -34,6 +47,7 @@ wheel.packages = ["scraperpy"]
 sdist.include = [
     "CMakeLists.txt",
     "cmake/CPM.cmake",
+    "LICENSE",
     "README.md",
     "pyproject.toml",
     "src/**",
@@ -48,3 +62,25 @@ sdist.exclude = [
     ".git*",
     ".cache",
 ]
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
+skip = "*-musllinux_* *-win32 pp*"
+build-verbosity = 1
+test-requires = ["pytest"]
+test-command = "pytest {project}/tests/test_python.py -v"
+
+[tool.cibuildwheel.config-settings]
+"cmake.define.XSEL_FETCH_LIBXML2" = "ON"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+environment = { CPM_SOURCE_CACHE = "/tmp/cpm-cache" }
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+environment = { CPM_SOURCE_CACHE = "/tmp/cpm-cache" }
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+environment = { CPM_SOURCE_CACHE = "C:\\cpm-cache" }

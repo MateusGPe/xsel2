@@ -75,17 +75,20 @@ CPMAddPackage(
     "JSONCONS_BUILD_TESTS OFF")
 
 if(NOT EMSCRIPTEN)
-  CPMAddPackage(
-    NAME pybind11
-    GITHUB_REPOSITORY pybind/pybind11
-    GIT_TAG stable
-    GIT_SHALLOW TRUE)
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    CPMAddPackage(
+      NAME pybind11
+      GITHUB_REPOSITORY pybind/pybind11
+      GIT_TAG stable
+      GIT_SHALLOW TRUE)
+  endif()
 endif()
 
 CPMAddPackage(
   NAME lxml2_query
   GITHUB_REPOSITORY MateusGPe/lxml2-query-v1
-  GIT_TAG main
+  GIT_TAG 6b865e222ecdf148462ad342d9e91bb157c9cbb9
   GIT_SHALLOW TRUE)
 
 if(TARGET lxml2-query)
@@ -133,8 +136,8 @@ endif()
 
 set(XSEL_WARN_FLAGS
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
-  $<$<CXX_COMPILER_ID:MSVC>:/W4>
-  $<$<CONFIG:Release>:-O3>)
+  $<$<CXX_COMPILER_ID:MSVC>:/W4 /utf-8>
+  $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:GNU,Clang>>:-O3>)
 
 # ── Common library ───────────────────────────────────────────────────────────
 add_library(xsel_common STATIC
