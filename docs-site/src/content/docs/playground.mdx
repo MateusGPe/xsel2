@@ -1,6 +1,6 @@
 ---
 title: Live WASM Playground
-description: Run xsel2 CLI commands, .dsl pipelines, and CSS selectors directly in your browser via WebAssembly.
+description: Run xsel2 CLI commands, xsel2 (.dsl) pipelines, and CSS selectors directly in your browser via WebAssembly.
 tableOfContents: false
 ---
 
@@ -13,5 +13,5 @@ Run the real C++20 `xsel2` engine (`libxml2`, `lxml2-query`, `RE2`, `utf8proc`, 
 ## Playground Tips
 
 - **CLI Flags**: Edit the `$ xsel2 ...` bar and press **Enter** to test `-d <file>`, `-n <scraper>`, `-s <css>`, `-c` / `--compact`, or `-h` / `--help`.
-- **Virtual Buffers**: Any filename passed to `-d` or `--html` automatically maps to the **DSL Pipeline** and **HTML Input** panes below.
+- **Virtual Buffers**: Any filename passed to `-d` or `--html` automatically maps to the **`xsel2` DSL** and **HTML Input** panes below.
 - **Native-Only Flags**: Multi-threaded `--batch` / `-j` flags are disabled in the browser WASM sandbox; use the native `xsel2` binary for parallel batch scraping.

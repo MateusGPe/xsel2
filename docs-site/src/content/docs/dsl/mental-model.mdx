@@ -1,13 +1,15 @@
 ---
 title: Mental Model & Execution
-description: Lexical specification, variables, scraper declarations, execution & merge model, and engine limits.
+description: Lexical specification, variables, scraper declarations, execution & merge model, and engine limits for the xsel2 DSL.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 import XselPlayground from '../../../components/XselPlayground.astro';
 
+The **`xsel2`** DSL (`.dsl` files) is the declarative pipeline language for `xsel2`.
+
 <Aside type="tip" title="Explore state flow interactively">
-  Every block in `.dsl` maintains a working string list (`values`) and an output object (`dict`). Try editing the pipeline below to see how `js_block`, `parse_js`, and `jmespath` transform them in real time.
+  Every block in the `xsel2` DSL (`.dsl`) maintains a working string list (`values`) and an output object (`dict`). Try editing the pipeline below to see how `js_block`, `parse_js`, and `jmespath` transform them in real time.
 </Aside>
 
 <XselPlayground compact initialPreset="js_digger" />
@@ -18,7 +20,7 @@ import XselPlayground from '../../../components/XselPlayground.astro';
 
 Single-line (`#` or `//`) and multi-line (`/* ... */`) comments are stripped by the lexer (`src/scraper/dsl/lexer.cpp`):
 
-```dsl
+```xsel2
 # Hash single-line comment
 // C++ style single-line comment
 /* Multi-line
@@ -31,7 +33,7 @@ Single-line (`#` or `//`) and multi-line (`/* ... */`) comments are stripped by 
 
 Top-level `let` statements bind any DSL value (string, int, float, bool, `null`, list, object, or enum identifier) to a variable name:
 
-```dsl
+```xsel2
 let title_sel = "h1.product-title";
 let base_url = "https://example.com"
 let keep_keys = ["title", "price"]
@@ -52,7 +54,7 @@ let schema_patch = {source: "web", active: true}
 
 A top-level scraper definition binds an identifier to a chain of pipeline steps:
 
-```dsl
+```xsel2
 # All four declaration styles are equivalent:
 product = Scraper().select("h1").text().trim().set("title");
 product: ScraperPy().select("h1").text().trim().set("title")
@@ -93,7 +95,7 @@ product = .select("h1").text().trim().set("title")
 
 Every step accepts positional arguments, keyword arguments (`name=value`), or a mix where **positional arguments come first**:
 
-```dsl
+```xsel2
 json_parse("cfg", allow_comments=true, allow_trailing_comma=true)
 ```
 

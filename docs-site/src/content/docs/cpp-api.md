@@ -12,7 +12,7 @@ description: Embedding xsel2's scraper, digger, xsel_query, and xsel_common CMak
 | `xsel_common` | `common/ahocorasick.hpp`, `common/fuzzy.hpp`, `common/hex_utils.hpp`, `common/json_utils.hpp`, `common/string_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, Jaro-Winkler & Levenshtein fuzzy matching, hex/string/UTF-8 & JSON helpers |
 | `digger` | `digger/digger.hpp`, `digger/tokenizer.hpp`, `digger/scalar_parser.hpp` | Heuristic JS/JSON object extractor |
 | `xsel_query` | `query/json_query.hpp` | JMESPath, JSONPath, JSON Schema & CSV over `jsoncons::json` |
-| `scraper` | `scraper/scraper.hpp`, `scraper/dsl_parser.hpp`, `scraper/merge.hpp` | Full scraping pipeline, steps, and `.dsl` parser |
+| `scraper` | `scraper/scraper.hpp`, `scraper/dsl_parser.hpp`, `scraper/merge.hpp` | Full scraping pipeline, steps, and `xsel2` (`.dsl`) parser |
 
 Linking `scraper` transitively links `xsel_common`, `digger`, `xsel_query`, `jsoncons`, `mgp::lxml2-query`, `re2::re2`, `utf8proc`, and Abseil.
 

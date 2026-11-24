@@ -39,7 +39,7 @@ export default defineConfig({
           ],
         },
         {
-          label: 'DSL Manual',
+          label: 'xsel2 DSL',
           items: [
             { label: 'Mental Model & Execution', slug: 'dsl/mental-model' },
             { label: 'Grammar & Control Flow', slug: 'dsl/grammar-and-control-flow' },

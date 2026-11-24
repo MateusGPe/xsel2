@@ -39,7 +39,7 @@ Run `xsel2 --help` (or `-h`) to print usage.
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `-d`, `--dsl <file>` | Yes (unless `-s`) | Path to a `.dsl` file |
+| `-d`, `--dsl <file>` | Yes (unless `-s`) | Path to an `xsel2` DSL (`.dsl`) file |
 | `-n`, `--name <scraper>` | No | Name of a specific scraper in the `.dsl` file. If omitted and the file defines one scraper, that scraper's result is printed; if multiple scrapers are defined, all are run and keyed by name |
 | `-s`, `--selector <css>` | Yes (unless `-d`) | Quick single-selector extraction (`Select(selector, "matches").Text().Squish().Set("text")`) |
 | `--html <file\|str\|->` | No | HTML input file, inline HTML string, or `-` for `stdin` (defaults to `stdin` when omitted) |

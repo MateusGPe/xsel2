@@ -1,10 +1,10 @@
 # xsel2
 
-High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine written in C++20, with the `xsel2` CLI, Python bindings (`scraperpy`), and a fluent `.dsl` pipeline language.
+High-performance HTML/XML scraping, multi-pattern text search, and JSON transformation engine written in C++20, with the `xsel2` CLI, Python bindings (`scraperpy`), and the `xsel2` DSL (`.dsl`), a fluent pipeline language.
 
 ## 30-Second Before vs. After
 
-Turn messy real-world HTML—whitespace-padded text, formatted prices, lazy `data-src` / relative URLs, dynamic `<dt>`/`<dd>` specs, and embedded `<script>` JS with unquoted keys, comments, and trailing commas—into clean, typed JSON in a 12-line `.dsl` file (no JS runtime required).
+Turn messy real-world HTML—whitespace-padded text, formatted prices, lazy `data-src` / relative URLs, dynamic `<dt>`/`<dd>` specs, and embedded `<script>` JS with unquoted keys, comments, and trailing commas—into clean, typed JSON in a 12-line `xsel2` (`.dsl`) file (no JS runtime required).
 
 **Before (`card.html`)**
 
@@ -30,7 +30,7 @@ Turn messy real-world HTML—whitespace-padded text, formatted prices, lazy `dat
 
 **After (`product.dsl` — 12 lines)**
 
-```dsl
+```xsel2
 let base = "https://shop.example"
 product = Scraper()
   .$("article.product-card") {
@@ -65,11 +65,11 @@ product = Scraper()
 }
 ```
 
-See [DSL & Pipeline Steps](docs/dsl-and-steps.md) for the full language and step reference.
+See [`xsel2` DSL & Pipeline Steps](docs/dsl-and-steps.md) for the full language and step reference.
 
 ## Features
 
-- **HTML/XML Scraping & DSL**: CSS selector & XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table & metadata extraction, fluent C++/Python pipelines, and a `.dsl` parser (`parse_dsl_string`, `load_scrapers`).
+- **HTML/XML Scraping & `xsel2` DSL**: CSS selector & XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table & metadata extraction, fluent C++/Python pipelines, and an `xsel2` (`.dsl`) parser (`parse_dsl_string`, `load_scrapers`).
 - **JS/JSON Digger**: Heuristically extracts and parses embedded JavaScript/JSON objects, comments, string concatenations, and typed scalars without executing JS.
 - **Multi-Pattern & Fuzzy Algorithms**: Compressed-DFA Aho-Corasick matcher (`AhoCorasick`, `filter`, `replace`, `extract_many`) and UTF-8 Jaro-Winkler / Levenshtein fuzzy matching (`fuzzy_filter`, `similarity`).
 - **JSON & CSV Queries**: JMESPath, JSONPath, JSON Schema, and CSV parsing/serialization powered by `jsoncons`.
@@ -82,7 +82,7 @@ See [DSL & Pipeline Steps](docs/dsl-and-steps.md) for the full language and step
 | [Quickstart](docs/quickstart.md) | Prerequisites, CMake presets, helper scripts, building, testing, and 5-minute walkthrough |
 | [CLI Reference](docs/cli.md) | `xsel2` CLI (single input, `stdin` pipe, and multi-threaded `--batch`) |
 | [Python Bindings (`scraperpy`)](docs/python.md) | `ScraperPy`, `Document`, `scrape_many`, `InsertMode`, `AhoCorasick`, `.dsl` loading, JSON queries, and `pip`/`uv` packaging |
-| [DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `.dsl` manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and pipeline steps reference |
+| [`xsel2` DSL & Pipeline Steps](docs/dsl-and-steps.md) | Complete `xsel2` DSL (`.dsl`) manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and pipeline steps reference |
 | [C++20 API Guide](docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
 | [Examples](examples/) | Runnable [`sample.html`](examples/sample.html), [`product.dsl`](examples/product.dsl), [`scrape_example.py`](examples/scrape_example.py), [`metadata.dsl`](examples/metadata.dsl) / [`metadata_sample.html`](examples/metadata_sample.html), [`marketplace.dsl`](examples/marketplace.dsl) / [`marketplace_example.py`](examples/marketplace_example.py), and complete all-steps showcase [`all_steps_showcase.dsl`](examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](examples/all_steps_showcase.py) |
 

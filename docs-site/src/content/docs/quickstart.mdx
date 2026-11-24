@@ -10,7 +10,7 @@ import IoPreview from '../../components/IoPreview.astro';
 Get `xsel2` built, tested, and running in a few minutes—or try it immediately in your browser below.
 
 <Aside type="tip" title="Try before you build">
-  Want to test a selector or `.dsl` pipeline right now? Use the live WASM sandbox below—no local build required.
+  Want to test a selector or `xsel2` (`.dsl`) pipeline right now? Use the live WASM sandbox below—no local build required.
 </Aside>
 
 <XselPlayground compact initialPreset="card" />
@@ -82,7 +82,7 @@ Convenience scripts wrap CMake presets, CTest filtering, and Python wheel packag
 
 ## 5-Minute Walkthrough
 
-The `examples/` directory includes a sample HTML page (`examples/sample.html`), a `.dsl` scraper file (`examples/product.dsl`), and a Python script (`examples/scrape_example.py`).
+The `examples/` directory includes a sample HTML page (`examples/sample.html`), an `xsel2` DSL scraper file (`examples/product.dsl`), and a Python script (`examples/scrape_example.py`).
 
 ### 1. Run a quick CSS selector from the CLI
 
@@ -90,7 +90,7 @@ The `examples/` directory includes a sample HTML page (`examples/sample.html`), 
 ./build/xsel2 -s "h1.product-title" --html examples/sample.html
 ```
 
-### 2. Run a `.dsl` scraper with `xsel2`
+### 2. Run an `xsel2` (`.dsl`) scraper
 
 <IoPreview
   leftTitle="CLI Command"

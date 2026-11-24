@@ -1,4 +1,4 @@
-# DSL & Pipeline Steps Manual
+# `xsel2` DSL & Pipeline Steps Manual
 
 The `xsel2` DSL (`.dsl`) is a declarative, fluent pipeline language for HTML/XML scraping, multi-pattern text extraction, and JSON/CSV transformation. It compiles directly into `scraper::ScraperBuilder` pipelines and runs identically from the `xsel2` CLI, Python (`scraperpy`), and C++ (`scraper::dsl::DslParser`).
 
@@ -73,7 +73,7 @@ let schema_patch = {source: "web", active: true}
 - **String interpolation**: Inside any `"..."` or `'...'` string literal (including object keys and nested values), `${var}` substitutes `var.to_string()`.
   - Escape a literal `${...}` with `\${var}` (which renders as `${var}`).
   - **Multiline strings**: Both `"..."` and `'...'` strings natively support spanning multiple lines without line-continuation backslashes. Newlines, tabs, and spaces inside the quotes are preserved verbatim. This is especially useful for formatting complex queries (such as JMESPath expressions):
-    ```dsl
+    ```xsel2
     s = Scraper().select(".card")
       | jmespath("{
           title: header.title,

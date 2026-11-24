@@ -51,8 +51,8 @@ See `./scripts/pack_python.sh --help` for options (`--wheel-only`, `--sdist-only
 | `json_schema_validate(data, schema)` | Function | Validates Python data against a JSON Schema, returning `(is_valid, errors)` |
 | `parse_js(source, simplify=True)` | Function | Heuristically parses JS/JSON-like text into Python objects without executing JS |
 | `json_parse(text, ..., lenient=False, simplify=True)` | Function | Parses strict/relaxed JSON (or delegates to `parse_js` when `lenient=True`) |
-| `parse_dsl_string(dsl_content)` | Function | Parses a `.dsl` string into `dict[str, ScraperPy]` |
-| `load_scrapers(filepath)` | Function | Loads a `.dsl` file into `dict[str, ScraperPy]` |
+| `parse_dsl_string(dsl_content)` | Function | Parses an `xsel2` DSL (`.dsl`) string into `dict[str, ScraperPy]` |
+| `load_scrapers(filepath)` | Function | Loads an `xsel2` DSL (`.dsl`) file into `dict[str, ScraperPy]` |
 
 ---
 
@@ -116,9 +116,9 @@ s.select("h1").text().trim().set("meta.title", opts)
 
 ---
 
-## Loading `.dsl` Files in Python
+## Loading `xsel2` (`.dsl`) Files in Python
 
-Keep scraping rules in `.dsl` files and execute them from Python:
+Keep scraping rules in `xsel2` DSL (`.dsl`) files and execute them from Python:
 
 ```python
 import scraperpy

@@ -77,7 +77,7 @@ description: Complete reference of all xsel2 pipeline steps across DOM, text, UR
 - **Behavior**: Walks the current node's subtree once in a single pre-order traversal, retiring each `first=true` field as soon as it matches, and writes all extracted fields directly into `dict` (without modifying `values`).
 - **Caveats**: For `ElementExists` and `AttributeExists`, writes native JSON booleans (`true`/`false`) unless `cast`/`as`/`to` is explicitly set.
 - **Example**:
-  ```dsl
+  ```xsel2
   $("html") {
     fields({
       title: "h1",
@@ -663,7 +663,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 - **Behavior**: Runs a nested `Extractor` inside the current `Node`, supporting arbitrary nesting, overlapping-key array grouping, and `@key` / `@value` collapsing. (Writing `select(sel, key) { ... }` or `$(sel, key) { ... }` directly inside `{ ... }` is syntactic sugar for `each(sel, key) { ... }`.)
 - **Caveats**: Does not read or modify the outer `values` vector. If `abort_if_exists` triggers inside `each`, `ctx.abort_scraper` propagates to abort the outer scraper too.
 - **Example**:
-  ```dsl
+  ```xsel2
   $("div.product") {
     each("ul.specs li", "specs") {
       find(".k") -> "@key"
@@ -686,7 +686,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
   - `abort_if_exists(selector, key="", reason="")`: If `selector` matches inside the current `Node`, optionally writes `reason` (or `true` when `reason == ""`) to `dict[key]` (using `Overwrite`, `nested_path=true`) if `key != ""`, sets `ctx.abort_scraper = true` (leaving the current item to merge), and stops all remaining extractors.
 - **Caveats**: Even when `abort_if_exists` fires, `finalize { ... }` still executes afterwards.
 - **Example**:
-  ```dsl
+  ```xsel2
   page = Scraper()
     | $("html") { abort_if_exists(".geo-blocked", key="blocked_reason", reason="geo") }
     | $("div.card", "cards") { skip_if_exists(".ad-banner") | find("h2") -> "title" }
@@ -695,7 +695,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 ### `finalize { ... }`
 - **Behavior**: Attaches post-processing steps to the scraper that execute **once** after all extractors finish (and after the first `preprocess_key_value` pass), even if preceding extractors matched 0 nodes or `abort_if_exists` aborted early. Every step inside `finalize` (including dict/JSON transforms) runs immediately with `root_node`, an empty `values` vector, and `dest` as `dict`. Top-level dict/JSON transforms placed outside `{ ... }` blocks execute in this same pass. Runs `preprocess_key_value` again upon completion.
 - **Example**:
-  ```dsl
+  ```xsel2
   product = Scraper()
     | $("h1") { text | clean -> "title" }
     | finalize { coalesce_keys({"heading": ["og_title", "title"]}) | omit_keys(["_tmp"]) }
@@ -706,7 +706,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
   - `pipe <name> = { ... }` (top-level declaration; `=`, `:`, `:=`, or space accepted before `{`): Compiles a reusable step sequence. `use(<name>)` splices those steps into the current chain at parse time (unknown `<name>` throws).
   - `include(<scraper_name>)`: Appends all extractors and `finalize` steps from a previously declared scraper into the current scraper (unknown `<scraper_name>` throws).
 - **Example**:
-  ```dsl
+  ```xsel2
   pipe link_kv = { text | squish -> "@key" | @href | squish -> "@value" };
   base = Scraper().select("head") { extract_meta("meta") };
   full = Scraper().include(base).select(".social a", "social") { use(link_kv) };

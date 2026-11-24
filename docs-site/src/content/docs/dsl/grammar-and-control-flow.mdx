@@ -1,6 +1,6 @@
 ---
 title: Grammar & Control Flow
-description: Syntax sugar, shorthand operators, complete alias table, and pipeline composition/branching.
+description: Syntax sugar, shorthand operators, complete alias table, and pipeline composition/branching in the xsel2 DSL.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -15,11 +15,11 @@ import XselPlayground from '../../../components/XselPlayground.astro';
 ## Chaining & Grouping
 
 - **Chain separators**: `.`, `|`, and `|>` are completely interchangeable:
-  ```dsl
+  ```xsel2
   s = Scraper().select("h1") | text() |> trim() -> "title"
   ```
 - **Paren-free zero-arg steps**: Omit `()` when calling any step with zero arguments (or relying on all defaults):
-  ```dsl
+  ```xsel2
   $("h1") { text | clean | lower -> "title" }
   ```
 - **Grouped sub-chains `.( ... )`**: Visually group related steps in a chain (e.g., `.(.find(...).trim().set("x"))` or `| (.text | .trim)`).
@@ -32,7 +32,7 @@ import XselPlayground from '../../../components/XselPlayground.astro';
 
 String literals can be wrapped in double quotes (`"..."`) or single quotes (`'...'`). Both single and double-quoted strings natively support spanning across multiple lines without requiring escape characters or line continuation slashes (`\`):
 
-```dsl
+```xsel2
 # Multiline string with structured JMESPath projection
 s = Scraper().select("article")
   | jmespath("{
@@ -84,7 +84,7 @@ s = Scraper().select("article")
 ## Composition, Branching & Control Flow
 
 - **Reusable pipeline fragments (`pipe` + `use`)**:
-  ```dsl
+  ```xsel2
   pipe link_map = { text | squish -> "@key" | @href | squish -> "@value" };
   s := Scraper().select(".links a", "links") { use(link_map) };
   ```

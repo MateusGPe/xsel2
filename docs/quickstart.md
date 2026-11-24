@@ -66,7 +66,7 @@ Convenience scripts wrap CMake presets, CTest filtering, and Python wheel packag
 
 ## 5-Minute Walkthrough
 
-The `examples/` directory includes a sample HTML page ([`examples/sample.html`](../examples/sample.html)), a `.dsl` scraper file ([`examples/product.dsl`](../examples/product.dsl)), and a Python script ([`examples/scrape_example.py`](../examples/scrape_example.py)).
+The `examples/` directory includes a sample HTML page ([`examples/sample.html`](../examples/sample.html)), an `xsel2` DSL scraper file ([`examples/product.dsl`](../examples/product.dsl)), and a Python script ([`examples/scrape_example.py`](../examples/scrape_example.py)).
 
 ### 1. Run a quick CSS selector from the CLI
 
@@ -74,7 +74,7 @@ The `examples/` directory includes a sample HTML page ([`examples/sample.html`](
 ./build/xsel2 -s "h1.product-title" --html examples/sample.html
 ```
 
-### 2. Run a `.dsl` scraper with `xsel2`
+### 2. Run an `xsel2` (`.dsl`) scraper
 
 ```bash
 # Run the "summary" scraper from examples/product.dsl
@@ -101,5 +101,5 @@ PYTHONPATH=build:. python3 examples/all_steps_showcase.py
 
 - [CLI Reference](cli.md) — `xsel2` options, pipe mode, and multi-threaded batch processing
 - [Python Bindings (`scraperpy`)](python.md) — Fluent pipelines, `InsertMode`, `AhoCorasick`, and JSON queries
-- [DSL & Pipeline Steps Reference](dsl-and-steps.md) — Complete `.dsl` syntax and step-by-step reference
+- [`xsel2` DSL & Pipeline Steps Reference](dsl-and-steps.md) — Complete `xsel2` DSL (`.dsl`) syntax and step-by-step reference
 - [C++ API Guide](cpp-api.md) — Linking `scraper`, `digger`, `xsel_query`, and `xsel_common`
