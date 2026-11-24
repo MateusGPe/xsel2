@@ -855,3 +855,17 @@ pre,
   margin: 0;
   line-height: 1.5;
 }
+
+/* Prevent Starlight's .sl-markdown-content sibling spacing from offsetting 2nd+ grid/flex items */
+.xsel-hero-bar > *,
+.xsel-install-box > *,
+.xsel-install-box__tabs > *,
+.xsel-install-box__cmd-row > *,
+.xsel-hook__grid > *,
+.xsel-pillars > *,
+.xsel-flow > *,
+.xsel-io-grid > *,
+.xsel-bench-strip > *,
+.xsel-recipes > * {
+  margin-top: 0 !important;
+}
