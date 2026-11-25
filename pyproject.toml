@@ -81,6 +81,10 @@ environment = { CPM_SOURCE_CACHE = "/tmp/cpm-cache" }
 archs = ["auto"]
 environment = { CPM_SOURCE_CACHE = "/tmp/cpm-cache" }
 
+[[tool.cibuildwheel.overrides]]
+select = "*-macosx_x86_64"
+environment = { CPM_SOURCE_CACHE = "/tmp/cpm-cache", MACOSX_DEPLOYMENT_TARGET = "10.15" }
+
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
 environment = { CPM_SOURCE_CACHE = "C:/cpm-cache" }
