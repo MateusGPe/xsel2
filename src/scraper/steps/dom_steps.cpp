@@ -1,3 +1,4 @@
+#include "common/number_parse.hpp"
 #include "scraper/steps/dom_steps.hpp"
 #include "scraper/steps/regex_steps.hpp"
 #include "scraper/steps/text_steps.hpp"
@@ -559,13 +560,7 @@ void SortValuesStep::apply(Node, std::vector<std::string> &values,
   if (numeric_) {
     auto parse_num = [](std::string_view s, double &out) -> bool {
       const std::string_view trimmed = absl::StripAsciiWhitespace(s);
-      if (trimmed.empty()) {
-        return false;
-      }
-      const auto [ptr, ec] =
-          std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), out);
-      return ec == std::errc{} && ptr == trimmed.data() + trimmed.size() &&
-             std::isfinite(out);
+      return xsel::common::parse_double(trimmed, out);
     };
     std::stable_sort(
         values.begin(), values.end(),

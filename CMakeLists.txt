@@ -27,6 +27,27 @@ endif()
 # ── Dependencies ─────────────────────────────────────────────────────────────
 option(XSEL_BUILD_WASM "Build xsel2 WebAssembly module" OFF)
 
+# Silence CMake < 3.10 deprecation warnings in third-party dependencies (e.g. jsoncons) on CMake 4+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0" AND NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+endif()
+
+# Silence pybind11 FindPython compatibility mode warning
+if(NOT DEFINED PYBIND11_FINDPYTHON OR PYBIND11_FINDPYTHON STREQUAL "COMPAT")
+  set(PYBIND11_FINDPYTHON NEW CACHE STRING "Use FindPython for pybind11" FORCE)
+endif()
+
+# Suppress compiler warnings inside third-party dependency builds
+set(_XSEL_SAVED_C_FLAGS "${CMAKE_C_FLAGS}")
+set(_XSEL_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+if(MSVC)
+  string(APPEND CMAKE_C_FLAGS " /w")
+  string(APPEND CMAKE_CXX_FLAGS " /w")
+else()
+  string(APPEND CMAKE_C_FLAGS " -w")
+  string(APPEND CMAKE_CXX_FLAGS " -w")
+endif()
+
 if(EMSCRIPTEN)
   set(XSEL_BUILD_WASM ON)
   set(XSEL_FETCH_LIBXML2 "ON" CACHE STRING
@@ -53,6 +74,7 @@ else()
       GITHUB_REPOSITORY GNOME/libxml2
       GIT_TAG v2.13.9
       GIT_SHALLOW TRUE
+      SYSTEM ON
       OPTIONS
         "BUILD_SHARED_LIBS OFF"
         "LIBXML2_WITH_ICONV OFF"
@@ -71,6 +93,7 @@ CPMAddPackage(
   GITHUB_REPOSITORY danielaparker/jsoncons
   GIT_TAG v1.0.0
   GIT_SHALLOW TRUE
+  SYSTEM ON
   OPTIONS
     "JSONCONS_BUILD_TESTS OFF")
 
@@ -81,7 +104,8 @@ if(NOT EMSCRIPTEN)
       NAME pybind11
       GITHUB_REPOSITORY pybind/pybind11
       GIT_TAG stable
-      GIT_SHALLOW TRUE)
+      GIT_SHALLOW TRUE
+      SYSTEM ON)
   endif()
 endif()
 
@@ -89,12 +113,14 @@ CPMAddPackage(
   NAME lxml2_query
   GITHUB_REPOSITORY MateusGPe/lxml2-query-v1
   GIT_TAG 6b865e222ecdf148462ad342d9e91bb157c9cbb9
-  GIT_SHALLOW TRUE)
+  GIT_SHALLOW TRUE
+  SYSTEM ON)
 
 if(TARGET lxml2-query)
   # GCC 15+ no longer transitively provides <cstdint> in TagSelector.cpp.
   target_compile_options(lxml2-query PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-include cstdint>)
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-include cstdint -w>
+    $<$<CXX_COMPILER_ID:MSVC>:/w>)
 endif()
 
 CPMAddPackage(
@@ -102,6 +128,7 @@ CPMAddPackage(
   GITHUB_REPOSITORY abseil/abseil-cpp
   GIT_TAG lts_2025_08_14
   GIT_SHALLOW TRUE
+  SYSTEM ON
   OPTIONS
     "ABSL_PROPAGATE_CXX_STD ON"
     "ABSL_BUILD_TESTING OFF"
@@ -113,6 +140,7 @@ CPMAddPackage(
   GITHUB_REPOSITORY google/re2
   GIT_TAG 2025-11-05
   GIT_SHALLOW TRUE
+  SYSTEM ON
   OPTIONS
     "RE2_BUILD_TESTING OFF"
     "RE2_INSTALL OFF")
@@ -122,6 +150,7 @@ CPMAddPackage(
   GITHUB_REPOSITORY JuliaStrings/utf8proc
   GIT_TAG v2.10.0
   GIT_SHALLOW TRUE
+  SYSTEM ON
   OPTIONS
     "BUILD_SHARED_LIBS OFF"
     "UTF8PROC_ENABLE_TESTING OFF")
@@ -131,8 +160,12 @@ if(BUILD_TESTING AND NOT DEFINED SCRAPERPY_VERSION_INFO)
     NAME Catch2
     GITHUB_REPOSITORY catchorg/Catch2
     GIT_TAG v3.7.1
-    GIT_SHALLOW TRUE)
+    GIT_SHALLOW TRUE
+    SYSTEM ON)
 endif()
+
+set(CMAKE_C_FLAGS "${_XSEL_SAVED_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "${_XSEL_SAVED_CXX_FLAGS}")
 
 set(XSEL_WARN_FLAGS
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
