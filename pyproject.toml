@@ -74,13 +74,13 @@ test-command = "pytest {project}/tests/test_python.py -v"
 "cmake.define.XSEL_FETCH_LIBXML2" = "ON"
 
 [tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
+archs = ["auto"]
 environment = { CPM_SOURCE_CACHE = "/tmp/cpm-cache" }
 
 [tool.cibuildwheel.macos]
-archs = ["x86_64", "arm64"]
+archs = ["auto"]
 environment = { CPM_SOURCE_CACHE = "/tmp/cpm-cache" }
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
-environment = { CPM_SOURCE_CACHE = "C:\\cpm-cache" }
+environment = { CPM_SOURCE_CACHE = "C:/cpm-cache" }

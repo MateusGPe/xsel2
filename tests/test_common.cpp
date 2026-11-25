@@ -1,6 +1,7 @@
 #include "common/fuzzy.hpp"
 #include "common/hex_utils.hpp"
 #include "common/json_utils.hpp"
+#include "common/number_parse.hpp"
 #include "common/string_utils.hpp"
 #include "common/utf.hpp"
 #include <algorithm>
@@ -305,4 +306,31 @@ TEST_CASE("Hardening: parse_hex_4 overflow, utf8_encode surrogates, dump_string 
   CHECK(mixed[8] == jsoncons::json::parse("[2]"));
   CHECK(mixed[9] == jsoncons::json::parse(R"({"a": 1})"));
   CHECK(mixed[10] == jsoncons::json::parse(R"({"b": 1})"));
+}
+
+TEST_CASE("parse_double parses valid floats and rejects invalid or non-finite inputs",
+          "[common][number_parse]") {
+  double val = 0.0;
+
+  REQUIRE(xsel::common::parse_double("0", val));
+  CHECK(val == 0.0);
+
+  REQUIRE(xsel::common::parse_double("-42.5", val));
+  CHECK(val == -42.5);
+
+  REQUIRE(xsel::common::parse_double("1.25e3", val));
+  CHECK(val == 1250.0);
+
+  // Strictness: reject empty, leading/trailing whitespace, '+', hex floats,
+  // partial matches, overflow, and non-finite literals.
+  CHECK_FALSE(xsel::common::parse_double("", val));
+  CHECK_FALSE(xsel::common::parse_double(" 1.5", val));
+  CHECK_FALSE(xsel::common::parse_double("1.5 ", val));
+  CHECK_FALSE(xsel::common::parse_double("+1.5", val));
+  CHECK_FALSE(xsel::common::parse_double("0x1.0p0", val));
+  CHECK_FALSE(xsel::common::parse_double("-0x1.0p0", val));
+  CHECK_FALSE(xsel::common::parse_double("12abc", val));
+  CHECK_FALSE(xsel::common::parse_double("inf", val));
+  CHECK_FALSE(xsel::common::parse_double("nan", val));
+  CHECK_FALSE(xsel::common::parse_double("1e500", val));
 }

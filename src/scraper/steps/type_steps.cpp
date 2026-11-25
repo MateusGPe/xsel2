@@ -1,5 +1,6 @@
 #include "scraper/steps/type_steps.hpp"
 #include "common/json_utils.hpp"
+#include "common/number_parse.hpp"
 #include "digger/scalar_parser.hpp"
 #include <absl/strings/ascii.h>
 #include <absl/time/clock.h>
@@ -54,10 +55,7 @@ std::optional<double> parse_float_literal(std::string_view s) {
     return std::nullopt;
   }
   double val = 0.0;
-  const auto [ptr, ec] =
-      std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), val);
-  if (ec == std::errc{} && ptr == trimmed.data() + trimmed.size() &&
-      std::isfinite(val)) {
+  if (xsel::common::parse_double(trimmed, val)) {
     return val;
   }
   return std::nullopt;
@@ -218,9 +216,7 @@ std::optional<std::string> extract_number_string(std::string_view input,
 
   if (compact_mult > 1.0) {
     double val = 0.0;
-    const auto [ptr, ec] = std::from_chars(
-        digits_out.data(), digits_out.data() + digits_out.size(), val);
-    if (ec == std::errc{} && ptr == digits_out.data() + digits_out.size()) {
+    if (xsel::common::parse_double(digits_out, val)) {
       val *= compact_mult;
       if (is_neg) {
         val = -val;
@@ -516,14 +512,8 @@ bool parse_relative_date(std::string_view text, absl::Time base_time,
   double qty = 0.0;
   if (tokens[num_idx] == "a" || tokens[num_idx] == "an") {
     qty = 1.0;
-  } else {
-    const auto [ptr, ec] = std::from_chars(
-        tokens[num_idx].data(), tokens[num_idx].data() + tokens[num_idx].size(),
-        qty);
-    if (ec != std::errc{} || ptr != tokens[num_idx].data() + tokens[num_idx].size() ||
-        !std::isfinite(qty)) {
-      return false;
-    }
+  } else if (!xsel::common::parse_double(tokens[num_idx], qty)) {
+    return false;
   }
 
   if (auto mult = parse_unit_multiplier_seconds(tokens[unit_idx])) {
@@ -561,9 +551,8 @@ std::optional<double> parse_duration_seconds(std::string_view raw) {
         return std::nullopt;
       }
       double num = 0.0;
-      const auto [ptr, ec] =
-          std::from_chars(lower.data() + num_start, lower.data() + i, num);
-      if (ec != std::errc{} || ptr != lower.data() + i || !std::isfinite(num)) {
+      if (!xsel::common::parse_double(
+              std::string_view(lower).substr(num_start, i - num_start), num)) {
         return std::nullopt;
       }
       const char designator = lower[i++];
@@ -597,10 +586,7 @@ std::optional<double> parse_duration_seconds(std::string_view raw) {
         return std::nullopt;
       }
       double v = 0.0;
-      const auto [ptr, ec] =
-          std::from_chars(part.data(), part.data() + part.size(), v);
-      if (ec != std::errc{} || ptr != part.data() + part.size() ||
-          !std::isfinite(v) || v < 0.0) {
+      if (!xsel::common::parse_double(part, v) || v < 0.0) {
         return std::nullopt;
       }
       parts.push_back(v);
@@ -645,9 +631,8 @@ std::optional<double> parse_duration_seconds(std::string_view raw) {
       return std::nullopt;
     }
     double num = 0.0;
-    const auto [ptr, ec] =
-        std::from_chars(lower.data() + num_start, lower.data() + i, num);
-    if (ec != std::errc{} || ptr != lower.data() + i || !std::isfinite(num)) {
+    if (!xsel::common::parse_double(
+            std::string_view(lower).substr(num_start, i - num_start), num)) {
       return std::nullopt;
     }
     while (i < lower.size() &&

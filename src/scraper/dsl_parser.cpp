@@ -1,4 +1,5 @@
 #include "scraper/dsl_parser.hpp"
+#include "common/number_parse.hpp"
 #include "scraper/dsl/step_registry.hpp"
 #include <charconv>
 #include <cmath>
@@ -66,11 +67,7 @@ DslValue DslParser::parse_arg(int depth) {
   }
   if (current_.type == Token::Type::FLOAT) {
     double d = 0.0;
-    const auto [ptr, ec] = std::from_chars(
-        current_.value.data(), current_.value.data() + current_.value.size(), d);
-    if (ec != std::errc{} ||
-        ptr != current_.value.data() + current_.value.size() ||
-        !std::isfinite(d)) {
+    if (!xsel::common::parse_double(current_.value, d)) {
       throw std::runtime_error("Non-finite or invalid float literal in DSL at line " +
                                std::to_string(current_.line));
     }

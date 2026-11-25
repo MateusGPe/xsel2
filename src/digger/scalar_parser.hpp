@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/number_parse.hpp"
 #include "digger/token.hpp"
 #include <charconv>
 #include <cmath>
@@ -90,10 +91,7 @@ namespace detail {
   }
 
   double dval = 0.0;
-  const auto [ptr, ec] = std::from_chars(
-      float_sv.data(), float_sv.data() + float_sv.size(), dval);
-  if (ec == std::errc{} && ptr == float_sv.data() + float_sv.size() &&
-      std::isfinite(dval)) {
+  if (xsel::common::parse_double(float_sv, dval)) {
     return jsoncons::json(dval);
   }
 
