@@ -685,6 +685,13 @@ get_method_registry() {
          b.XPath(as_str(require_arg(args, 0, "expr", name)),
                  opt_str(args, 1, "attr", ""));
        }},
+#ifdef XSEL_USE_XPATH3
+      {"xpath3",
+       [](ScraperBuilder &b, const DslArgList &args, std::string_view name) {
+         b.XPath3(as_str(require_arg(args, 0, "expr", name)),
+                  opt_str(args, 1, "attr", ""));
+       }},
+#endif
       {"table",
        [](ScraperBuilder &b, const DslArgList &args, std::string_view) {
          b.Table(opt_str(args, 0, "key", ""), opt_bool(args, 1, "header", true),

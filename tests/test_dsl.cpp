@@ -293,6 +293,25 @@ TEST_CASE("DslParser executes Tier 2 steps", "[dsl][tier2]") {
   CHECK(res["meta"]["title"].as<std::string>() == "Store");
   CHECK(res["meta"]["author"].as<std::string>() == "Ada");
   CHECK(res["sku"].as<std::string>() == "SKU-42");
+
+#ifdef XSEL_USE_XPATH3
+  const std::string dsl_xpath3 = R"DSL(
+    page = Scraper()
+      | $("#main") { xpath3("string-join(.//span/text(), ',')") -> "skus" }
+      | $("#main") { xpath3(".//span", "data-id") -> "ids" }
+  )DSL";
+  auto scrapers3 = parser.parse(dsl_xpath3);
+  const auto res3 = scrapers3["page"].scrape_from_string(
+      "<div id='main'><span data-id='1'>A</span><span data-id='2'>B</span></div>");
+  CHECK(res3["skus"].as<std::string>() == "A,B");
+  REQUIRE(res3["ids"].is_array());
+  CHECK(res3["ids"].size() == 2);
+  CHECK(res3["ids"][0].as<std::string>() == "1");
+  CHECK(res3["ids"][1].as<std::string>() == "2");
+  CHECK_THROWS(parser.parse(R"DSL(
+    bad = Scraper() | $("#main") { xpath3("///invalid[[[") -> "x" }
+  )DSL"));
+#endif
   CHECK(res["rows"][0]["key_name"].as<std::string>() == "A");
   CHECK(res["published_iso"].as<std::string>() == "2026-11-19T00:00:00Z");
   CHECK(res["plain"].as<std::string>() == "Sao Paulo");

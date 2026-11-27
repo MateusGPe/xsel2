@@ -278,6 +278,8 @@ def test_tier2_steps_python():
     s = sp.ScraperPy()
     s.select("head").extract_meta("meta")
     s.select("#box").xpath(".//span", attr="data-code").set("code")
+    if hasattr(sp.ScraperPy, "xpath3"):
+        s.select("#box").xpath3("string-join(.//span/text(), ',')").set("joined_text")
     s.select("table").table("tbl", header=True, normalize_headers=True)
     s.select(".dt").text().parse_date(output="unix", key="ts")
     s.select(".acc").text().unicode_normalize("NFKD").strip_accents().set("ascii")
@@ -289,11 +291,33 @@ def test_tier2_steps_python():
     assert out["meta"]["og:type"] == "website"
     assert out["meta"]["canonical"] == "https://example.org/"
     assert out["code"] == "X99"
+    if hasattr(sp.ScraperPy, "xpath3"):
+        assert out["joined_text"] == "ok"
     assert out["tbl"] == [{"item": "Pen", "qty": "5"}]
     assert out["ts"] == 1795091400
     assert out["ascii"] == "Resume"
     assert out["best"] == ["Laptop", "Laptoop"]
     assert out["scores"][0] == 1.0
+
+
+@pytest.mark.skipif(not hasattr(sp.ScraperPy, "xpath3"), reason="Built without XSEL_USE_XPATH3")
+def test_xpath3_python(capfd):
+    html = "<ul><li data-id='1'>A</li><li data-id='2'>B</li></ul>"
+    s = sp.ScraperPy()
+    s.select("ul").xpath3("('a', 'b') => string-join('-')").set("joined")
+    s.select("ul").xpath3(".//li", attr="data-id").set("ids")
+    s.select("ul").xpath3("[1, [2, 3]]").set("arr")
+    out = s.from_string(html)
+    assert out["joined"] == "a-b"
+    assert out["ids"] == ["1", "2"]
+    assert out["arr"] == ["1", "2", "3"]
+
+    with pytest.raises(Exception):
+        sp.ScraperPy().select("ul").xpath3("///invalid[[[")
+
+    bad_out = sp.ScraperPy().select("ul").xpath3("map { 'k': 'v' }").set("m").from_string(html)
+    assert bad_out == {}
+    assert "FOTY0014" in capfd.readouterr().err
 
 
 def test_python_bridge_edge_cases():

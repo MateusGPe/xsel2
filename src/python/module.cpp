@@ -671,6 +671,10 @@ PYBIND11_MODULE(_scraperpy, m) {
            py::return_value_policy::reference_internal)
       .def("xpath", &ScraperPy::XPath, py::arg("expr"), py::arg("attr") = "",
            py::return_value_policy::reference_internal)
+#ifdef XSEL_USE_XPATH3
+      .def("xpath3", &ScraperPy::XPath3, py::arg("expr"), py::arg("attr") = "",
+           py::return_value_policy::reference_internal)
+#endif
       .def("table", &ScraperPy::Table, py::arg("key") = "",
            py::arg("header") = true, py::arg("normalize_headers") = false,
            py::arg("trim_cells") = true,

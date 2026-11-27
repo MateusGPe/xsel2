@@ -594,6 +594,13 @@ public:
     return self();
   }
 
+#ifdef XSEL_USE_XPATH3
+  Derived &XPath3(std::string_view expr, std::string_view attr = "") {
+    add_step(std::make_shared<XPath3Step>(expr, attr));
+    return self();
+  }
+#endif
+
   Derived &Table(std::string_view key = "", bool header = true,
                  bool normalize_headers = false, bool trim_cells = true,
                  InsertOptions opts = {}) {
