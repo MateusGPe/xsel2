@@ -2,6 +2,9 @@
   --sl-accent-low: #0c2d36;
   --sl-accent: #06b6d4;
   --sl-accent-high: #a5f3fc;
+  --sl-color-accent-low: #0c2d36;
+  --sl-color-accent: #06b6d4;
+  --sl-color-accent-high: #a5f3fc;
   --xsel-emerald: #10b981;
   --xsel-amber: #f59e0b;
 }
@@ -10,6 +13,9 @@
   --sl-accent-low: #cffafe;
   --sl-accent: #0891b2;
   --sl-accent-high: #164e63;
+  --sl-color-accent-low: #cffafe;
+  --sl-color-accent: #0891b2;
+  --sl-color-accent-high: #164e63;
   --xsel-emerald: #059669;
   --xsel-amber: #d97706;
 }
@@ -643,10 +649,6 @@ pre,
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-:root[data-theme='light'] .markdown-alert {
-  color: var(--sl-color-black);
-}
-
 .markdown-alert > :first-child {
   margin-top: 0;
 }
@@ -843,27 +845,36 @@ pre,
 }
 
 .xsel-matrix {
+  display: table;
   width: 100%;
-  min-width: 42rem;
+  min-width: 44rem;
   border-collapse: collapse;
   font-size: 0.875rem;
+  line-height: 1.45;
   margin: 0 !important;
 }
 
 .xsel-matrix code {
   white-space: nowrap;
+  font-size: 0.82em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 0.25rem;
+  background: var(--sl-color-bg-inline-code);
 }
 
 .xsel-matrix th,
 .xsel-matrix td {
-  padding: 0.7rem 0.9rem;
+  padding: 0.75rem 1.05rem;
   text-align: left;
+  vertical-align: middle;
   border-bottom: 1px solid var(--sl-color-hairline);
 }
 
 .xsel-matrix th {
   background: color-mix(in srgb, var(--sl-color-bg-sidebar) 80%, transparent);
   font-weight: 700;
+  white-space: nowrap;
+  color: var(--sl-color-white);
 }
 
 @media (max-width: 40rem) {

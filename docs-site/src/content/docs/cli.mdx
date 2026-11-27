@@ -69,7 +69,7 @@ xsel2 -d examples/product.dsl -n summary --html examples/sample.html
 
 # Stream HTML from stdin (pipe mode)
 cat examples/sample.html | xsel2 -d examples/product.dsl -n summary -c`}
-      rightCode={`{"text":"Hello"}
+      rightCode={`{"matches":[{"text":"Hello"}]}
 
 {
   "title": "Mechanical Keyboard Pro",
@@ -91,7 +91,7 @@ xsel2 -s "h1" --batch examples/sample.html examples/marketplace_sample.html --js
 # Write one .json file per input into out/
 xsel2 -d examples/product.dsl -n summary --batch examples/*.html --out-dir out -j 0 -c`}
       rightCode={`{"file":"examples/sample.html","result":{"title":"Mechanical Keyboard Pro","sku":"MK-PRO-75","rating":4.8}}
-{"file":"examples/marketplace_sample.html","result":{"title":null}}`}
+{"file":"examples/marketplace_sample.html","result":{"title":null,"sku":null,"rating":null}}`}
     />
   </TabItem>
 </Tabs>

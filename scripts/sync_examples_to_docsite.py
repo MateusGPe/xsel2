@@ -66,7 +66,7 @@ def _detect_first_scraper(dsl_text: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _validate_pair(dsl_text: str, html_text: str, scraper_name: str, dsl_path: Path) -> None:
+def _validate_pair(dsl_text: str, html_text: str, scraper_name: str, dsl_path: Path, html_path: Path) -> None:
     if not html_text.strip():
         raise ValueError(f"Empty HTML fixture for {dsl_path.name}")
     if not dsl_text.strip():
@@ -92,7 +92,7 @@ def _validate_pair(dsl_text: str, html_text: str, scraper_name: str, dsl_path: P
     ):
         if candidate.exists():
             res = subprocess.run(
-                [str(candidate), "-d", str(dsl_path), "-n", scraper_name, "--html", html_text, "-c"],
+                [str(candidate), "-d", str(dsl_path), "-n", scraper_name, "--html", str(html_path), "-c"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -126,7 +126,7 @@ def discover_and_validate(examples_dir: Path) -> dict[str, dict[str, Any]]:
         if not scraper_name:
             raise ValueError(f"Could not detect a scraper declaration in {dsl_path.name}")
 
-        _validate_pair(dsl_text, html_text, scraper_name, dsl_path)
+        _validate_pair(dsl_text, html_text, scraper_name, dsl_path, html_path)
 
         label = meta.get("label") or _humanize_label(dsl_path.stem)
         discovered[preset_id] = {

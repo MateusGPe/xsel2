@@ -26,7 +26,17 @@ const SYNCED_PRESET_LABELS = Object.values(syncedPresets)
   .filter((p) => !exclusiveIds.has(p.id))
   .map((p) => ({ id: p.id, label: p.label }));
 
-const PRESET_LABELS = [...EXCLUSIVE_PRESET_LABELS, ...SYNCED_PRESET_LABELS];
+const COMPACT_PRESET_LABELS = EXCLUSIVE_PRESET_LABELS.some((p) => p.id === initialPreset)
+  ? EXCLUSIVE_PRESET_LABELS
+  : [
+      ...EXCLUSIVE_PRESET_LABELS,
+      ...SYNCED_PRESET_LABELS.filter((p) => p.id === initialPreset),
+    ];
+
+const PRESET_LABELS = compact
+  ? COMPACT_PRESET_LABELS
+  : [...EXCLUSIVE_PRESET_LABELS, ...SYNCED_PRESET_LABELS];
+const serializedSyncedPresets = JSON.stringify(syncedPresets).replace(/</g, '\\u003c');
 ---
 
 <div
@@ -99,7 +109,7 @@ const PRESET_LABELS = [...EXCLUSIVE_PRESET_LABELS, ...SYNCED_PRESET_LABELS];
       <div class="xsel-pg__cm" data-role="output"></div>
     </div>
   </div>
-  <script type="application/json" data-role="synced-presets" set:html={JSON.stringify(syncedPresets)}></script>
+  <script type="application/json" data-role="synced-presets" set:html={serializedSyncedPresets}></script>
 </div>
 
 <script>
@@ -240,208 +250,6 @@ summary = Scraper()
   .select(title_sel).text().squish().set("title")
   .select("script").text().js_block("window.__PRODUCT_STATE__ =").parse_js("state", true)
   .jmespath("{title: title, sku: state.sku, rating: state.rating}")`,
-    },
-    table_data: {
-      cmd: 'xsel2 -d table.dsl -n market_summary --html table.html',
-      html: `<div class="market-board">
-  <header>
-    <h1>Tech &amp; Semiconductor Index</h1>
-    <span class="timestamp" data-epoch="1774300800">Last updated: 2026-03-23 16:00 EST</span>
-  </header>
-  <table class="financial-matrix" data-exchange="NASDAQ">
-    <thead>
-      <tr>
-        <th>Ticker</th><th>Company</th><th>Price</th><th>Change</th><th>Market Cap</th><th>Rating</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td class="symbol">NVDA</td><td>NVIDIA Corporation</td><td>$145.80</td><td class="positive">+3.45%</td><td>$3.58T</td><td>Strong Buy</td>
-      </tr>
-      <tr>
-        <td class="symbol">AAPL</td><td>Apple Inc.</td><td>$228.50</td><td class="positive">+0.82%</td><td>$3.47T</td><td>Buy</td>
-      </tr>
-      <tr>
-        <td class="symbol">MSFT</td><td>Microsoft Corp.</td><td>$422.15</td><td class="negative">-0.35%</td><td>$3.14T</td><td>Buy</td>
-      </tr>
-      <tr>
-        <td class="symbol">INTC</td><td>Intel Corporation</td><td>$24.10</td><td class="negative">-2.10%</td><td>$105.4B</td><td>Hold</td>
-      </tr>
-    </tbody>
-  </table>
-</div>`,
-      dsl: `market_summary = Scraper()
-  | $("header") {
-      find("h1") | clean -> "index_title"
-      | find("span.timestamp", Attribute, "data-epoch") | to_int(key="epoch")
-    }
-  | $("table.financial-matrix") {
-      table(key="stocks", header=true, normalize_headers=true, trim_cells=true)
-    }
-  | jmespath("{
-      index: index_title,
-      updated_epoch: epoch,
-      buy_recommendations: stocks[?rating == 'Strong Buy' || rating == 'Buy'].{
-        symbol: ticker,
-        company: company,
-        price: price,
-        change: change,
-        market_cap: market_cap
-      }
-    }
-  ")`,
-    },
-    ecommerce_catalog: {
-      cmd: 'xsel2 -d catalog.dsl -n catalog --html catalog.html',
-      html: `<div class="catalog-grid">
-  <div class="product-item" data-id="p-101" data-available="true">
-    <h3 class="name">Titanium Wireless Earbuds</h3>
-    <span class="price" data-usd="129.00">$129.00</span>
-    <span class="badge in-stock">In Stock</span>
-    <span class="badge promo">Save 15%</span>
-    <div class="variants">
-      <span class="color" data-color="Space Gray" data-sku="TWE-SG">Space Gray</span>
-      <span class="color" data-color="Matte Black" data-sku="TWE-MB">Matte Black</span>
-    </div>
-    <a class="p-link" href="/products/titanium-earbuds">View Product</a>
-  </div>
-  <div class="product-item" data-id="p-102" data-available="false">
-    <h3 class="name">ANC Over-Ear Studio Headphones</h3>
-    <span class="price" data-usd="249.50">$249.50</span>
-    <span class="badge out-of-stock">Backorder</span>
-    <div class="variants">
-      <span class="color" data-color="Midnight Blue" data-sku="ANC-BL">Midnight Blue</span>
-    </div>
-    <a class="p-link" href="/products/anc-studio">View Product</a>
-  </div>
-  <nav class="pagination">
-    <span class="current">Page 1 of 12</span>
-    <a class="next-page" href="/catalog?page=2">Next Page &raquo;</a>
-  </nav>
-</div>`,
-      dsl: `let origin = "https://audiohub.example"
-
-catalog = Scraper()
-  | $("div.product-item", "items") {
-      @"data-id" -> "product_id"
-      | @"data-available" | to_bool(key="available")
-      | find("h3.name") | clean -> "name"
-      | find(".price", Attribute, "data-usd") | to_float(key="price_usd")
-      | find_all(".badge") | clean -> "badges"
-      | find_all(".variants .color", Attribute, "data-color") -> "available_colors"
-      | find_all(".variants .color", Attribute, "data-sku") -> "variant_skus"
-      | find("a.p-link", Attribute, "href") | url_join(origin) -> "url"
-    }
-  | $("nav.pagination") {
-      find("span.current") | clean -> "page_status"
-      | find("a.next-page", Attribute, "href") | url_join(origin) -> "next_page_url"
-    }`,
-    },
-    article_news: {
-      cmd: 'xsel2 -d article.dsl -n article --html article.html',
-      html: `<article class="post-entry">
-  <header class="post-header">
-    <nav class="breadcrumbs">
-      <a href="/category/tech">Technology</a> &gt; <a href="/category/systems">Systems Engineering</a>
-    </nav>
-    <h1 class="headline">Building Ultra-Fast Native Web Scrapers with C++20</h1>
-    <div class="byline">
-      <span class="author" data-author-id="dev-42">Sarah Connor</span>
-      <time class="pub-date" datetime="2026-11-20T14:30:00Z">Nov 20, 2026</time>
-      <span class="read-time">6 min read</span>
-    </div>
-  </header>
-  <div class="post-body">
-    <p class="lead">By streaming HTML directly into compiled libxml2 DOM buffers, we eliminate V8 execution overhead.</p>
-    <p>Declarative pipeline engines allow developers to express data normalization without maintaining fragile regex soups.</p>
-  </div>
-  <footer class="post-tags">
-    <a class="tag" href="/tags/cpp">#cpp</a>
-    <a class="tag" href="/tags/scraping">#scraping</a>
-    <a class="tag" href="/tags/performance">#performance</a>
-  </footer>
-  <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "TechArticle",
-      "headline": "Building Ultra-Fast Native Web Scrapers with C++20",
-      "author": { "@type": "Person", "name": "Sarah Connor" },
-      "datePublished": "2026-11-20T14:30:00Z",
-      "wordCount": 1420
-    }
-  <\/script>
-</article>`,
-      dsl: `let site_base = "https://techpulse.dev"
-
-article = Scraper()
-  .$("article.post-entry") {
-    find("h1.headline") | clean -> "title"
-    | find(".byline .author") | clean -> "author"
-    | find(".byline time.pub-date", Attribute, "datetime") -> "published_at"
-    | find(".byline .read-time") | clean -> "reading_time"
-    | find_all("nav.breadcrumbs a") | clean -> "breadcrumbs"
-    | find_all(".post-tags a.tag") | clean -> "tags"
-    | find(".post-body p.lead") | clean -> "summary"
-  }
-  .$("script[type='application/ld+json']") {
-    text | json_parse("json_ld", strict=false)
-  }
-  | omit_keys(["@context"])`,
-    },
-    social_hydration: {
-      cmd: 'xsel2 -d social.dsl -n social --html social.html',
-      html: `<main id="app-root">
-  <div class="post-card" data-post-id="status_9921">
-    <div class="author-row">
-      <span class="handle">@linus_torvalds</span>
-      <span class="badge verified">Verified</span>
-    </div>
-    <p class="content">Talk is cheap. Show me the code.</p>
-    <div class="engagement">
-      <span class="likes" data-count="14820">14.8K Likes</span>
-      <span class="reposts" data-count="3210">3.2K Reposts</span>
-    </div>
-  </div>
-  <script>
-    window.__INITIAL_DATA__ = {
-      threadId: "status_9921",
-      author: {
-        userId: "u-1001",
-        username: "linus_torvalds",
-        followers: 1250000,
-        isSponsor: true
-      },
-      comments: [
-        { id: "c-1", user: "dev_alex", score: 45, text: "Classic quote!" },
-        { id: "c-2", user: "code_ninja", score: 89, text: "Still relevant in 2026." },
-        { id: "c-3", user: "rustacean", score: 112, text: "Borrow checker approved." }
-      ],
-      metrics: { views: 89000, impressions: 142000 }
-    };
-  <\/script>
-</main>`,
-      dsl: `social = Scraper()
-  .$(".post-card") {
-    find(".author-row .handle") | clean -> "author_handle"
-    | find(".content") | clean -> "post_text"
-    | find(".engagement .likes", Attribute, "data-count") | to_number(key="likes_count")
-    | find(".engagement .reposts", Attribute, "data-count") | to_number(key="reposts_count")
-  }
-  .$("script") {
-    text | js_block("window.__INITIAL_DATA__ =") | parse_js("payload", true)
-  }
-  | jmespath("{
-      author: payload.author.username,
-      followers: payload.author.followers,
-      post: post_text,
-      likes: likes_count,
-      top_comments: payload.comments[?score > \`50\`].{
-        user: user,
-        score: score,
-        text: text
-      }
-    }
-  ")`,
     },
     selector: {
       cmd: 'xsel2 -s "ul.specs li" --html sample.html',
@@ -694,11 +502,16 @@ article = Scraper()
     border: none;
     border-radius: 0.4rem;
     background: var(--sl-accent);
-    color: var(--sl-color-black, #06181e);
+    color: #06181e;
     font-weight: 700;
     font-size: 0.82rem;
     cursor: pointer;
     min-height: 40px;
+  }
+
+  :global(:root[data-theme='light']) .xsel-pg__btn {
+    background: #0e7490;
+    color: #ffffff;
   }
 
   .xsel-pg__btn:disabled {
