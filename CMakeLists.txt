@@ -26,6 +26,7 @@ endif()
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 option(XSEL_BUILD_WASM "Build xsel2 WebAssembly module" OFF)
+option(XSEL_USE_XPATH3 "Enable XPath3Step using lxml2-query XPath 3.1 engine" ON)
 
 # Silence CMake < 3.10 deprecation warnings in third-party dependencies (e.g. jsoncons) on CMake 4+
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0" AND NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
@@ -148,8 +149,8 @@ CPMAddPackage(
   GIT_SHALLOW TRUE
   SYSTEM ON
   OPTIONS
-    "LXML2_QUERY_XPATH3 ON"
-    "LXML2_QUERY_PUBLIC_XPATH_DEPS ON")
+    "LXML2_QUERY_XPATH3 ${XSEL_USE_XPATH3}"
+    "LXML2_QUERY_PUBLIC_XPATH_DEPS ${XSEL_USE_XPATH3}")
 
 if(TARGET lxml2-query)
   # GCC 15+ no longer transitively provides <cstdint> in TagSelector.cpp.
@@ -224,6 +225,9 @@ add_library(scraper STATIC
 target_include_directories(scraper PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(scraper PUBLIC cxx_std_20)
 target_compile_options(scraper PRIVATE ${XSEL_WARN_FLAGS})
+if(XSEL_USE_XPATH3)
+  target_compile_definitions(scraper PUBLIC XSEL_USE_XPATH3)
+endif()
 target_link_libraries(scraper PUBLIC
   xsel_common
   digger

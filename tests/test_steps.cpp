@@ -1144,9 +1144,10 @@ TEST_CASE("Phase 3 steps: regex_find_all, regex_groups, compact numbers, parse_d
   }
 }
 
+#ifdef XSEL_USE_XPATH3
 TEST_CASE("lxml2-query XPath 3.1 smoke test", "[lxml2][xpath]") {
 #ifndef LXQ_HAS_XPATH3
-  FAIL("LXQ_HAS_XPATH3 must be defined");
+  FAIL("LXQ_HAS_XPATH3 must be defined when XSEL_USE_XPATH3 is enabled");
 #else
   Document doc;
   REQUIRE(doc.parseMemory(
@@ -1165,3 +1166,95 @@ TEST_CASE("lxml2-query XPath 3.1 smoke test", "[lxml2][xpath]") {
   CHECK(atoms[0].asString() == "One,Two");
 #endif
 }
+
+TEST_CASE("XPath3Step uses XPath 3.1 features when XSEL_USE_XPATH3 is enabled",
+          "[steps][xpath][xpath3]") {
+  const std::string html = R"(
+    <html>
+      <body>
+        <ul id="items">
+          <li data-id="10">Alpha</li>
+          <li data-id="20">Beta</li>
+          <li data-id="30">Gamma</li>
+        </ul>
+      </body>
+    </html>
+  )";
+
+  scraper::ScraperBuilder sb;
+  sb.Select("#items")
+      .XPath3("string-join(.//li/text(), ',')")
+      .Set("joined")
+      .Select("#items")
+      .XPath3("tokenize('a,b,c', ',')")
+      .Set("tokens")
+      .Select("#items")
+      .XPath3("let $n := count(.//li) return $n * 2")
+      .Set("doubled_count")
+      .Select("#items")
+      .XPath3("('x', 'y') => string-join('-')")
+      .Set("arrow")
+      .Select("#items")
+      .XPath3("[1, [2, 3]]")
+      .Set("arr")
+      .Select("#items")
+      .XPath3(".//li", "data-id")
+      .Set("ids");
+
+  const auto res = sb.scrape_from_string(html);
+  CHECK(res["joined"].as<std::string>() == "Alpha,Beta,Gamma");
+  REQUIRE(res["tokens"].is_array());
+  CHECK(res["tokens"].size() == 3);
+  CHECK(res["tokens"][0].as<std::string>() == "a");
+  CHECK(res["tokens"][2].as<std::string>() == "c");
+  CHECK(res["doubled_count"].as<std::string>() == "6");
+  CHECK(res["arrow"].as<std::string>() == "x-y");
+  REQUIRE(res["arr"].is_array());
+  CHECK(res["arr"].size() == 3);
+  CHECK(res["arr"][0].as<std::string>() == "1");
+  CHECK(res["arr"][2].as<std::string>() == "3");
+  REQUIRE(res["ids"].is_array());
+  CHECK(res["ids"].size() == 3);
+  CHECK(res["ids"][0].as<std::string>() == "10");
+  CHECK(res["ids"][2].as<std::string>() == "30");
+
+  // Invalid XPath 3.1 expression fails fast at XPath3Step construction.
+  CHECK_THROWS_AS(scraper::XPath3Step("///invalid[[["), lxml2::ParseException);
+
+  // Maps and function items cannot be converted to string values.
+  Document doc;
+  REQUIRE(doc.parseMemory(html));
+  std::vector<std::string> vals;
+  jsoncons::json dict = jsoncons::json::object();
+  CHECK_THROWS_AS(
+      scraper::XPath3Step("map { 'k': 'v' }").apply(Node(doc.getRoot()), vals, dict),
+      lxml2::XPathTypeException);
+  CHECK_THROWS_AS(
+      scraper::XPath3Step("function($x) { $x }").apply(Node(doc.getRoot()), vals, dict),
+      lxml2::XPathTypeException);
+
+  // Empty expression and invalid node are safe no-ops.
+  vals = {"existing"};
+  scraper::XPath3Step("").apply(Node(doc.getRoot()), vals, dict);
+  CHECK(vals == std::vector<std::string>{"existing"});
+  scraper::XPath3Step(".//li").apply(Node(nullptr), vals, dict);
+  CHECK(vals == std::vector<std::string>{"existing"});
+
+  // Empty match appends nothing and preserves existing values.
+  scraper::XPath3Step(".//nonexistent").apply(Node(doc.getRoot()), vals, dict);
+  CHECK(vals == std::vector<std::string>{"existing"});
+
+  // Non-element nodes and missing attributes are skipped when attr is set.
+  vals.clear();
+  scraper::XPath3Step(".//li/text()", "data-id")
+      .apply(Node(doc.getRoot()), vals, dict);
+  CHECK(vals.empty());
+
+  Document partial_doc;
+  REQUIRE(partial_doc.parseMemory(
+      "<ul><li data-id='10'>A</li><li>B</li><li data-id=''>C</li></ul>"));
+  scraper::XPath3Step(".//li", "data-id")
+      .apply(Node(partial_doc.getRoot()), vals, dict);
+  CHECK(vals == std::vector<std::string>{"10", ""});
+}
+#endif

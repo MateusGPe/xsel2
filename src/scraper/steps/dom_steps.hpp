@@ -316,6 +316,23 @@ private:
   std::string attr_name_;
 };
 
+#ifdef XSEL_USE_XPATH3
+/// Evaluates an XPath 3.1 expression via lxml2-query and appends extracted
+/// node/atomic/array string values (or attribute values when attr is non-empty).
+class XPath3Step final : public Step {
+public:
+  explicit XPath3Step(std::string_view expr, std::string_view attr = "");
+
+  void apply(Node node, std::vector<std::string> &values,
+             jsoncons::json &dict) override;
+
+private:
+  std::string expr_;
+  std::string attr_name_;
+  lxml2::xpath::XPathExprPtr compiled_expr_;
+};
+#endif
+
 class TableStep final : public Step {
 public:
   TableStep(std::string_view key = "", bool header = true,

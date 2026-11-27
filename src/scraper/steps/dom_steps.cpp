@@ -809,6 +809,43 @@ void collect_table_rows(xmlNodePtr root,
   }
 }
 
+#ifdef XSEL_USE_XPATH3
+/// Converts an XPath 3.1 XdmItem (node, atomic, or nested array) into string
+/// values; throws XPathTypeException on map or function items.
+void append_xdm_item(const lxml2::xpath::XdmItem &item,
+                     std::string_view attr_name,
+                     std::vector<std::string> &values) {
+  if (item.isNode()) {
+    const auto &nh = item.asNode();
+    if (!attr_name.empty()) {
+      if (nh.isElement()) {
+        if (auto attr_val = Node(nh.node).Attribute(attr_name)) {
+          values.push_back(std::move(*attr_val));
+        }
+      }
+    } else {
+      values.push_back(nh.stringValue());
+    }
+    return;
+  }
+  if (item.isAtomic()) {
+    values.push_back(item.asAtomic().asString());
+    return;
+  }
+  if (item.isArray()) {
+    for (const auto &member : item.asArray()->members()) {
+      for (const auto &sub : member.items()) {
+        append_xdm_item(sub, attr_name, values);
+      }
+    }
+    return;
+  }
+  throw lxml2::XPathTypeException(
+      "xpath: cannot extract string value from map or function item",
+      "FOTY0014");
+}
+#endif
+
 } // namespace
 
 void XPathStep::apply(Node node, std::vector<std::string> &values,
@@ -885,6 +922,26 @@ void XPathStep::apply(Node node, std::vector<std::string> &values,
     break;
   }
 }
+
+#ifdef XSEL_USE_XPATH3
+XPath3Step::XPath3Step(std::string_view expr, std::string_view attr)
+    : expr_(expr), attr_name_(attr) {
+  if (!expr_.empty()) {
+    compiled_expr_ = lxml2::xpath::XPathParser::Create(expr_);
+  }
+}
+
+void XPath3Step::apply(Node node, std::vector<std::string> &values,
+                       jsoncons::json &) {
+  if (!node.valid() || expr_.empty() || !compiled_expr_) {
+    return;
+  }
+  const lxml2::xpath::XdmValue result = node.EvaluateXPath(compiled_expr_);
+  for (const auto &item : result.items()) {
+    append_xdm_item(item, attr_name_, values);
+  }
+}
+#endif
 
 void TableStep::apply(Node node, std::vector<std::string> &values,
                       jsoncons::json &dict) {
