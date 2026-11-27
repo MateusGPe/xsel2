@@ -110,20 +110,6 @@ if(NOT EMSCRIPTEN)
 endif()
 
 CPMAddPackage(
-  NAME lxml2_query
-  GITHUB_REPOSITORY MateusGPe/lxml2-query-v1
-  GIT_TAG 6b865e222ecdf148462ad342d9e91bb157c9cbb9
-  GIT_SHALLOW TRUE
-  SYSTEM ON)
-
-if(TARGET lxml2-query)
-  # GCC 15+ no longer transitively provides <cstdint> in TagSelector.cpp.
-  target_compile_options(lxml2-query PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-include cstdint -w>
-    $<$<CXX_COMPILER_ID:MSVC>:/w>)
-endif()
-
-CPMAddPackage(
   NAME absl
   GITHUB_REPOSITORY abseil/abseil-cpp
   GIT_TAG lts_2025_08_14
@@ -154,6 +140,23 @@ CPMAddPackage(
   OPTIONS
     "BUILD_SHARED_LIBS OFF"
     "UTF8PROC_ENABLE_TESTING OFF")
+
+CPMAddPackage(
+  NAME lxml2_query
+  GITHUB_REPOSITORY MateusGPe/lxml2-query-v1
+  GIT_TAG xpath
+  GIT_SHALLOW TRUE
+  SYSTEM ON
+  OPTIONS
+    "LXML2_QUERY_XPATH3 ON"
+    "LXML2_QUERY_PUBLIC_XPATH_DEPS ON")
+
+if(TARGET lxml2-query)
+  # GCC 15+ no longer transitively provides <cstdint> in TagSelector.cpp.
+  target_compile_options(lxml2-query PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-include cstdint -w>
+    $<$<CXX_COMPILER_ID:MSVC>:/w>)
+endif()
 
 if(BUILD_TESTING AND NOT DEFINED SCRAPERPY_VERSION_INFO)
   CPMAddPackage(
