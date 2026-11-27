@@ -1143,3 +1143,25 @@ TEST_CASE("Phase 3 steps: regex_find_all, regex_groups, compact numbers, parse_d
     CHECK(mdict["ld"]["json_ld_by_type"]["BreadcrumbList"].is_object());
   }
 }
+
+TEST_CASE("lxml2-query XPath 3.1 smoke test", "[lxml2][xpath]") {
+#ifndef LXQ_HAS_XPATH3
+  FAIL("LXQ_HAS_XPATH3 must be defined");
+#else
+  Document doc;
+  REQUIRE(doc.parseMemory(
+      "<html><body><ul><li class='item'>One</li><li class='item'>Two</li></ul></body></html>"));
+
+  auto nodes = doc.FindXPath("//li[@class='item']");
+  REQUIRE(nodes.size() == 2);
+  REQUIRE(nodes[0].has_value());
+  REQUIRE(nodes[1].has_value());
+  CHECK(nodes[0]->Text() == "One");
+  CHECK(nodes[1]->Text() == "Two");
+
+  auto val = doc.EvaluateXPath("string-join(//li/text(), ',')");
+  auto atoms = val.atomize();
+  REQUIRE(atoms.size() == 1);
+  CHECK(atoms[0].asString() == "One,Two");
+#endif
+}
