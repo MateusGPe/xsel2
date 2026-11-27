@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<body>
+  <header class="site-header" data-env="prod">
+    <h1 class="brand">  XSel2   Catalog  </h1>
+    <span class="subtitle" data-alt="Fallback Alt">  Fast   Scraping  </span>
+  </header>
+
+  <section class="cards">
+    <article class="card" data-id="101">
+      <h2 class="name">  Alpha   Widget  </h2>
+      <span class="badge">Featured</span>
+      <span class="price">$19.50</span>
+      <a class="cta" href="/buy/101" data-href="/alt/101">Buy Alpha</a>
+      <img class="thumb" data-src="/img/101.webp" src="/img/placeholder.png" />
+      <div class="tags">
+        <span>  pro </span><span>new</span><span>pro</span>
+      </div>
+      <script>window.__CFG__ = { id: 101, active: true };</script>
+      <script>window.__META__ = { tier: "gold" };</script>
+      <div class="raw-json">{"ok": true, "qty": 3}</div>
+    </article>
+
+    <article class="card skipped" data-id="102">
+      <h2 class="name">Skip Me</h2>
+      <span class="skip-marker">draft</span>
+      <span class="price">$0.00</span>
+    </article>
+
+    <article class="card empty-name" data-id="103">
+      <h2 class="name">   </h2>
+      <span class="price">$5.00</span>
+    </article>
+  </section>
+
+  <dl class="specs">
+    <dt>Weight</dt><dd>120g</dd>
+    <dt>Color</dt><dd>Slate</dd>
+  </dl>
+
+  <div class="nested-groups">
+    <div class="group" data-group="audio">
+      <span class="group-title">Audio Gear</span>
+      <ul>
+        <li data-code="A1">DAC</li>
+        <li data-code="A2">Amp</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="abort-zone">
+    <span class="normal">Normal Item</span>
+    <span class="maintenance">System Maintenance</span>
+  </div>
+</body>
+</html>

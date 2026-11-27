@@ -4,9 +4,10 @@ Get `xsel2` built, tested, and running in a few minutes.
 
 ## Prerequisites
 
-- **C++20 compiler**: GCC 11+ or Clang 14+
+- **C++20 compiler**: GCC 11+, Clang 14+, or MSVC
 - **CMake**: 3.24 or newer
 - **libxml2 development headers (optional)**: e.g. `libxml2-dev` (Debian/Ubuntu) or `libxml2-devel` (Fedora/RHEL). If not installed on the system, CMake automatically falls back to fetching and building `GNOME/libxml2` via CPM (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`, default `AUTO`).
+- **XPath 3.1 support (optional)**: Enabled by default (`-DXSEL_USE_XPATH3=ON|OFF`, default `ON`) for `xpath3` / `XPath3` via `lxml2-query`.
 - **Python 3 development headers**: e.g. `python3-dev` (Debian/Ubuntu) or `python3-devel` (Fedora/RHEL), for `_scraperpy` / `scraperpy`
 - **Internet access on first configure**: `cmake/CPM.cmake` automatically fetches `jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `utf8proc`, `Catch2`, and `libxml2` (when not found on the system).
 

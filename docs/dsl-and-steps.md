@@ -168,7 +168,7 @@ Strict validation rules (`src/scraper/dsl/value.cpp`):
 | Shorthand | Equivalent Canonical Call | Notes & Caveats |
 | --- | --- | --- |
 | `$("sel")` or `$ "sel"` | `select("sel")` | Supports `{ ... }` block immediately after. `$("sel", "key")` also works. |
-| `@href`, `@"href"`, `@("href")`, `@["data-src", "src"]` | `attr(...)` | `@ident` parses `ident` as attribute name; list form tries fallback attributes in order. |
+| `@href`, `@"href"`, `@("href")`, `@["data-src", "src"]` | `attr(...)` | `@ident` parses `ident` (`[A-Za-z_][A-Za-z0-9_]*`) as attribute name; hyphenated attributes like `data-src` must be quoted (`@"data-src"`). List form tries fallback attributes in order. |
 | `?? "fallback"` | `default("fallback")` | Coerces argument via `as_str()`. |
 | `[i]` (e.g. `[0]`, `[2]`) | `nth(i)` | Non-negative integer index. |
 | `[-1]` | `last(1)` | **Caveat**: Any negative index other than `-1` (e.g., `[-2]`) throws at parse time. |
@@ -242,7 +242,7 @@ flowchart LR
 
 Inside each `Extractor` match, two mutable state objects exist (alongside a per-node `ExecutionContext` holding `save`/`restore` slots and `skip_item`/`abort_scraper` guard flags):
 1. **`values`** (`std::vector<std::string>`): The working list of extracted/transformed strings.
-   - Extraction steps (`text`, `attr`, `html`, `outer_html`, `tag_name`, `classes`, `find`, `find_all`, `xpath`) **append** to `values`.
+   - Extraction steps (`text`, `attr`, `html`, `outer_html`, `tag_name`, `classes`, `find`, `find_all`, `xpath`, `xpath3`) **append** to `values`.
    - Transform steps (`trim`, `squish`, `lower`, `upper`, `replace`, `regex_replace`, `prepend`, `append`, `substring`, `unescape`, `unescape_html`, `strip_comments`, `strip_tags`, `base64_*`, `hash`, `slugify`, `resolve_url`, `url_part`, `query_param`, `strip_query`, `unicode_normalize`, `strip_accents`, `map_values`) mutate `values` **in place**.
    - Filtering/slicing steps (`drop_empty`, `regex_filter`, `filter`, `filter_urls`, `fuzzy_filter`, `first`, `last`, `nth`, `slice`, `unique`, `sort`, `reverse`, `default`) prune, reorder, or fallback `values`.
    - Expansion/reduction steps (`split`, `join`, `regex_extract`, `regex_find_all`, `extract_many`, `js_block`, `parse_srcset`, `css_url`) replace `values` with a new vector.
@@ -299,7 +299,7 @@ All dictionary and JSON transformation steps (`flatten`, `pick_keys`, `omit_keys
 
 | Engine / Library | Used By | Key Caveats & Limits |
 | --- | --- | --- |
-| **`lxml2-query` + `libxml2`** | `select`, `find`, `find_all`, `extract_fields`, `xpath`, `resolve_url`, `url_part`, `query_param`, `query_params`, `strip_query`, `filter_urls`, `table`, `extract_meta`, `each`, `when_exists`, `unless_exists`, `skip_if_exists`, `abort_if_exists` | `libxml2` HTML parser is lenient; CSS selectors support standard CSS3 (`>`, `+`, `~`, `[attr=val]`, `:nth-child`, etc.). `xpath` evaluates XPath 1.0 relative to the current node. `query_params` and `strip_query` also tolerate unencoded `[` / `]` in query strings. |
+| **`lxml2-query` + `libxml2`** | `select`, `find`, `find_all`, `extract_fields`, `xpath`, `xpath3`, `resolve_url`, `url_part`, `query_param`, `query_params`, `strip_query`, `filter_urls`, `table`, `extract_meta`, `each`, `when_exists`, `unless_exists`, `skip_if_exists`, `abort_if_exists` | `libxml2` HTML parser is lenient; CSS selectors support standard CSS3 (`>`, `+`, `~`, `[attr=val]`, `:nth-child`, etc.). `xpath` evaluates XPath 1.0 relative to the current node; `xpath3` evaluates XPath 3.1 via `lxml2-query` when `XSEL_USE_XPATH3=ON` (default). `query_params` and `strip_query` also tolerate unencoded `[` / `]` in query strings. |
 | **RE2** | `regex_replace` (`sub`), `regex_filter` (`grep`), `regex_extract` (`extract`), `regex_find_all`, `regex_groups`, `when_match`, `css_url` | Linear-time, guaranteed no catastrophic backtracking (no lookahead/lookbehind/backreferences). **Default is case-sensitive** (`flags=null`/`""`); pass `"icase"` or `"i"` for case-insensitive matching, `"dotall"` or `"s"` for `.` matching `\n`, and `"multiline"` or `"m"` for line-anchored `^`/`$`. |
 | **Compressed-DFA Aho-Corasick** | `filter`, `replace({...})`, `extract_many` | Single-pass $O(n + m)$ literal matching. Mapping-mode `replace({old: new})` resolves overlapping matches by leftmost-longest. |
 | **Heuristic JS/JSON Digger** | `js_block`, `js_blocks`, `parse_js`, `json_parse(..., lenient=true)` | Does **not** execute JavaScript; heuristically extracts object/array literals, strips `//` and `/* */` comments, folds `+`-joined strings, expands `JSON.parse("...")`, and maps `undefined` → `null`. |
@@ -516,7 +516,7 @@ All steps in this section operate in-place on `values` (except `split`, which ex
 - **Example**: `$("body") { find_all("p", Text) | drop_empty -> "paragraphs" }`
 
 #### `substring(start_pos, length=null)`
-- **Behavior**: Extracts a byte-indexed substring from each string in `values`.
+- **Behavior**: Extracts a byte-indexed substring from each string in `values`. Because it operates on UTF-8 bytes rather than codepoints, slicing inside a multi-byte character can split the UTF-8 sequence.
   - `start_pos` (`int`, required): Supports negative indices (counts from end of string; clamped to `0` if `-start_pos >= len`).
   - `length` (`int | null`, default `null`): When `null`, takes to end of string. When `> 0`, takes up to `length` bytes. When `== 0`, clears the string. When `< 0`, trims `abs(length)` bytes from the end of the string (Python-style slice end).
 - **Caveat**: Operates on raw UTF-8 **bytes**, not Unicode codepoints.
@@ -583,7 +583,7 @@ URL steps process `values` (and `dict` for `query_params`) via `libxml2`'s RFC 3
 | `filter_urls` | `(allowed_domains=[], blocked_domains=[], allowed_schemes=["http", "https"], same_origin_of="")` | — | Filters `values` by scheme, domain suffix, and origin |
 
 #### `resolve_url(base_url)` / `url_join`
-- **Behavior**: Resolves each non-empty string in `values` against `base_url`. No-op if `base_url` is `""` or value is `""`.
+- **Behavior**: Resolves each non-empty string in `values` against `base_url` via `libxml2`'s `xmlBuildURI`. No-op if `base_url` is `""`, value is `""`, or the URL contains unencoded `[` / `]` (which `xmlBuildURI` rejects; percent-encode them as `%5B` / `%5D` first).
 - **Example**: `$("a") { @href | url_join("https://example.com/docs/") -> "url" }`
 
 #### `url_part(part)`
@@ -898,6 +898,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 | Step | Parameters & Defaults | Mutates | Notes |
 | --- | --- | --- | --- |
 | `xpath` | `(expr, attr="")` | Appends to `values` | `libxml2` XPath 1.0 |
+| `xpath3` | `(expr, attr="")` | Appends to `values` | `lxml2-query` XPath 3.1 (when `XSEL_USE_XPATH3=ON`) |
 | `table` | `(key="", header=true, normalize_headers=false, trim_cells=true)` | `values` (or `dict[key]` + clears `values`) | `colspan` up to 64 |
 | `extract_meta` | `(key="meta", include_json_ld=true, index_json_ld=false)` | Writes to `dict` | `<title>`, `<meta>`, canonical, JSON-LD (`+ json_ld_by_type`) |
 | `parse_date` | `(fmt="", output="iso", key="", tz="UTC", now="")` | `values` (or `dict[key]` + clears `values`) | `absl::Time` + relative dates |
@@ -912,6 +913,17 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
   - String / Number / Boolean: appends the scalar stringified result.
 - **Caveat**: Invalid XPath syntax throws `std::runtime_error`.
 - **Example**: `$("div.post") { xpath(".//a/@href") -> "links" }`
+
+#### `xpath3(expr, attr="")`
+- **Behavior**: Compiles and evaluates an XPath 3.1 `expr` via `lxml2-query` (`XPathParser::Create` / `node.EvaluateXPath`) relative to the current `Node` (available when built with `-DXSEL_USE_XPATH3=ON`, enabled by default).
+  - Nodes: extracts `attr` (if non-empty, on element nodes) or `stringValue()`.
+  - Atomic items: appends `asString()`.
+  - Arrays: recursively flattens array members and appends their extracted values.
+- **Caveats**:
+  - Invalid XPath 3.1 syntax throws at parse/construction time.
+  - Map or function items throw `lxml2::XPathTypeException` (`FOTY0014`).
+  - No-op if `expr` is `""` or `node` is invalid.
+- **Example**: `$("div.post") { xpath3("string-join(.//a/@href, ', ')") -> "links_csv" }`
 
 #### `table(key="", header=true, normalize_headers=false, trim_cells=true)`
 - **Behavior**: Extracts the current `<table>` (or first descendant `<table>`) into a JSON array of row objects (`header=true`, deduplicating header names with `_2`, `_3`, ... and `col_N` for empty headers) or row arrays (`header=false`). Supports `colspan` (up to 64; spanned cells get `""`).

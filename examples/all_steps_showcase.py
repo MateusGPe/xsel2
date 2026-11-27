@@ -24,6 +24,10 @@ for name in [
     print(json.dumps(res, indent=2, ensure_ascii=False)[:400] + "\n...")
 
 # Verify key outputs from DSL scrapers
+dom_res = scrapers["dom_and_text"].from_string(HTML)
+assert dom_res["xpath_skus"]["skus"] == ["MK-75", "MS-02", "HUB-9"]
+assert dom_res["xpath_skus"]["skus_csv"] == "MK-75, MS-02, HUB-9"
+
 algo_res = scrapers["algorithms_and_matching"].from_string(HTML)
 assert "Mechanical Keyboard" in algo_res["fuzzy"]["jw_matches"]
 assert "Mechnical Keybord" in algo_res["fuzzy"]["lev_matches"]
