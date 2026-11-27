@@ -69,7 +69,7 @@ See [`xsel2` DSL & Pipeline Steps](https://github.com/MateusGPe/xsel2/blob/main/
 
 ## Features
 
-- **HTML/XML Scraping & `xsel2` DSL**: CSS selector & XPath 1.0 extraction (`lxml2-query`, `libxml2`), HTML table & metadata extraction, fluent C++/Python pipelines, and an `xsel2` (`.dsl`) parser (`parse_dsl_string`, `load_scrapers`).
+- **HTML/XML Scraping & `xsel2` DSL**: CSS selector & XPath 1.0 / 3.1 extraction (`lxml2-query`, `libxml2`), HTML table & metadata extraction, fluent C++/Python pipelines, and an `xsel2` (`.dsl`) parser (`parse_dsl_string`, `load_scrapers`).
 - **JS/JSON Digger**: Heuristically extracts and parses embedded JavaScript/JSON objects, comments, string concatenations, and typed scalars without executing JS.
 - **Multi-Pattern & Fuzzy Algorithms**: Compressed-DFA Aho-Corasick matcher (`AhoCorasick`, `filter`, `replace`, `extract_many`) and UTF-8 Jaro-Winkler / Levenshtein fuzzy matching (`fuzzy_filter`, `similarity`).
 - **JSON & CSV Queries**: JMESPath, JSONPath, JSON Schema, and CSV parsing/serialization powered by `jsoncons`.
@@ -85,11 +85,12 @@ See [`xsel2` DSL & Pipeline Steps](https://github.com/MateusGPe/xsel2/blob/main/
 | [Python Bindings (`scraperpy`)](https://github.com/MateusGPe/xsel2/blob/main/docs/python.md) | `ScraperPy`, `Document`, `scrape_many`, `InsertMode`, `AhoCorasick`, `.dsl` loading, JSON queries, and `pip`/`uv` packaging |
 | [`xsel2` DSL & Pipeline Steps](https://github.com/MateusGPe/xsel2/blob/main/docs/dsl-and-steps.md) | Complete `xsel2` DSL (`.dsl`) manual: syntax, sugar, execution/merge model, caveats, control flow & composition, and pipeline steps reference |
 | [C++20 API Guide](https://github.com/MateusGPe/xsel2/blob/main/docs/cpp-api.md) | Embedding `scraper`, `digger`, `xsel_query`, and `xsel_common` |
+| [Exhaustive Examples Index](https://github.com/MateusGPe/xsel2/blob/main/examples/EXAMPLES_INDEX.md) | Complete coverage matrix of all DSL steps, `scraperpy` methods, and `xsel2` CLI flags (`ex_01`–`ex_09`) |
 | [Examples](https://github.com/MateusGPe/xsel2/tree/main/examples) | Runnable [`sample.html`](https://github.com/MateusGPe/xsel2/blob/main/examples/sample.html), [`product.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/product.dsl), [`scrape_example.py`](https://github.com/MateusGPe/xsel2/blob/main/examples/scrape_example.py), [`metadata.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/metadata.dsl) / [`metadata_sample.html`](https://github.com/MateusGPe/xsel2/blob/main/examples/metadata_sample.html), [`marketplace.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/marketplace.dsl) / [`marketplace_example.py`](https://github.com/MateusGPe/xsel2/blob/main/examples/marketplace_example.py), and complete all-steps showcase [`all_steps_showcase.dsl`](https://github.com/MateusGPe/xsel2/blob/main/examples/all_steps_showcase.dsl) / [`all_steps_showcase.py`](https://github.com/MateusGPe/xsel2/blob/main/examples/all_steps_showcase.py) |
 
 ## Quick Build & Test
 
-Requires a C++20 compiler (GCC, Clang, or MSVC), CMake >= 3.24, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `utf8proc`, `Catch2`) are fetched automatically via [CPM.cmake](https://github.com/MateusGPe/xsel2/blob/main/cmake/CPM.cmake). `libxml2` uses the system package if found, and falls back to fetching `GNOME/libxml2` via CPM otherwise (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`).
+Requires a C++20 compiler (GCC, Clang, or MSVC), CMake >= 3.24, and Python 3 dev headers. Dependencies (`jsoncons`, `pybind11`, `lxml2-query`, `abseil-cpp`, `re2`, `utf8proc`, `Catch2`) are fetched automatically via [CPM.cmake](https://github.com/MateusGPe/xsel2/blob/main/cmake/CPM.cmake). `libxml2` uses the system package if found, and falls back to fetching `GNOME/libxml2` via CPM otherwise (controlled by `-DXSEL_FETCH_LIBXML2=AUTO|ON|OFF`). XPath 3.1 (`xpath3` / `XPath3`) is enabled by default via `-DXSEL_USE_XPATH3=ON|OFF`.
 
 ```bash
 cmake --preset debug

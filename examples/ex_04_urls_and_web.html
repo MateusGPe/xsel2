@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <style>
+    .banner { background-image: url('/assets/bg-main.png'); }
+  </style>
+</head>
+<body>
+  <nav class="links">
+    <a class="rel" href="/products/item-1?utm_source=ads&ref=home&q=hello+world#specs">Item 1</a>
+    <a class="brackets" href="/search?filter[color]=blue&ref=home">Brackets</a>
+    <a class="proto" href="//cdn.example.com:8443/media/pic.jpg?v=2">CDN Pic</a>
+    <a class="parent" href="../about/team?lang=en">Team</a>
+    <a class="ext" href="https://evil.org/phish">External</a>
+    <a class="mail" href="mailto:hi@example.com">Mail</a>
+  </nav>
+
+  <picture>
+    <img class="hero"
+         src="/img/fallback.jpg"
+         srcset="/img/small.jpg 320w, /img/medium.jpg 640w, /img/large.jpg 1280w" />
+    <img class="dpr"
+         srcset="/img/1x.png 1x, /img/2x.png 2x" />
+  </picture>
+
+  <div class="inline-bg" style="background: url(&quot;/assets/hero.webp&quot;) no-repeat;"></div>
+</body>
+</html>

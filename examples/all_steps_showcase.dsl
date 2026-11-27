@@ -50,6 +50,7 @@ dom_and_text = Scraper()
     }
   | $("html", "xpath_skus") {
       xpath("//section[@id='catalog']/article/@data-sku") -> "skus"
+      | xpath3("string-join(//section[@id='catalog']/article/@data-sku, ', ')") -> "skus_csv"
     }
 
 

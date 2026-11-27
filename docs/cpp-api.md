@@ -6,7 +6,7 @@
 
 | Target | Headers | Purpose |
 | --- | --- | --- |
-| `xsel_common` | `common/ahocorasick.hpp`, `common/fuzzy.hpp`, `common/hex_utils.hpp`, `common/json_utils.hpp`, `common/string_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, Jaro-Winkler & Levenshtein fuzzy matching, hex/string/UTF-8 & JSON helpers |
+| `xsel_common` | `common/ahocorasick.hpp`, `common/fuzzy.hpp`, `common/hex_utils.hpp`, `common/json_utils.hpp`, `common/number_parse.hpp`, `common/string_utils.hpp`, `common/utf.hpp` | Aho-Corasick matcher, Jaro-Winkler & Levenshtein fuzzy matching, number/hex/string/UTF-8 & JSON helpers |
 | `digger` | `digger/digger.hpp`, `digger/tokenizer.hpp`, `digger/scalar_parser.hpp` | Heuristic JS/JSON object extractor |
 | `xsel_query` | `query/json_query.hpp` | JMESPath, JSONPath, JSON Schema & CSV over `jsoncons::json` |
 | `scraper` | `scraper/scraper.hpp`, `scraper/dsl_parser.hpp`, `scraper/merge.hpp` | Full scraping pipeline, steps, and `xsel2` (`.dsl`) parser |
@@ -49,7 +49,7 @@ Use `builder.scrape_from_file("page.html")` to parse directly from disk.
 
 ### Single-Parse `Document` Reuse, Single-Pass Extraction & Composition
 
-Parse HTML once into `Document` (`lxml2-query.h`), run zero-alloc single-pass extraction (`Find`, `ExtractFields`), and compose pipelines with `Each`, `Tee`, `WhenExists`/`UnlessExists`/`WhenMatch`, `SkipIfExists`/`SkipIfEmpty`/`AbortIfExists`, `Save`/`Restore`, `Finalize`, and `Include`:
+Parse HTML once into `Document` (`lxml2-query.h`), run zero-alloc single-pass extraction (`Find`, `ExtractFields`) or XPath 1.0 / 3.1 (`XPath`, `XPath3` when `XSEL_USE_XPATH3=ON`), and compose pipelines with `Each`, `Tee`, `WhenExists`/`UnlessExists`/`WhenMatch`, `SkipIfExists`/`SkipIfEmpty`/`AbortIfExists`, `Save`/`Restore`, `Finalize`, and `Include`:
 
 ```cpp
 #include "scraper/scraper.hpp"

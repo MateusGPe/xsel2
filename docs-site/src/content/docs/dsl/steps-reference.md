@@ -563,6 +563,7 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
 | Step | Parameters & Defaults | Mutates | Notes |
 | --- | --- | --- | --- |
 | `xpath` | `(expr, attr="")` | Appends to `values` | `libxml2` XPath 1.0 |
+| `xpath3` | `(expr, attr="")` | Appends to `values` | `lxml2-query` XPath 3.1 (when `XSEL_USE_XPATH3=ON`) |
 | `table` | `(key="", header=true, normalize_headers=false, trim_cells=true)` | `values` (or `dict[key]` + clears `values`) | `colspan` up to 64 |
 | `extract_meta` | `(key="meta", include_json_ld=true, index_json_ld=false)` | Writes to `dict` | `<title>`, `<meta>`, canonical, JSON-LD (`+ json_ld_by_type`) |
 | `parse_date` | `(fmt="", output="iso", key="", tz="UTC", now="")` | `values` (or `dict[key]` + clears `values`) | `absl::Time` + relative dates |
@@ -577,6 +578,17 @@ Dictionary and JSON transformation steps (`cast_keys` through `json_schema`) run
   - String / Number / Boolean: appends the scalar stringified result.
 - **Caveat**: Invalid XPath syntax throws `std::runtime_error`.
 - **Example**: `$("div.post") { xpath(".//a/@href") -> "links" }`
+
+### `xpath3(expr, attr="")`
+- **Behavior**: Compiles and evaluates an XPath 3.1 `expr` via `lxml2-query` (`XPathParser::Create` / `node.EvaluateXPath`) relative to the current `Node` (available when built with `-DXSEL_USE_XPATH3=ON`, enabled by default).
+  - Nodes: extracts `attr` (if non-empty, on element nodes) or `stringValue()`.
+  - Atomic items: appends `asString()`.
+  - Arrays: recursively flattens array members and appends their extracted values.
+- **Caveats**:
+  - Invalid XPath 3.1 syntax throws at parse/construction time.
+  - Map or function items throw `lxml2::XPathTypeException` (`FOTY0014`).
+  - No-op if `expr` is `""` or `node` is invalid.
+- **Example**: `$("div.post") { xpath3("string-join(.//a/@href, ', ')") -> "links_csv" }`
 
 ### `table(key="", header=true, normalize_headers=false, trim_cells=true)`
 - **Behavior**: Extracts the current `<table>` (or first descendant `<table>`) into a JSON array of row objects (`header=true`, deduplicating header names with `_2`, `_3`, ... and `col_N` for empty headers) or row arrays (`header=false`). Supports `colspan` (up to 64; spanned cells get `""`).

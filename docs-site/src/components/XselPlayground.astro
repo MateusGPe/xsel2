@@ -1,4 +1,6 @@
 ---
+import syncedExamples from '../data/synced-examples.json';
+
 interface Props {
   fullPage?: boolean;
   compact?: boolean;
@@ -9,7 +11,7 @@ const { fullPage = false, compact = false, initialPreset = 'card' } = Astro.prop
 const rawBase = import.meta.env.BASE_URL || '/';
 const baseUrl = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 
-const PRESET_LABELS = [
+const EXCLUSIVE_PRESET_LABELS = [
   { id: 'card', label: 'Product Card' },
   { id: 'js_digger', label: 'JS Block Digger' },
   { id: 'table', label: 'HTML Table -> JSON' },
@@ -17,6 +19,14 @@ const PRESET_LABELS = [
   { id: 'product', label: 'JMESPath Summary' },
   { id: 'selector', label: 'Quick CSS (-s)' },
 ];
+
+const syncedPresets = syncedExamples?.presets ?? {};
+const exclusiveIds = new Set(EXCLUSIVE_PRESET_LABELS.map((p) => p.id));
+const SYNCED_PRESET_LABELS = Object.values(syncedPresets)
+  .filter((p) => !exclusiveIds.has(p.id))
+  .map((p) => ({ id: p.id, label: p.label }));
+
+const PRESET_LABELS = [...EXCLUSIVE_PRESET_LABELS, ...SYNCED_PRESET_LABELS];
 ---
 
 <div
@@ -89,6 +99,7 @@ const PRESET_LABELS = [
       <div class="xsel-pg__cm" data-role="output"></div>
     </div>
   </div>
+  <script type="application/json" data-role="synced-presets" set:html={JSON.stringify(syncedPresets)}></script>
 </div>
 
 <script>
@@ -472,13 +483,16 @@ article = Scraper()
     const statusEl = root.querySelector('[data-role="status"]');
     const runBtn = root.querySelector('[data-role="run"]');
     const copyOutBtn = root.querySelector('[data-role="copy-out"]');
+    const syncedEl = root.querySelector('[data-role="synced-presets"]');
+    const syncedMap = syncedEl ? JSON.parse(syncedEl.textContent || '{}') : {};
+    const ALL_PRESETS = { ...syncedMap, ...PRESETS };
 
     let editors;
     let lastOutput = '';
 
     function loadPreset(key) {
-      const activeKey = PRESETS[key] ? key : 'card';
-      const preset = PRESETS[activeKey];
+      const activeKey = ALL_PRESETS[key] ? key : 'card';
+      const preset = ALL_PRESETS[activeKey];
       cmdEl.value = preset.cmd;
       editors.setHtml(preset.html);
       editors.setDsl(preset.dsl);
