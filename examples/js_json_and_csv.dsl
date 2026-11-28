@@ -1,4 +1,4 @@
-// @playground id=ex_07_js_json_csv label="07: JS Digger, JSON, CSV & Queries" scraper=js_json_csv
+// @playground id=js_json_and_csv label="JS Digger, JSON, CSV & Schema" html=js_digger_json_csv_queries.html scraper=js_json_csv
 js_json_csv = Scraper()
   | $("script#hydration", "js") {
       text | js_block("window.__DATA__ =") | parse_js("data", simplify=true)
@@ -20,23 +20,4 @@ js_json_csv = Scraper()
         "type": "object",
         "required": ["js", "json_ops", "csv_ops"]
       }, strict=false, error_key="_schema_errors")
-    }
-
-query_projections = Scraper()
-  | $("script#hydration") {
-      text | js_block("window.__DATA__ =") | parse_js("data")
-    }
-  | $("pre.csv-block") {
-      text | trim | csv_parse("rows")
-    }
-  | finalize {
-      jsonpath("$.rows[?(@.score == 95)].name")
-    }
-
-jmespath_projection = Scraper()
-  | $("script#hydration") {
-      text | js_block("window.__DATA__ =") | parse_js("data")
-    }
-  | finalize {
-      jmespath("{sku: data.sku, price: data.price, nested: data.payload.nested}")
     }

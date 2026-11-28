@@ -1,12 +1,23 @@
-"""Example 06: List slicing/ordering, typed set, parse_number, parse_duration, to_*, parse_date."""
+"""List slicing/ordering, typed set, parse_number, parse_duration, to_*, parse_date."""
 
 import scraperpy as sp
-from _helpers import load_pair
+from _helpers import load_topic
 
-html, scrapers = load_pair("ex_06_slicing_ordering_and_types")
+html, scrapers = load_topic(
+    "slicing_ordering_and_types",
+    ["slicing_and_ordering", "types_and_numbers", "dates_and_durations"],
+)
 
 # 1. Verify DSL
-d = scrapers["slicing_and_types"].from_string(html)
+d_slice = scrapers["slicing_and_ordering"].from_string(html)
+d_types = scrapers["types_and_numbers"].from_string(html)
+d_dates = scrapers["dates_and_durations"].from_string(html)
+d = {
+    **d_slice,
+    **d_types,
+    **d_dates,
+    "lists": {**d_slice["lists"], **d_types["lists"]},
+}
 assert d["lists"]["sorted_num"] == ["2", "10", "30"]
 assert d["lists"]["first_2"] == ["10", "2"]
 assert d["lists"]["last_2"] == ["30", "2"]

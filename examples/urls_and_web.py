@@ -1,13 +1,19 @@
-"""Example 04: URL resolution, parts, query_param(s), strip_query, filter_urls, parse_srcset, css_url."""
+"""URL resolution, parts, query_param(s), strip_query, filter_urls, parse_srcset, css_url."""
 
 import scraperpy as sp
-from _helpers import load_pair
+from _helpers import load_topic
 
-html, scrapers = load_pair("ex_04_urls_and_web")
+html, scrapers = load_topic(
+    "urls_and_web",
+    ["urls_and_query_params", "srcset_and_css_urls"],
+)
 BASE = "https://shop.example.com:443/catalog/index.html"
 
 # 1. Verify DSL
-dsl_res = scrapers["urls_and_web"].from_string(html)
+dsl_res = {
+    **scrapers["urls_and_queries"].from_string(html),
+    **scrapers["srcset_and_css"].from_string(html),
+}
 parts = dsl_res["url_parts"]
 assert parts["scheme"] == "https"
 assert parts["host"] == "shop.example.com"

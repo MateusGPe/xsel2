@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 
@@ -13,16 +14,43 @@ STUBS_PATH = REPO_ROOT / "scraperpy-stubs" / "_scraperpy.pyi"
 DSL_DOC_PATH = REPO_ROOT / "docs" / "dsl-and-steps.md"
 
 EXPECTED_MODULES = [
-    "ex_01_dsl_syntax_and_composition.py",
-    "ex_02_dom_and_selection.py",
-    "ex_03_text_and_encoding.py",
-    "ex_04_urls_and_web.py",
-    "ex_05_regex_ac_and_fuzzy.py",
-    "ex_06_slicing_ordering_and_types.py",
-    "ex_07_js_digger_json_csv_queries.py",
-    "ex_08_dict_transforms_and_merging.py",
-    "ex_09_cli_all_modes.py",
+    "dsl_syntax_and_composition.py",
+    "dom_and_selection.py",
+    "text_and_encoding.py",
+    "urls_and_web.py",
+    "regex_ac_and_fuzzy.py",
+    "slicing_ordering_and_types.py",
+    "js_digger_json_csv_queries.py",
+    "dict_transforms_and_merging.py",
+    "cli_all_modes.py",
 ]
+
+SPLIT_DSL_FILES = [
+    "dsl_syntax_and_aliases.dsl",
+    "dsl_include.dsl",
+    "dsl_control_flow.dsl",
+    "dsl_implicit_root.dsl",
+    "dom_selection_and_values.dsl",
+    "xpath_tables_and_meta.dsl",
+    "text_normalization_and_unicode.dsl",
+    "text_escaping_and_cleaning.dsl",
+    "text_lists_base64_and_mapping.dsl",
+    "urls_and_query_params.dsl",
+    "srcset_and_css_urls.dsl",
+    "regex_extraction_and_filtering.dsl",
+    "aho_corasick_and_fuzzy.dsl",
+    "slicing_and_ordering.dsl",
+    "types_and_numbers.dsl",
+    "dates_and_durations.dsl",
+    "js_json_and_csv.dsl",
+    "jsonpath_projection.dsl",
+    "jmespath_projection.dsl",
+    "dict_transforms.dsl",
+    "dict_flatten_and_pick.dsl",
+]
+
+# DSL `include(base)` requires declaring the base scraper in the same file.
+MULTI_SCRAPER_DSL_EXCEPTIONS = frozenset({"dsl_include.dsl"})
 
 
 def _example_env() -> dict[str, str]:
@@ -89,8 +117,8 @@ def test_python_api_complete_coverage() -> None:
     missing_methods = sorted(name for name in methods if not re.search(rf"\b{re.escape(name)}\b", py_corpus))
     missing_enums = sorted(name for name in enum_members if not re.search(rf"\b{re.escape(name)}\b", py_corpus))
 
-    assert not missing_methods, f"Uncovered Python methods/functions in ex_*.py: {missing_methods}"
-    assert not missing_enums, f"Uncovered Python enum members in ex_*.py: {missing_enums}"
+    assert not missing_methods, f"Uncovered Python methods/functions in topic .py files: {missing_methods}"
+    assert not missing_enums, f"Uncovered Python enum members in topic .py files: {missing_enums}"
 
 
 def test_dsl_steps_and_aliases_complete_coverage() -> None:
@@ -104,14 +132,48 @@ def test_dsl_steps_and_aliases_complete_coverage() -> None:
     step_names.update({"when_exists", "unless_exists", "save", "restore", "pipe", "use"})
 
     dsl_corpus = "\n".join(
-        p.read_text(encoding="utf-8")
-        for p in sorted(EXAMPLES_DIR.glob("ex_*.dsl"))
+        (EXAMPLES_DIR / name).read_text(encoding="utf-8")
+        for name in SPLIT_DSL_FILES
+        if (EXAMPLES_DIR / name).exists()
     )
     missing_steps = sorted(s for s in step_names if not re.search(rf"\b{re.escape(s)}\b", dsl_corpus))
-    assert not missing_steps, f"Uncovered DSL steps/aliases/constructs in ex_*.dsl: {missing_steps}"
+    assert not missing_steps, f"Uncovered DSL steps/aliases/constructs in split .dsl files: {missing_steps}"
+
+
+@pytest.mark.parametrize("dsl_name", SPLIT_DSL_FILES)
+def test_split_dsl_files_have_single_scraper(dsl_name: str) -> None:
+    if str(REPO_ROOT / "build") not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT / "build"))
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    import scraperpy
+
+    dsl_path = EXAMPLES_DIR / dsl_name
+    assert dsl_path.exists(), f"Missing split DSL snippet: {dsl_path}"
+    scrapers = scraperpy.load_scrapers(str(dsl_path))
+    if dsl_name in MULTI_SCRAPER_DSL_EXCEPTIONS:
+        assert len(scrapers) == 2, f"{dsl_name} should declare base + including scraper, got {list(scrapers.keys())}"
+    else:
+        assert len(scrapers) == 1, f"{dsl_name} must define exactly 1 scraper, got {list(scrapers.keys())}"
+
+
+def _playground_html_override(dsl_path: Path) -> Path | None:
+    dsl_text = dsl_path.read_text(encoding="utf-8")
+    match = re.search(r"^\s*(?://|#)\s*@playground\s+(.+)$", dsl_text, re.M)
+    if not match:
+        return None
+    for token in shlex.split(match.group(1)):
+        if token.startswith("html="):
+            cand = EXAMPLES_DIR / token.split("=", 1)[1].strip()
+            if cand.is_file():
+                return cand
+    return None
 
 
 def _find_html_for_dsl(dsl_path: Path) -> Path:
+    override = _playground_html_override(dsl_path)
+    if override is not None:
+        return override
     for cand in (
         dsl_path.with_suffix(".html"),
         EXAMPLES_DIR / f"{dsl_path.stem}_sample.html",

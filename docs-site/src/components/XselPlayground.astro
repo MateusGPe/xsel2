@@ -95,8 +95,19 @@ const serializedSyncedPresets = JSON.stringify(syncedPresets).replace(/</g, '\\u
     </div>
 
     <div class="xsel-pg__pane">
-      <div class="xsel-pg__pane-head">
+      <div class="xsel-pg__pane-head xsel-pg__pane-head--dsl">
         <span><code>xsel2</code> DSL (<code>.dsl</code>)</span>
+        <div class="xsel-pg__scraper-ctl" data-role="scraper-ctl" hidden>
+          <label class="xsel-pg__scraper-label">
+            <code>-n</code>
+            <select
+              class="xsel-pg__scraper-select"
+              data-role="scraper-select"
+              aria-label="Active scraper (-n)"
+            ></select>
+          </label>
+          <span class="xsel-pg__scraper-badge" data-role="scraper-count" hidden></span>
+        </div>
       </div>
       <div class="xsel-pg__cm" data-role="dsl"></div>
     </div>
@@ -114,6 +125,7 @@ const serializedSyncedPresets = JSON.stringify(syncedPresets).replace(/</g, '\\u
 
 <script>
   import { createPlaygroundEditors } from './xsel2-codemirror.ts';
+  import { extractScrapers, parseCliFlags, setCliScraper } from './xsel2-cli-sync.ts';
 
   const PRESETS = {
     card: {
@@ -291,12 +303,47 @@ summary = Scraper()
     const statusEl = root.querySelector('[data-role="status"]');
     const runBtn = root.querySelector('[data-role="run"]');
     const copyOutBtn = root.querySelector('[data-role="copy-out"]');
+    const scraperCtl = root.querySelector('[data-role="scraper-ctl"]');
+    const scraperSelect = root.querySelector('[data-role="scraper-select"]');
+    const scraperCount = root.querySelector('[data-role="scraper-count"]');
     const syncedEl = root.querySelector('[data-role="synced-presets"]');
     const syncedMap = syncedEl ? JSON.parse(syncedEl.textContent || '{}') : {};
     const ALL_PRESETS = { ...syncedMap, ...PRESETS };
 
     let editors;
     let lastOutput = '';
+
+    function syncScraperUi(dslText = editors ? editors.getDsl() : '') {
+      if (!scraperCtl || !scraperSelect || !scraperCount) return;
+      const { isSelectorMode, scraperName } = parseCliFlags(cmdEl.value);
+      const scrapers = extractScrapers(dslText);
+
+      if (isSelectorMode || scrapers.length === 0) {
+        scraperCtl.hidden = true;
+        return;
+      }
+
+      scraperCtl.hidden = false;
+      const options =
+        scraperName && !scrapers.includes(scraperName)
+          ? [scraperName, ...scrapers]
+          : scrapers;
+
+      scraperSelect.replaceChildren(
+        ...options.map((name) => new Option(name, name))
+      );
+      scraperSelect.value =
+        scraperName && options.includes(scraperName) ? scraperName : scrapers[0];
+
+      if (scrapers.length > 1) {
+        scraperCount.textContent = `${scrapers.length} scrapers`;
+        scraperCount.hidden = false;
+        scraperCtl.dataset.multi = 'true';
+      } else {
+        scraperCount.hidden = true;
+        delete scraperCtl.dataset.multi;
+      }
+    }
 
     function loadPreset(key) {
       const activeKey = ALL_PRESETS[key] ? key : 'card';
@@ -307,6 +354,7 @@ summary = Scraper()
       presetBtns.forEach((btn) => {
         btn.setAttribute('aria-pressed', btn.dataset.preset === activeKey ? 'true' : 'false');
       });
+      syncScraperUi(preset.dsl);
     }
 
     async function execute() {
@@ -344,7 +392,18 @@ summary = Scraper()
       }
     }
 
-    editors = createPlaygroundEditors(htmlHost, dslHost, outHost, execute);
+    editors = createPlaygroundEditors(htmlHost, dslHost, outHost, execute, () =>
+      syncScraperUi()
+    );
+
+    if (scraperSelect) {
+      scraperSelect.addEventListener('change', () => {
+        cmdEl.value = setCliScraper(cmdEl.value, scraperSelect.value);
+        execute();
+      });
+    }
+
+    cmdEl.addEventListener('input', () => syncScraperUi());
 
     presetBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -612,6 +671,8 @@ summary = Scraper()
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
     padding: 0.42rem 0.85rem;
     font-size: 0.76rem;
     font-weight: 600;
@@ -620,6 +681,67 @@ summary = Scraper()
     color: var(--sl-color-gray-2);
     border-bottom: 1px solid var(--sl-color-gray-5);
     background: var(--sl-color-bg-sidebar);
+  }
+
+  .xsel-pg__scraper-ctl {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  .xsel-pg__scraper-ctl[hidden],
+  .xsel-pg__scraper-badge[hidden] {
+    display: none;
+  }
+
+  .xsel-pg__scraper-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    color: var(--sl-color-gray-2);
+  }
+
+  .xsel-pg__scraper-label code {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--sl-accent-high);
+  }
+
+  .xsel-pg__scraper-select {
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-bg);
+    color: var(--sl-color-text);
+    font-family: var(--sl-font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.14rem 0.4rem;
+    border-radius: 0.3rem;
+    max-width: 11rem;
+    cursor: pointer;
+  }
+
+  .xsel-pg__scraper-ctl[data-multi='true'] .xsel-pg__scraper-select {
+    border-color: var(--sl-accent);
+  }
+
+  .xsel-pg__scraper-select:hover,
+  .xsel-pg__scraper-select:focus-visible {
+    border-color: var(--sl-accent-high);
+    outline: none;
+  }
+
+  .xsel-pg__scraper-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.12rem 0.42rem;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.14);
+    border: 1px solid var(--sl-accent);
+    color: var(--sl-accent-high);
+    white-space: nowrap;
   }
 
   .xsel-pg__copy {
@@ -664,7 +786,8 @@ summary = Scraper()
 
   @media (max-width: 48rem) {
     .xsel-pg__pill,
-    .xsel-pg__copy {
+    .xsel-pg__copy,
+    .xsel-pg__scraper-select {
       min-height: 40px;
       min-width: 40px;
       display: inline-flex;

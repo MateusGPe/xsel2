@@ -1,12 +1,18 @@
-"""Example 05: RE2 regex, Aho-Corasick (pipeline + class), and fuzzy matching."""
+"""RE2 regex, Aho-Corasick (pipeline + class), and fuzzy matching."""
 
 import scraperpy as sp
-from _helpers import load_pair
+from _helpers import load_topic
 
-html, scrapers = load_pair("ex_05_regex_ac_and_fuzzy")
+html, scrapers = load_topic(
+    "regex_ac_and_fuzzy",
+    ["regex_extraction_and_filtering", "aho_corasick_and_fuzzy"],
+)
 
 # 1. Verify DSL
-d = scrapers["regex_ac_fuzzy"].from_string(html)
+d = {
+    **scrapers["regex_extract_filter"].from_string(html),
+    **scrapers["ac_and_fuzzy"].from_string(html),
+}
 assert d["regex"]["order_num"] == "4920"
 assert d["regex"]["ord_code"] == "AB"
 assert d["regex"]["ord_num"] == "4920"

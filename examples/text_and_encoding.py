@@ -1,12 +1,23 @@
-"""Example 03: Text normalization, replace, split/join, Base64, hashing, Unicode, map_values."""
+"""Text normalization, replace, split/join, Base64, hashing, Unicode, map_values."""
 
 import scraperpy as sp
-from _helpers import load_pair
+from _helpers import load_topic
 
-html, scrapers = load_pair("ex_03_text_and_encoding")
+html, scrapers = load_topic(
+    "text_and_encoding",
+    [
+        "text_normalization_and_unicode",
+        "text_escaping_and_cleaning",
+        "text_lists_base64_and_mapping",
+    ],
+)
 
 # 1. Verify DSL
-dsl_res = scrapers["text_and_encoding"].from_string(html)
+dsl_res = {
+    **scrapers["text_norm_unicode"].from_string(html),
+    **scrapers["text_escaping_cleaning"].from_string(html),
+    **scrapers["text_lists_b64_map"].from_string(html),
+}
 assert dsl_res["case_and_ws"]["squished"] == "Café Résumé — Crème Brûlée"
 assert dsl_res["case_and_ws"]["ascii_folded"] == "Cafe Resume — Creme Brulee"
 assert dsl_res["case_and_ws"]["slug"] == "cafe_resume_creme_br"

@@ -1,14 +1,20 @@
-"""Example 08: Dict transforms, debug(), InsertMode/InsertOptions, Document, scrape_many."""
+"""Dict transforms, debug(), InsertMode/InsertOptions, Document, scrape_many."""
 
 import tempfile
 from pathlib import Path
 import scraperpy as sp
-from _helpers import load_pair
+from _helpers import load_topic
 
-html, scrapers = load_pair("ex_08_dict_transforms_and_merging")
+html, scrapers = load_topic(
+    "dict_transforms_and_merging",
+    ["dict_transforms", "dict_flatten_and_pick"],
+)
 
 # 1. Verify DSL dict transforms
-d = scrapers["dict_ops"].from_string(html)
+d = {
+    **scrapers["dict_ops"].from_string(html),
+    **scrapers["flat_demo_scraper"].from_string(html),
+}
 item = d["item"]
 assert item["specs"] == {"Switch": "Brown", "Size": "75%"}
 assert item["price"] == 199.99

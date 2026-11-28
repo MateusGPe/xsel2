@@ -37,6 +37,15 @@ def load_pair(stem: str) -> tuple[str, dict[str, sp.ScraperPy]]:
     return html, scrapers
 
 
+def load_topic(html_stem: str, dsl_stems: list[str]) -> tuple[str, dict[str, sp.ScraperPy]]:
+    """Load `<html_stem>.html` and merge scrapers from multiple split `.dsl` snippets."""
+    html = (EXAMPLES_DIR / f"{html_stem}.html").read_text(encoding="utf-8")
+    scrapers: dict[str, sp.ScraperPy] = {}
+    for dsl_stem in dsl_stems:
+        scrapers.update(sp.load_scrapers(str(EXAMPLES_DIR / f"{dsl_stem}.dsl")))
+    return html, scrapers
+
+
 def run_all_dsl(scrapers: dict[str, sp.ScraperPy], html: str) -> dict[str, Any]:
     """Execute every scraper in `scrapers` against `html`."""
     return sp.scrape_many(scrapers, html)

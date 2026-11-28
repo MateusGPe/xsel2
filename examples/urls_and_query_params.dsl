@@ -1,7 +1,7 @@
-// @playground id=ex_04_urls_web label="04: URLs, Srcset & CSS URL" scraper=urls_and_web
+// @playground id=urls_and_query_params label="URLs, Query Params & Filtering" html=urls_and_web.html scraper=urls_and_queries
 let base = "https://shop.example.com:443/catalog/index.html"
 
-urls_and_web = Scraper()
+urls_and_queries = Scraper()
   | $("a.rel", "url_parts") {
       @href | resolve_url(base) -> "resolved"
       | @href | resolve_url(base) | url_part("scheme") -> "scheme"
@@ -26,18 +26,4 @@ urls_and_web = Scraper()
       | find_all("a", Attribute, "href")
       | resolve_url(base)
       | filter_urls(same_origin_of=base) -> "same_origin_urls"
-    }
-  | $("img.hero", "srcset_demo") {
-      @srcset | parse_srcset("largest") | resolve_url(base) -> "largest"
-      | @srcset | parse_srcset("smallest") | resolve_url(base) -> "smallest"
-      | @srcset | parse_srcset("all") -> "all_urls"
-    }
-  | $("img.dpr", "srcset_dpr") {
-      @srcset | parse_srcset("best") -> "best_dpr"
-    }
-  | $("style", "css_urls") {
-      text | css_url() | resolve_url(base) -> "from_style_tag"
-    }
-  | $("div.inline-bg", "css_urls") {
-      @style | css_url() | resolve_url(base) -> "from_inline_style"
     }

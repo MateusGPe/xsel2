@@ -1,10 +1,13 @@
-"""Example 07: JS digger, JSON/CSV parse & dump, JMESPath, JSONPath, JSON Schema."""
+"""JS digger, JSON/CSV parse & dump, JMESPath, JSONPath, JSON Schema."""
 
 import json
 import scraperpy as sp
-from _helpers import load_pair
+from _helpers import load_topic
 
-html, scrapers = load_pair("ex_07_js_digger_json_csv_queries")
+html, scrapers = load_topic(
+    "js_digger_json_csv_queries",
+    ["js_json_and_csv", "jsonpath_projection", "jmespath_projection"],
+)
 
 # 1. Verify DSL
 d = scrapers["js_json_csv"].from_string(html)

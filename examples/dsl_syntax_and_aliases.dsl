@@ -1,4 +1,4 @@
-// @playground id=ex_01_dsl_syntax label="01: DSL Syntax & Flow" scraper=syntax_and_aliases
+// @playground id=dsl_syntax_and_aliases label="DSL Syntax & Aliases" html=dsl_syntax_and_composition.html scraper=syntax_and_aliases
 # Hash single-line comment
 // C++ style single-line comment
 /* Multi-line
@@ -14,16 +14,12 @@ pipe kv_pair = {
   | find("dd", Text) -> "@value"
 }
 
-// Base scraper for include()
-base_meta = Scraper()
-  | $(title_sel, "meta") {
-      text | squish -> "brand"
-    }
-
-// Demonstrates declarations (=, :, :=, implicit), separators (. | |>),
+// Demonstrates declarations (=, :, :=), separators (. | |>),
 // shorthands ($ @ ?? [0] [-1] -> >> as), all 17 aliases, and multiline strings.
 syntax_and_aliases: ScraperPy()
-  .include(base_meta)
+  |> $(title_sel, "meta") {
+       text | squish -> "brand"
+     }
   |> $("header.site-header", "header") {
        // Shorthands: @ident, @"attr", @("attr"), @[fallback list]
        // Note: bare @ident allows [A-Za-z_][A-Za-z0-9_]*; hyphenated attrs use @"data-env"
@@ -80,37 +76,3 @@ syntax_and_aliases: ScraperPy()
         escaped: `\"${escaped_var}\"`
       }")
     }
-
-// Control flow, guards, save/restore, tee, when_exists/unless_exists/when_match
-control_flow := Scraper()
-  | $("article.card", "filtered_cards") {
-      skip_if_exists("span.skip-marker")
-      | find("h2.name", Text) | skip_if_empty()
-      | save("orig_name")
-      | tee {
-          upper -> "upper_name"
-        }
-      | restore("orig_name")
-      | lower -> "lower_name"
-      | when_exists("span.badge") {
-          find("span.badge", Text) -> "badge"
-        }
-      | unless_exists("span.out-of-stock") {
-          find(".price", Text) | when_match("\\$19", flags="i") {
-            prepend("USD ") -> "matched_price"
-          }
-        }
-    }
-  | $("div.abort-zone", "abort_demo") {
-      find("span.normal", Text) -> "normal"
-      | abort_if_exists("span.maintenance", key="aborted_reason", reason="maintenance_mode")
-    }
-  | $("header.site-header", "never_reached_after_abort") {
-      find("h1.brand", Text) -> "brand"
-    }
-
-// Implicit root scraper + @key/@value collapsing
-implicit_root = .select("dl.specs") {
-  find("dt", Text) -> "@key"
-  | find("dd", Text) -> "@value"
-}

@@ -48,11 +48,14 @@ def _parse_playground_meta(dsl_text: str) -> dict[str, str]:
     return meta
 
 
-def _find_matching_html(examples_dir: Path, stem: str) -> Path | None:
-    candidates = [
+def _find_matching_html(examples_dir: Path, stem: str, meta: dict[str, str] | None = None) -> Path | None:
+    candidates: list[Path] = []
+    if meta and meta.get("html"):
+        candidates.append(examples_dir / meta["html"])
+    candidates.extend([
         examples_dir / f"{stem}.html",
         examples_dir / f"{stem}_sample.html",
-    ]
+    ])
     if stem == "product":
         candidates.append(examples_dir / "sample.html")
     for cand in candidates:
@@ -112,7 +115,7 @@ def discover_and_validate(examples_dir: Path) -> dict[str, dict[str, Any]]:
         if meta.get("skip") == "true":
             continue
 
-        html_path = _find_matching_html(examples_dir, dsl_path.stem)
+        html_path = _find_matching_html(examples_dir, dsl_path.stem, meta)
         if html_path is None:
             continue
         html_text = html_path.read_text(encoding="utf-8")

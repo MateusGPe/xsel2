@@ -1,10 +1,13 @@
-"""Example 02: DOM selection, all Value modes, extract_fields, XPath 1.0/3.1, tables, metadata."""
+"""DOM selection, all Value modes, extract_fields, XPath 1.0/3.1, tables, metadata."""
 
 import json
 import scraperpy as sp
-from _helpers import load_pair
+from _helpers import load_topic
 
-html, scrapers = load_pair("ex_02_dom_and_selection")
+html, scrapers = load_topic(
+    "dom_and_selection",
+    ["dom_selection_and_values", "xpath_tables_and_meta"],
+)
 
 # 1. Verify DSL dom_and_values
 d1 = scrapers["dom_and_values"].from_string(html)

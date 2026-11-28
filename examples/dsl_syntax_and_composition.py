@@ -1,17 +1,23 @@
-"""Example 01: DSL syntax, all 17 aliases, shorthands, control flow, and composition."""
+"""DSL syntax, all 17 aliases, shorthands, control flow, and composition."""
 
 import scraperpy as sp
-from _helpers import EXAMPLES_DIR, load_pair
+from _helpers import EXAMPLES_DIR, load_topic
 
-html, scrapers = load_pair("ex_01_dsl_syntax_and_composition")
+html, scrapers = load_topic(
+    "dsl_syntax_and_composition",
+    ["dsl_syntax_and_aliases", "dsl_include", "dsl_control_flow", "dsl_implicit_root"],
+)
 
-# 1. Verify DSL syntax_and_aliases
+# 1. Verify DSL syntax_and_aliases & composed_scraper (include)
 res_syntax = scrapers["syntax_and_aliases"].from_string(html)
 assert res_syntax["brand"] == "XSel2 Catalog"
 assert res_syntax["env"] == "prod"
 assert res_syntax["card_id"] == 101
 assert res_syntax["card_name_upper"] == "ALPHA WIDGET"
 assert res_syntax["card_name_lower"] == "alpha widget"
+res_inc = scrapers["composed_scraper"].from_string(html)
+assert res_inc["meta"]["brand"] == "XSel2 Catalog"
+assert res_inc["header"]["env"] == "prod"
 
 # 2. Verify control_flow (skip_if_exists, skip_if_empty, save/restore, tee, when_*, abort_if_exists)
 res_cf = scrapers["control_flow"].from_string(html)
@@ -37,7 +43,7 @@ quick = Scraper() | $("header.site-header") { use(clean_title) }
 inline_scrapers = sp.parse_dsl_string(inline_dsl)
 assert inline_scrapers["quick"].from_string(html) == {"title": "XSel2 Catalog"}
 
-reloaded = sp.load_scrapers(str(EXAMPLES_DIR / "ex_01_dsl_syntax_and_composition.dsl"))
+reloaded = sp.load_scrapers(str(EXAMPLES_DIR / "dsl_syntax_and_aliases.dsl"))
 assert "syntax_and_aliases" in reloaded
 
 # 5. Python ScraperPy parity for composition & control-flow methods:

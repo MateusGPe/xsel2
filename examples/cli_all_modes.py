@@ -46,17 +46,19 @@ assert r_implicit_stdin.returncode == 0
 assert json.loads(r_implicit_stdin.stdout) == {"matches": {"text": "Hello CLI"}}
 
 # 3. -d / --dsl with and without -n / --name
-dsl_path = str(EXAMPLES_DIR / "ex_02_dom_and_selection.dsl")
-html_path = str(EXAMPLES_DIR / "ex_02_dom_and_selection.html")
+dsl_path = str(EXAMPLES_DIR / "dom_selection_and_values.dsl")
+html_path = str(EXAMPLES_DIR / "dom_and_selection.html")
 
 r_named = run_cli(["-d", dsl_path, "-n", "dom_and_values", "--html", html_path, "-c"])
 assert r_named.returncode == 0
 assert json.loads(r_named.stdout)["box"]["tag"] == "section"
 
-r_all_scrapers = run_cli(["--dsl", dsl_path, "--html", html_path, "-c"])
+multi_dsl_path = str(EXAMPLES_DIR / "dsl_include.dsl")
+multi_html_path = str(EXAMPLES_DIR / "dsl_syntax_and_composition.html")
+r_all_scrapers = run_cli(["--dsl", multi_dsl_path, "--html", multi_html_path, "-c"])
 assert r_all_scrapers.returncode == 0
 all_out = json.loads(r_all_scrapers.stdout)
-assert "dom_and_values" in all_out and "xpath_tables_meta" in all_out
+assert "base_meta" in all_out and "composed_scraper" in all_out
 
 # 4. --batch modes: --ndjson (default), --json-array, --json-object, --out-dir, -j / --threads
 with tempfile.TemporaryDirectory() as td:

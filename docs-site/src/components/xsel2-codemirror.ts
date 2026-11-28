@@ -196,7 +196,8 @@ export function createPlaygroundEditors(
   htmlHost: HTMLElement,
   dslHost: HTMLElement,
   outHost: HTMLElement,
-  onRun: () => void
+  onRun: () => void,
+  onDslChange?: (dsl: string) => void
 ): PlaygroundEditors {
   const themeCompartment = new Compartment();
   const outLangCompartment = new Compartment();
@@ -227,17 +228,28 @@ export function createPlaygroundEditors(
     }),
   });
 
+  const dslExtensions = [
+    basicSetup,
+    xsel2Language,
+    runKeymap,
+    sharedLayoutTheme,
+    themeCompartment.of(currentThemeExt()),
+  ];
+  if (onDslChange) {
+    dslExtensions.push(
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          onDslChange(update.state.doc.toString());
+        }
+      })
+    );
+  }
+
   const dslView = new EditorView({
     parent: dslHost,
     state: EditorState.create({
       doc: '',
-      extensions: [
-        basicSetup,
-        xsel2Language,
-        runKeymap,
-        sharedLayoutTheme,
-        themeCompartment.of(currentThemeExt()),
-      ],
+      extensions: dslExtensions,
     }),
   });
 

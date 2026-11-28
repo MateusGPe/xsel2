@@ -1,4 +1,4 @@
-// @playground id=ex_02_dom_selection label="02: DOM, XPath & Tables" scraper=dom_and_values
+// @playground id=dom_selection_and_values label="DOM Selection & Value Modes" html=dom_and_selection.html scraper=dom_and_values
 dom_and_values = Scraper()
   | $("section#dom-box", "box") {
       tag_name() -> "tag"
@@ -36,19 +36,4 @@ dom_and_values = Scraper()
         missing_opt: { sel: ".missing", default: "N/A" },
         box_id: { sel: "a.doc-link", type: "exists", cast: "bool" }
       }, allow_empty=false)
-    }
-
-xpath_tables_meta = Scraper()
-  | extract_meta("meta", include_json_ld=true, index_json_ld=true)
-  | $("table.pricing") {
-      table(key="pricing_rows", header=true, normalize_headers=true, trim_cells=true)
-    }
-  | $("table.no-header") {
-      table(key="raw_rows", header=false, trim_cells=true)
-    }
-  | $("ul.xml-items", "xpath_demo") {
-      xpath(".//li/text()") -> "xp1_texts"
-      | xpath(".//li", attr="data-idx") -> "xp1_attrs"
-      | xpath3("string-join(.//li/text(), ', ')") -> "xp3_joined"
-      | xpath3(".//li", attr="data-idx") -> "xp3_attrs"
     }

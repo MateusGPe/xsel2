@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified runner for all exhaustive examples (ex_01_*.py .. ex_09_*.py)."""
+"""Unified runner for all exhaustive topic examples."""
 
 from __future__ import annotations
 
@@ -11,6 +11,18 @@ import sys
 EXAMPLES_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EXAMPLES_DIR.parent
 
+TOPIC_SCRIPTS = [
+    "dsl_syntax_and_composition.py",
+    "dom_and_selection.py",
+    "text_and_encoding.py",
+    "urls_and_web.py",
+    "regex_ac_and_fuzzy.py",
+    "slicing_ordering_and_types.py",
+    "js_digger_json_csv_queries.py",
+    "dict_transforms_and_merging.py",
+    "cli_all_modes.py",
+]
+
 
 def main() -> int:
     env = os.environ.copy()
@@ -18,9 +30,10 @@ def main() -> int:
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = os.pathsep.join([p for p in [build_dir, str(REPO_ROOT), existing_pp] if p])
 
-    scripts = sorted(EXAMPLES_DIR.glob("ex_*.py"))
-    if not scripts:
-        print("No ex_*.py scripts found.", file=sys.stderr)
+    scripts = [EXAMPLES_DIR / name for name in TOPIC_SCRIPTS]
+    missing = [s.name for s in scripts if not s.exists()]
+    if missing:
+        print(f"Missing topic scripts: {missing}", file=sys.stderr)
         return 1
 
     failures = 0

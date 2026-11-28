@@ -1,6 +1,6 @@
 # Exhaustive Examples Index & Coverage Matrix
 
-Run all exhaustive examples at once:
+Run all exhaustive topic examples at once:
 
 ```bash
 PYTHONPATH=build:. python3 examples/run_all_examples.py
@@ -18,25 +18,28 @@ PYTHONPATH=build:. python3 scripts/sync_examples_to_docsite.py
 
 ---
 
-## Module Overview
+## Topic Overview
 
-| Module | Files | Coverage |
-| --- | --- | --- |
-| **01. DSL Syntax & Composition** | [`ex_01_dsl_syntax_and_composition.dsl`](ex_01_dsl_syntax_and_composition.dsl), [`.py`](ex_01_dsl_syntax_and_composition.py), [`.html`](ex_01_dsl_syntax_and_composition.html) | Comments (`#`, `//`, `/* */`), `let`, `${var}`, `\${var}`, multiline strings, `=`, `:`, `:=`, implicit root, `.`/`|`/`\|>`, `.(...)`, `$`, `@`, `??`, `[0]`, `[-1]`, `->`/`>>`/`as`, all 17 aliases, `pipe`/`use`, `include`, `tee`/`branch`, `save`/`restore`, `each`, nested `$`, `when_exists`, `unless_exists`, `when_match`, `skip_if_exists`, `skip_if_empty`, `abort_if_exists`, `finalize`, `@key`/`@value`, `parse_dsl_string`, `load_scrapers` |
-| **02. DOM, XPath, Tables & Metadata** | [`ex_02_dom_and_selection.dsl`](ex_02_dom_and_selection.dsl), [`.py`](ex_02_dom_and_selection.py), [`.html`](ex_02_dom_and_selection.html) | `select`, `text(own_text)`, `attr`, `find`, `find_all`, all 6 `Value` modes (`Text`, `OwnText`, `Attribute`, `ElementExists`, `AttributeExists`, `Adjacent`), `extract_fields`/`fields`, `html`, `outer_html`, `tag_name`, `classes`, `attrs(data_only)`, `xpath`, `xpath3`, `table`, `extract_meta` |
-| **03. Text, Encoding & Unicode** | [`ex_03_text_and_encoding.dsl`](ex_03_text_and_encoding.dsl), [`.py`](ex_03_text_and_encoding.py), [`.html`](ex_03_text_and_encoding.html) | `trim`, `squish`, `normalize_whitespace`, `lower`, `upper`, `unescape`, `unescape_html`, `replace` (scalar & mapping), `split`, `join`, `prepend`, `append`, `drop_empty`, `substring`, `strip_comments`, `strip_tags`, `base64_encode`, `base64_decode`, `hash` (`fnv1a64`, `sha256`), `slugify`, `map_values`, `unicode_normalize` (`NFC`/`NFD`/`NFKC`/`NFKD`), `strip_accents` |
-| **04. URLs, Srcset & CSS URL** | [`ex_04_urls_and_web.dsl`](ex_04_urls_and_web.dsl), [`.py`](ex_04_urls_and_web.py), [`.html`](ex_04_urls_and_web.html) | `resolve_url`, `url_part` (`scheme`/`host`/`port`/`path`/`query`/`fragment`), `query_param`, `query_params`, `strip_query`, `filter_urls`, `parse_srcset`, `css_url` |
-| **05. Regex, Aho-Corasick & Fuzzy** | [`ex_05_regex_ac_and_fuzzy.dsl`](ex_05_regex_ac_and_fuzzy.dsl), [`.py`](ex_05_regex_ac_and_fuzzy.py), [`.html`](ex_05_regex_ac_and_fuzzy.html) | `regex_replace`, `regex_filter`, `regex_extract`, `regex_find_all`, `regex_groups` (`i`/`s`/`m` flags), `filter`, `extract_many`, `fuzzy_filter`, `similarity`, `AhoCorasick` (`add_pattern`, `build`, `clear`, `pattern_count`, `contains_any`, `has_all`, `search`) |
-| **06. Slicing, Types & Dates** | [`ex_06_slicing_ordering_and_types.dsl`](ex_06_slicing_ordering_and_types.dsl), [`.py`](ex_06_slicing_ordering_and_types.py), [`.html`](ex_06_slicing_ordering_and_types.html) | `first`, `last`, `nth`, `slice`, `unique`, `sort`, `reverse`, `default`, `set(type=...)`, `append_to`, `count`, `parse_number`, `parse_duration`, `to_int`, `to_float`, `to_bool`, `parse_date` |
-| **07. JS Digger, JSON, CSV & Queries** | [`ex_07_js_digger_json_csv_queries.dsl`](ex_07_js_digger_json_csv_queries.dsl), [`.py`](ex_07_js_digger_json_csv_queries.py), [`.html`](ex_07_js_digger_json_csv_queries.html) | `js_block`, `js_blocks`, `parse_js`, `json_parse`, `json_dump`, `csv_parse`, `csv_dump`, `jmespath`, `jsonpath`, `json_schema`, Python `jmespath_eval`, `jsonpath_query`, `json_schema_validate`, `parse_js`, `json_parse` |
-| **08. Dict Transforms, Merging & Docs** | [`ex_08_dict_transforms_and_merging.dsl`](ex_08_dict_transforms_and_merging.dsl), [`.py`](ex_08_dict_transforms_and_merging.py), [`.html`](ex_08_dict_transforms_and_merging.html) | `flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `zip_keys`, `coalesce_keys`, `cast_keys`, `sort_array`, `deduplicate`, `debug`, `InsertMode` (`Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`), `InsertOptions`, `Document`, `from_document`, `from_file`, `scrape_many` |
-| **09. CLI All Modes** | [`ex_09_cli_all_modes.py`](ex_09_cli_all_modes.py) | `-h`/`--help`, `-s`/`--selector`, `-d`/`--dsl`, `-n`/`--name`, `--html` (file, string, `-`, stdin), `-c`/`--compact`, `--batch`, `--ndjson`, `--json-array`, `--json-object`, `--out-dir`, `-j`/`--threads` |
+Each topic shares one `.html` fixture and one `.py` verification script, while its `.dsl` examples are split into focused, single-scraper snippets (except `dsl_include.dsl`, which declares a base scraper for `include()`).
+
+| Topic | DSL Snippets | Shared HTML & Python | Coverage |
+| --- | --- | --- | --- |
+| **DSL Syntax & Composition** | [`dsl_syntax_and_aliases.dsl`](dsl_syntax_and_aliases.dsl), [`dsl_include.dsl`](dsl_include.dsl), [`dsl_control_flow.dsl`](dsl_control_flow.dsl), [`dsl_implicit_root.dsl`](dsl_implicit_root.dsl) | [`.html`](dsl_syntax_and_composition.html), [`.py`](dsl_syntax_and_composition.py) | Comments (`#`, `//`, `/* */`), `let`, `${var}`, `\${var}`, multiline strings, `=`, `:`, `:=`, implicit root, `.`/`|`/`\|>`, `.(...)`, `$`, `@`, `??`, `[0]`, `[-1]`, `->`/`>>`/`as`, all 17 aliases, `pipe`/`use`, `include`, `tee`/`branch`, `save`/`restore`, `each`, nested `$`, `when_exists`, `unless_exists`, `when_match`, `skip_if_exists`, `skip_if_empty`, `abort_if_exists`, `finalize`, `@key`/`@value`, `parse_dsl_string`, `load_scrapers` |
+| **DOM, XPath, Tables & Metadata** | [`dom_selection_and_values.dsl`](dom_selection_and_values.dsl), [`xpath_tables_and_meta.dsl`](xpath_tables_and_meta.dsl) | [`.html`](dom_and_selection.html), [`.py`](dom_and_selection.py) | `select`, `text(own_text)`, `attr`, `find`, `find_all`, all 6 `Value` modes (`Text`, `OwnText`, `Attribute`, `ElementExists`, `AttributeExists`, `Adjacent`), `extract_fields`/`fields`, `html`, `outer_html`, `tag_name`, `classes`, `attrs(data_only)`, `xpath`, `xpath3`, `table`, `extract_meta` |
+| **Text, Encoding & Unicode** | [`text_normalization_and_unicode.dsl`](text_normalization_and_unicode.dsl), [`text_escaping_and_cleaning.dsl`](text_escaping_and_cleaning.dsl), [`text_lists_base64_and_mapping.dsl`](text_lists_base64_and_mapping.dsl) | [`.html`](text_and_encoding.html), [`.py`](text_and_encoding.py) | `trim`, `squish`, `normalize_whitespace`, `lower`, `upper`, `unescape`, `unescape_html`, `replace` (scalar & mapping), `split`, `join`, `prepend`, `append`, `drop_empty`, `substring`, `strip_comments`, `strip_tags`, `base64_encode`, `base64_decode`, `hash` (`fnv1a64`, `sha256`), `slugify`, `map_values`, `unicode_normalize` (`NFC`/`NFD`/`NFKC`/`NFKD`), `strip_accents` |
+| **URLs, Srcset & CSS URL** | [`urls_and_query_params.dsl`](urls_and_query_params.dsl), [`srcset_and_css_urls.dsl`](srcset_and_css_urls.dsl) | [`.html`](urls_and_web.html), [`.py`](urls_and_web.py) | `resolve_url`, `url_part` (`scheme`/`host`/`port`/`path`/`query`/`fragment`), `query_param`, `query_params`, `strip_query`, `filter_urls`, `parse_srcset`, `css_url` |
+| **Regex, Aho-Corasick & Fuzzy** | [`regex_extraction_and_filtering.dsl`](regex_extraction_and_filtering.dsl), [`aho_corasick_and_fuzzy.dsl`](aho_corasick_and_fuzzy.dsl) | [`.html`](regex_ac_and_fuzzy.html), [`.py`](regex_ac_and_fuzzy.py) | `regex_replace`, `regex_filter`, `regex_extract`, `regex_find_all`, `regex_groups` (`i`/`s`/`m` flags), `filter`, `extract_many`, `fuzzy_filter`, `similarity`, `AhoCorasick` (`add_pattern`, `build`, `clear`, `pattern_count`, `contains_any`, `has_all`, `search`) |
+| **Slicing, Types & Dates** | [`slicing_and_ordering.dsl`](slicing_and_ordering.dsl), [`types_and_numbers.dsl`](types_and_numbers.dsl), [`dates_and_durations.dsl`](dates_and_durations.dsl) | [`.html`](slicing_ordering_and_types.html), [`.py`](slicing_ordering_and_types.py) | `first`, `last`, `nth`, `slice`, `unique`, `sort`, `reverse`, `default`, `set(type=...)`, `append_to`, `count`, `parse_number`, `parse_duration`, `to_int`, `to_float`, `to_bool`, `parse_date` |
+| **JS Digger, JSON, CSV & Queries** | [`js_json_and_csv.dsl`](js_json_and_csv.dsl), [`jsonpath_projection.dsl`](jsonpath_projection.dsl), [`jmespath_projection.dsl`](jmespath_projection.dsl) | [`.html`](js_digger_json_csv_queries.html), [`.py`](js_digger_json_csv_queries.py) | `js_block`, `js_blocks`, `parse_js`, `json_parse`, `json_dump`, `csv_parse`, `csv_dump`, `jmespath`, `jsonpath`, `json_schema`, Python `jmespath_eval`, `jsonpath_query`, `json_schema_validate` |
+| **Dict Transforms, Merging & Docs** | [`dict_transforms.dsl`](dict_transforms.dsl), [`dict_flatten_and_pick.dsl`](dict_flatten_and_pick.dsl) | [`.html`](dict_transforms_and_merging.html), [`.py`](dict_transforms_and_merging.py) | `flatten`, `pick_keys`, `omit_keys`, `rename_keys`, `merge_keys`, `zip_keys`, `coalesce_keys`, `cast_keys`, `sort_array`, `deduplicate`, `debug`, `InsertMode` (`Default`, `Overwrite`, `AppendToList`, `UniqueSuffix`, `Merge`), `InsertOptions`, `Document`, `from_document`, `from_file`, `scrape_many` |
+| **CLI All Modes** | — | [`cli_all_modes.py`](cli_all_modes.py) | `-h`/`--help`, `-s`/`--selector`, `-d`/`--dsl`, `-n`/`--name`, `--html` (file, string, `-`, stdin), `-c`/`--compact`, `--batch`, `--ndjson`, `--json-array`, `--json-object`, `--out-dir`, `-j`/`--threads` |
 
 ---
 
 ## Automated Coverage Verification
 
 `tests/test_examples.py` automatically verifies that:
-- Every `ex_01`–`ex_09` script exits with code `0`.
-- **100%** of methods, enums, and functions in `scraperpy-stubs/_scraperpy.pyi` are exercised in `ex_*.py`.
-- **100%** of DSL steps, aliases, and control-flow keywords in `docs/dsl-and-steps.md` are exercised in `ex_*.dsl`.
+- Every topic script exits with code `0`.
+- Every split `.dsl` snippet defines exactly `1` scraper (with `dsl_include.dsl` as the sole `include()` exception).
+- **100%** of methods, enums, and functions in `scraperpy-stubs/_scraperpy.pyi` are exercised in the topic `.py` scripts.
+- **100%** of DSL steps, aliases, and control-flow keywords in `docs/dsl-and-steps.md` are exercised in the split `.dsl` snippets.

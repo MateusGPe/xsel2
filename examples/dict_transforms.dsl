@@ -1,4 +1,4 @@
-// @playground id=ex_08_dict_transforms label="08: Dict Transforms & Merging" scraper=dict_ops
+// @playground id=dict_transforms label="Dict Transforms & Merging" html=dict_transforms_and_merging.html scraper=dict_ops
 dict_ops = Scraper()
   | $("section.product", "item") {
       @"data-sku" -> "sku"
@@ -19,11 +19,5 @@ dict_ops = Scraper()
       | merge_keys(["product_sku", "headline"], "summary_parts")
       | deduplicate()
       | sort_array(ascending=true)
-      | debug(prefix="EX08_DSL: ", print_dict=false, print_node=false)
-    }
-  | $("section.product", "flat_demo") {
-      find("span.a", Text) -> "deep.x"
-      | find("span.b", Text) -> "deep.y"
-      | flatten()
-      | pick_keys(["deep_x"])
+      | debug(prefix="DICT_DSL: ", print_dict=false, print_node=false)
     }
