@@ -4,14 +4,14 @@
 <section class="xsel-comparison not-content" aria-label="Benchmarks and feature comparison">
   <div class="xsel-bench-strip">
     <div class="xsel-bench-stat xsel-bench-stat--highlight">
-      <div class="xsel-bench-stat__value">38.1 ms</div>
-      <div class="xsel-bench-stat__label">1,000 HTML Files Parsed (<code>-j 0</code>)</div>
-      <div class="xsel-bench-stat__sub">13.3&times; faster than Python + BeautifulSoup + lxml (505.3 ms)</div>
+      <div class="xsel-bench-stat__value">27.0 s</div>
+      <div class="xsel-bench-stat__label">5,000 Real HTML Files (~3.8 GB, <code>-j 0</code>)</div>
+      <div class="xsel-bench-stat__sub">19.9&times; faster than Python + BeautifulSoup + lxml (535.8 s)</div>
     </div>
     <div class="xsel-bench-stat">
-      <div class="xsel-bench-stat__value">9.8 MB</div>
-      <div class="xsel-bench-stat__label">Peak RSS Memory Footprint</div>
-      <div class="xsel-bench-stat__sub">4.2&times; lower than Python + BeautifulSoup + lxml (41.4 MB)</div>
+      <div class="xsel-bench-stat__value">25.6 MB</div>
+      <div class="xsel-bench-stat__label">Single-Thread Peak RSS (<code>-j 1</code>)</div>
+      <div class="xsel-bench-stat__sub">4.7&times; lower than Python + BeautifulSoup + lxml (121.3 MB); 103.0 MB at <code>-j 0</code></div>
     </div>
     <div class="xsel-bench-stat">
       <div class="xsel-bench-stat__value">0 ms V8</div>
@@ -20,9 +20,9 @@
     </div>
   </div>
   <p class="xsel-bench-note">
-    Measured locally on 1,000 copies of <code>examples/sample.html</code> (12-core Linux x86_64):
-    <code>./build/xsel2 -d examples/product.dsl -n summary --batch ... -j 0</code> (38.1 ms, 9.8 MB RSS; single-threaded <code>-j 1</code>: 182.2 ms, 9.4 MB RSS)
-    vs. Python 3 + <code>beautifulsoup4</code> 4.14 + <code>lxml</code> 6.0 (505.3 ms, 41.4 MB RSS, requiring regex fallback for unquoted JS keys).
+    Measured locally on 5,000 real-world production HTML files (3.51 GiB / 3.77 GB total, ~754 KB avg/file, 12-core Linux x86_64) running identical DOM, regex, and embedded <code>&lt;script&gt;</code> extraction:
+    <code>./build/xsel2 -d scripts/benchmark.dsl -n real_scrape --batch ... -j 0</code> (26.97 s, 103.0 MB RSS; single-threaded <code>-j 1</code>: 157.95 s, 25.6 MB RSS)
+    vs. Python 3 + <code>beautifulsoup4</code> 4.14.3 + <code>lxml</code> 6.0.2 (535.76 s, 121.3 MB RSS, requiring custom regex/brace-matching for embedded JS state).
   </p>
 
   <div class="xsel-matrix-wrap">

@@ -145,7 +145,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME lxml2_query
   GITHUB_REPOSITORY MateusGPe/lxml2-query-v1
-  GIT_TAG xpath
+  GIT_TAG main
   GIT_SHALLOW TRUE
   SYSTEM ON
   OPTIONS
