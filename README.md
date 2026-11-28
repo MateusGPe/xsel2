@@ -121,7 +121,7 @@ cat examples/sample.html | ./build/xsel2 -d examples/product.dsl -n summary -c
 ### Python (`scraperpy`)
 
 ```bash
-pip install scraperpy
+pip install xsel2
 ```
 
 Or run the repository examples against a local build:
