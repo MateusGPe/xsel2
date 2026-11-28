@@ -9,8 +9,10 @@ dom_and_values = Scraper()
       | find("a.doc-link", Value.Attribute, ["data-missing", "href"]) -> "href"
       | find("a.doc-link", Value.ElementExists) -> "link_exists"
       | find("a.doc-link", Value.AttributeExists, "data-alt") -> "has_data_alt"
-      | find_all("ul.xml-items li", Value.Text) -> "all_li"
       | find("div.rich", Value.Text) -> "rich_text"
+    }
+  | $("ul.xml-items", "box") {
+      find_all("li", Value.Text) -> "all_li"
     }
   | $("span.label", "box") {
       find("span.next-label", Value.Adjacent) -> "adjacent_text"

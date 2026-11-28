@@ -18,6 +18,7 @@ assert box["own_text"] == "Direct text tail."
 assert box["href"] == "/docs/guide"
 assert box["link_exists"] == "true"
 assert box["has_data_alt"] == "true"
+assert box["all_li"] == ["One", "Two", "Three"]
 assert box["adjacent_text"] == "Next B"
 assert d1["html_inspect"]["inner"] == "Hello <b>World</b>!"
 assert d1["html_inspect"]["outer"] == '<div class="rich">Hello <b>World</b>!</div>'

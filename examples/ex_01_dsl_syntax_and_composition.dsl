@@ -60,6 +60,9 @@ syntax_and_aliases: ScraperPy()
         text -> "dt_only"
       }
     }
+  | $("dl.specs", "specs_kv") {
+      use(kv_pair)
+    }
   | $("div.nested-groups div.group", "groups") {
       @"data-group" -> "group"
       | $("li", "items") {

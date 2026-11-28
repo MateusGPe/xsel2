@@ -109,3 +109,66 @@ def test_dsl_steps_and_aliases_complete_coverage() -> None:
     )
     missing_steps = sorted(s for s in step_names if not re.search(rf"\b{re.escape(s)}\b", dsl_corpus))
     assert not missing_steps, f"Uncovered DSL steps/aliases/constructs in ex_*.dsl: {missing_steps}"
+
+
+def _find_html_for_dsl(dsl_path: Path) -> Path:
+    for cand in (
+        dsl_path.with_suffix(".html"),
+        EXAMPLES_DIR / f"{dsl_path.stem}_sample.html",
+        EXAMPLES_DIR / "sample.html",
+    ):
+        if cand.is_file():
+            return cand
+    raise FileNotFoundError(f"No HTML fixture found for {dsl_path.name}")
+
+
+@pytest.mark.parametrize("dsl_path", sorted(EXAMPLES_DIR.glob("*.dsl")), ids=lambda p: p.name)
+def test_all_dsl_examples_produce_non_empty_output(dsl_path: Path) -> None:
+    if str(REPO_ROOT / "build") not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT / "build"))
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    import scraperpy
+
+    html_text = _find_html_for_dsl(dsl_path).read_text(encoding="utf-8")
+    scrapers = scraperpy.load_scrapers(str(dsl_path))
+    assert scrapers, f"No scrapers loaded from {dsl_path.name}"
+    for name, scraper in scrapers.items():
+        res = scraper.from_string(html_text)
+        assert res, f"{dsl_path.name}::{name} returned empty output: {res!r}"
+
+
+def test_docsite_presets_valid_and_non_empty() -> None:
+    if str(REPO_ROOT / "build") not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT / "build"))
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    import scraperpy
+
+    synced_path = REPO_ROOT / "docs-site" / "src" / "data" / "synced-examples.json"
+    synced = json.loads(synced_path.read_text(encoding="utf-8")).get("presets", {})
+    assert synced, "No synced presets found in synced-examples.json"
+    for pid, preset in synced.items():
+        scrapers = scraperpy.parse_dsl_string(preset["dsl"])
+        assert scrapers, f"Synced preset {pid} parsed 0 scrapers"
+        for sname, scraper in scrapers.items():
+            res = scraper.from_string(preset["html"])
+            assert res, f"Synced preset {pid}::{sname} returned empty output"
+
+    playground_path = REPO_ROOT / "docs-site" / "src" / "components" / "XselPlayground.astro"
+    pg_text = playground_path.read_text(encoding="utf-8")
+    block = pg_text[pg_text.index("const PRESETS = {") : pg_text.index("let modulePromise = null;")]
+    for pid in ("card", "js_digger", "table", "aho", "product"):
+        idx = block.index(f"    {pid}: {{")
+        h_start = block.index("html: `", idx) + 7
+        h_end = block.index("`,\n      dsl:", h_start)
+        d_start = block.index("dsl: `", h_end) + 6
+        d_end = block.index("`,\n    },", d_start)
+        html = block[h_start:h_end].replace("<\\/", "</")
+        dsl = block[d_start:d_end].replace("\\\\", "\\").replace("\\`", "`")
+        scrapers = scraperpy.parse_dsl_string(dsl)
+        assert scrapers, f"Exclusive preset {pid} parsed 0 scrapers"
+        for sname, scraper in scrapers.items():
+            res = scraper.from_string(html)
+            assert res, f"Exclusive preset {pid}::{sname} returned empty output"
+

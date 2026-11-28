@@ -25,7 +25,7 @@ urls_and_web = Scraper()
       | filter_urls(allowed_domains=["example.com"], blocked_domains=["evil.org"], allowed_schemes=["https"]) -> "safe_example_urls"
       | find_all("a", Attribute, "href")
       | resolve_url(base)
-      | filter_urls(same_origin_of="https://shop.example.com") -> "same_origin_urls"
+      | filter_urls(same_origin_of=base) -> "same_origin_urls"
     }
   | $("img.hero", "srcset_demo") {
       @srcset | parse_srcset("largest") | resolve_url(base) -> "largest"

@@ -177,7 +177,6 @@ const sharedLayoutTheme = EditorView.theme({
   },
   '.cm-gutterElement': {
     lineHeight: '1.4',
-    margin: '0',
   },
 });
 

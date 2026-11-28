@@ -133,7 +133,7 @@ types_tables_and_dict = Scraper()
       find_all("article.item span.price", Value.Text) | parse_number() | sort(ascending=true, numeric=true) -> "prices_asc"
     }
   | rename_keys({"temp_name": "title"})
-  | pick_keys(["page_meta", "comparison_rows", "products", "numeric_sort"])
+  | pick_keys(["page_meta", "comparison_rows", "products", "numeric_sort", "zip_demo"])
   | omit_keys(["@context", "canonical"])
   | merge_keys(["numeric_sort"], "pricing_summary")
   | sort_array(true)
@@ -151,7 +151,7 @@ serialization = Scraper()
     }
   | $("script") {
       text | js_block("window.__SHOWCASE_STATE__ =") | parse_js("state", simplify=true)
-      | text | js_blocks(["window.__PROMO__"])
+      | text | js_blocks(["window.__PROMO__ ="], {"window.__PROMO__ =": "promo_raw"})
     }
   | $("section#catalog", "zipped") {
       find_all("article.item", Value.Attribute, "data-sku") -> "skus"

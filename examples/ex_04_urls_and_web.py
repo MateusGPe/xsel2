@@ -22,6 +22,8 @@ assert dsl_res["bracket_params"]["opt"] == "n/a"
 assert parts["stripped_all"] == "https://shop.example.com:443/products/item-1#specs"
 assert "utm_source" not in parts["dropped_utm"]
 assert "https://evil.org/phish" not in dsl_res["filtered_links"]["safe_example_urls"]
+assert len(dsl_res["filtered_links"]["same_origin_urls"]) >= 1
+assert all(u.startswith("https://shop.example.com:443/") for u in dsl_res["filtered_links"]["same_origin_urls"])
 assert dsl_res["srcset_demo"]["largest"] == "https://shop.example.com:443/img/large.jpg"
 assert dsl_res["srcset_demo"]["smallest"] == "https://shop.example.com:443/img/small.jpg"
 assert len(dsl_res["srcset_demo"]["all_urls"]) == 3
